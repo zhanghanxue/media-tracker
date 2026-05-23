@@ -1,0 +1,251 @@
+# Media Tracker — Design Decisions
+
+Personal media tracker for **single user, two devices (PC + phone)**. Tracks media consumed, currently consuming, and planned across:
+**manga, light novels, animation (anime / donghua / Western cartoon), drama (C-drama / K-drama / J-drama / etc.), movies, games.**
+
+Output of a mentor-grilling design session — every decision below is locked unless re-opened explicitly.
+
+---
+
+## 1. Deployment shape — Responsive web app + server-of-record
+
+One URL, hosted on Cloudflare, accessed by PC browser and phone browser (install as PWA on phone).
+
+- **Why:** single source of truth eliminates sync problems; no merge conflicts between devices; "you always see what you just wrote" on every load.
+- **Industry convergence:** every personal-tracker that survived (Letterboxd, AniList, MAL, Trakt, Bangumi) is web-first.
+- **What would flip this:** genuine offline-first need (subway/flight updates) — not your case.
+
+## 2. Auth — Cloudflare Access (Zero Trust)
+
+Reverse-proxy auth in front of the Worker. Cloudflare handles login (Google / email OTP); Worker reads a signed `Cf-Access-Jwt-Assertion` header. **Zero auth code in the application.**
+
+- **Free** up to 50 users on the Cloudflare free plan.
+- **Why:** eliminates an entire category of app-level auth bugs (session fixation, password leaks, broken recovery flows) because there is no auth code in the app. Industry calls this the BeyondCorp / Zero Trust pattern.
+- **What would flip this:** desire to be independent of Cloudflare's auth edge — not relevant here since the stack already lives on CF.
+
+## 3. Metadata source — Multi-API, sequential ship (Path A.2)
+
+All four metadata APIs are needed long-term (you have 1000+ entries spanning every type). Build them **one at a time, ship between each**, not all in parallel.
+
+| Type | Source API |
+|---|---|
+| `animation` (region=japan), `manga`, `light_novel` | **AniList** (GraphQL, no key) |
+| `movie`, `drama`, `animation` (region=usa/uk/canada) | **TMDB** (free API key) |
+| `game` | **IGDB** (Twitch OAuth, free) |
+| Chinese-title enrichment for Japanese works, donghua | **Bangumi** (data enricher) |
+
+- **Why sequential:** premature abstraction is the #1 failure mode of AI-assisted multi-integration work. Building one integration end-to-end and shipping it before starting the next gives you real-data feedback that informs each subsequent API client. The "unified MediaProvider interface" written before the second integration is always wrong.
+- **What would flip this:** team of reviewers + fixed spec up front — not your case.
+
+## 4. Schema shape — Single `media` table + type discriminator + nullable per-type columns
+
+One table holds every media type. Type-specific fields (`current_episode`, `current_chapter`, `game_progress`, etc.) are nullable and only populated for relevant rows.
+
+- **Why:** "filter by type AND region, sorted by date" is a one-line query on a single table. With separate-table-per-type, the headline list page is an 8-table UNION every render. Nullable columns cost ~nothing in SQLite.
+- **Industry convergence:** single-table inheritance is the ORM default (Rails STI, Django, Ecto) at small-to-medium scale.
+- **Anti-pattern avoided:** EAV (entity-attribute-value) modeling and per-API-source tables.
+
+## 5. Region — Single normalized column
+
+`region` is a column on every row, normalized at write-time (in each API mapping layer). Starter set:
+`japan, china, korea, taiwan, hong_kong, usa, uk` — extend on demand.
+
+- For `animation` + `donghua` + Chinese-origin works, this is also the primary discriminator between sub-genres (C/K/J-drama, anime/donghua/cartoon).
+- **Anti-pattern avoided:** free-text without normalization (the "japan" / "Japan" / "JP" / "Japanese" data-quality bug).
+
+## 6. Animation unified as one type
+
+`type='animation'` covers anime + donghua + Western cartoon. `region` discriminates. Mirrors how `drama` is modeled.
+
+- **Post-unification type set (6):** `animation, manga, light_novel, drama, movie, game`
+- **Why:** domain consistency with drama. Future-proof when AniList expands donghua coverage. One filter handles "all animation" without `type IN (...)`.
+- **Edge case:** Studio Ghibli films are `type='animation'` with `current_episode=1, total_episodes=1`, not `type='movie'`.
+
+## 7. i18n — Bilingual UI with title display preference (Option B)
+
+- **Library:** `i18next` + `react-i18next`
+- **Locales:** `en` and `zh-Hans` (Simplified Chinese)
+- **Toggle reach:** UI chrome AND media title display
+- **Persistence:** localStorage
+- **Auto-detect default:** `navigator.language`
+
+**Title display rules:**
+- English UI: `title_english || title_romaji || title_native`
+- Chinese UI: `title_chinese || title_native || title_english`
+
+- **Why "from day 1, not retrofit":** wrapping every string in `t()` is ~5% per-screen overhead when built in, ~50% overhead + long tail of missed strings when retrofitted.
+
+## 8. Title schema — 4 columns
+
+To support displaying titles in the user's preferred UI language regardless of the media's origin:
+
+| Column | Content |
+|---|---|
+| `title_native` | Original-language title (Japanese for anime, Korean for K-drama, English for Western) |
+| `title_romaji` | Latin transliteration (mostly Japanese; NULL for Western/Chinese origins) |
+| `title_english` | English title (translated for non-English origins) |
+| `title_chinese` | Chinese title (translated for non-Chinese origins; same as `title_native` for C-drama/donghua) |
+
+**Data-side reality:** AniList returns native + romaji + english but not Chinese. Bangumi will be the source for Chinese translations of Japanese works. Items may start with `title_chinese = NULL` and rely on fallback — manually fill the ones you care about.
+
+**Known v2 trigger:** Simplified vs Traditional Chinese mismatch in search. Fix via OpenCC normalization at write-time if it becomes friction.
+
+## 9. Library search — LIKE-based, multi-column
+
+```sql
+SELECT * FROM media
+WHERE title_native  LIKE '%' || ? || '%'
+   OR title_romaji  LIKE '%' || ? || '%'
+   OR title_english LIKE '%' || ? || '%'
+   OR title_chinese LIKE '%' || ? || '%'
+ORDER BY date_updated DESC LIMIT 50
+```
+
+- **Why:** at 1,000–5,000 items the LIKE scan is <10ms — faster than the HTTPS round-trip from your phone. Optimizing this would be optimizing a non-problem.
+- **Why CJK works on LIKE:** Chinese/Japanese characters are meaningful per-character; no word tokenization needed.
+- **What would flip this:** library passes ~50k items OR you want prefix-match autocomplete OR ranked-relevance results. Migration target: SQLite FTS5 virtual table.
+
+## 10. Cover image storage — Cloudflare R2, downloaded at add-time
+
+Worker fetches the upstream image at item-add, writes it to R2, stores R2 URL in `cover_url`.
+
+- **Why:** durability. Over a 5-year horizon, ~1–5% of hotlinked URLs break (CDN reorgs, deprecated endpoints, account rate limits). Self-hosting decouples your archive from upstream lifecycle.
+- **Industry convergence:** every surviving long-term tracker self-hosts (AniList, MAL, Letterboxd, Bangumi).
+- **Side benefits:** R2 + Worker on the same edge = fewer DNS lookups; phone doesn't ping third parties every list-render (mild privacy win).
+- **Free-tier:** 10 GB / 1M Class A ops per month — your scale is well below.
+
+## 11. First API to integrate — AniList
+
+Covers 3 of 6 types (`animation` where region=japan, `manga`, `light_novel`) and is the most-frequently-updated content type for weekly tracking.
+
+- **Why first:** active-tracking rhythm (you'll feel the value daily); clean GraphQL API is a good architecture validator before tackling messier integrations (IGDB OAuth, Bangumi mixed-language docs); if your library skews heavily to anime/manga, you get the biggest migration chunk done in week 1.
+- **Subsequent order (TBD by usage feedback after v1):** TMDB → IGDB → Bangumi (Bangumi last as enricher, not primary).
+
+## 12. Game tracking — Polymorphic on consumption mode
+
+**Single row per game.** A `consumption_mode` field discriminates whether you're playing it or watching gameplay.
+
+- **`consumption_mode = 'playing'`** → use free-text `game_progress` ("Chapter 7", "60%", "Yoshiwara") + the shared `status` enum.
+- **`consumption_mode = 'watching'`** → reuse the episodic columns (`current_episode` / `total_episodes`) for part-of-walkthrough tracking + a single `video_url` for the playlist link.
+- **Edge case:** if you play AND watch the same game, just create two rows.
+- **Known v2 trigger:** if 30%+ of walkthroughs aren't in playlists, migrate to a `media_video_parts(media_id, part_number, title, url)` child table.
+
+## 13. Status enum
+
+`planned | in_progress | completed | dropped | paused`
+
+Mirrors AniList's well-tested set. Rewatching/replaying handled as a separate `is_rewatching` boolean flag, not a status — avoids enum bloat.
+
+## 14. Filter UI — Faceted sidebar checkboxes
+
+Sidebar with checkbox groups per facet (type, region, status). **AND across facets, OR within.**
+
+Example: selecting `[animation, manga]` + `[japan, korea]` + `[in_progress]` produces
+`type IN ('animation','manga') AND region IN ('japan','korea') AND status='in_progress'`.
+
+Industry standard (Letterboxd, AniList, MAL). **Anti-pattern avoided:** structured-query syntax bars (`type:animation region:japan`) — powerful but require re-learning every session.
+
+## 15. Frontend stack — Reuse existing
+
+| Layer | Choice |
+|---|---|
+| UI | React + Vite + Vitest (TypeScript) |
+| Server | Hono on Cloudflare Workers |
+| Database | Cloudflare D1 (SQLite) |
+| Object storage | Cloudflare R2 |
+| Auth | Cloudflare Access |
+| i18n | react-i18next |
+
+Reuses the toolchain already proven in `java-knowledge-flashcard`. **Avoid:** introducing a second stack for a personal project — pure tax.
+
+## 16. Bulk-import strategy for the existing Google Doc
+
+After v1 shell is up: export Google Doc → CSV → one-shot Node script that fuzzy-matches each row against AniList by title, flags low-confidence matches for manual review, bulk-inserts via the existing add endpoint. ~1 day of work.
+
+---
+
+## Proposed schema (v1)
+
+```sql
+CREATE TABLE media (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  type            TEXT NOT NULL,  -- animation | manga | light_novel | drama | movie | game
+  region          TEXT,           -- japan | china | korea | usa | uk | taiwan | hong_kong | ...
+
+  -- Multilingual titles
+  title_native    TEXT,
+  title_romaji    TEXT,
+  title_english   TEXT,
+  title_chinese   TEXT,
+
+  -- Status & shared metadata
+  status          TEXT NOT NULL,  -- planned | in_progress | completed | dropped | paused
+  is_rewatching   INTEGER NOT NULL DEFAULT 0,
+  cover_url       TEXT,           -- R2 URL
+  external_id     TEXT,           -- ID in the source API
+  external_source TEXT,           -- anilist | tmdb | igdb | bangumi
+  notes           TEXT,
+
+  -- Episodic progress: animation, drama, manga, light_novel, game (watching mode)
+  current_episode INTEGER,
+  total_episodes  INTEGER,
+  current_chapter INTEGER,
+  total_chapters  INTEGER,
+
+  -- Game-specific
+  consumption_mode TEXT,          -- 'playing' | 'watching' (games only)
+  game_progress    TEXT,          -- free text: "Chapter 7", "60%", "Yoshiwara"
+  video_url        TEXT,          -- gameplay playlist URL (watching mode)
+
+  -- Movies
+  runtime_minutes INTEGER,
+
+  date_added      TEXT NOT NULL DEFAULT (datetime('now')),
+  date_updated    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_media_type_status   ON media(type, status);
+CREATE INDEX idx_media_region        ON media(region);
+CREATE INDEX idx_media_date_updated  ON media(date_updated DESC);
+```
+
+---
+
+## Build order (week 1, v1)
+
+1. Cloudflare project scaffolding (Worker + D1 + R2 bindings)
+2. D1 migration: `media` table + indexes
+3. Cloudflare Access policy on the domain (gated on your email)
+4. Worker scaffold: Hono app, auth header check, `/api/health`
+5. AniList GraphQL client: search by title, fetch detail
+6. R2 cover-upload pipeline: fetch upstream image → put to R2 → return R2 URL
+7. `POST /api/media` add endpoint
+8. `GET /api/media` list + filter + search endpoints
+9. React UI shell: list page, filter sidebar, add-search modal
+10. i18n setup: `en.json`, `zh-Hans.json`, toggle component, title display helper
+11. Deploy to Cloudflare. Use for 1–2 weeks.
+12. Bulk-import script for AniList-covered subset of the Google Doc.
+
+---
+
+## Known v2 escape hatches
+
+| Trigger | v2 response |
+|---|---|
+| Walkthroughs frequently aren't in playlists | Add `media_video_parts(media_id, part_number, title, url)` child table |
+| Library >50k items, or want prefix-search / ranked relevance | Migrate LIKE to SQLite FTS5 virtual table |
+| Simplified / Traditional Chinese search mismatch | OpenCC normalization at write-time |
+| Want offline access on the road | Add IndexedDB cache + background sync |
+| TMDB / IGDB / Bangumi added | Sequential, one per week after AniList ships |
+
+---
+
+## Open items not yet decided
+
+- Exact filter/sort options beyond type, region, status (e.g. sort by date added vs date updated vs alphabetical)
+- Whether to track watch history (timeline of progress events) or only current state
+- Genre / tag support (genres come from APIs for free; question is whether to expose as filters)
+- Notes / review / rating fields beyond `notes` text
+- Mobile-specific UX (gesture-driven episode increment? swipe to mark complete?)
+
+These can be decided incrementally as you use v1.
