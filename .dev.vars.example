@@ -1,0 +1,7 @@
+# Local development environment variables. Copy this file to `.dev.vars`
+# (which is gitignored) and run `npm run dev`.
+#
+# When LOCAL_DEV_BYPASS=1, the Worker skips CF Access JWT verification and
+# treats the request as coming from a local developer (email: dev@local).
+# NEVER set this in production — it would disable auth entirely.
+LOCAL_DEV_BYPASS=1

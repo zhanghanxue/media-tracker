@@ -4,9 +4,12 @@ main = "src/worker/index.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Production custom domain — bound at deploy time.
-# After first `wrangler deploy`, configure media.zhanghanxue.com under
-# Workers & Pages → media-tracker → Settings → Triggers → Custom Domains.
+# Production routing — bind the Worker to media.zhanghanxue.com.
+# `custom_domain = true` causes Wrangler to auto-create the DNS record at
+# deploy time, so no manual A/AAAA record is needed.
+[[routes]]
+pattern = "media.zhanghanxue.com"
+custom_domain = true
 
 # D1 database — Phase 2 will create via:
 #   wrangler d1 create media-tracker-db
