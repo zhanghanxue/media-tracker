@@ -11,16 +11,14 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "media.zhanghanxue.com"
 custom_domain = true
 
-# D1 database — Phase 2 will create via:
-#   wrangler d1 create media-tracker-db
-# then replace the placeholder database_id below with the real UUID.
+# D1 database (created via `wrangler d1 create media-tracker-db`, region WEUR).
+# Schema lands in Phase 2 via `migrations/0001_create_media.sql`.
 [[d1_databases]]
 binding = "DB"
 database_name = "media-tracker-db"
-database_id = "00000000-0000-0000-0000-000000000000"  # TODO Phase 2
+database_id = "27c13a59-202f-4f56-a460-147aa79d20a0"
 
-# R2 bucket — Phase 4 will create via:
-#   wrangler r2 bucket create media-tracker-covers
+# R2 bucket for cover images. Uploads land in Phase 4.
 [[r2_buckets]]
 binding = "COVERS"
 bucket_name = "media-tracker-covers"

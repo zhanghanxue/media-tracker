@@ -21,4 +21,4 @@ export const ACCESS_TEAM_DOMAIN = "zhanghanxue.cloudflareaccess.com";
 
 // TODO: replace before deploying. Until set correctly, all production
 // requests will be rejected with 401 (JWT audience claim won't match).
-export const ACCESS_AUD_TAG = "REPLACE_WITH_AUD_TAG_FROM_DASHBOARD";
+export const ACCESS_AUD_TAG = "b2140886-3d76-460c-bb0d-6c304f996ec4";
