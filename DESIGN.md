@@ -121,14 +121,36 @@ Covers 3 of 6 types (`animation` where region=japan, `manga`, `light_novel`) and
 - **Why first:** active-tracking rhythm (you'll feel the value daily); clean GraphQL API is a good architecture validator before tackling messier integrations (IGDB OAuth, Bangumi mixed-language docs); if your library skews heavily to anime/manga, you get the biggest migration chunk done in week 1.
 - **Subsequent order (TBD by usage feedback after v1):** TMDB → IGDB → Bangumi (Bangumi last as enricher, not primary).
 
-## 12. Game tracking — Polymorphic on consumption mode
+## 12. Game tracking — Polymorphic on consumption mode + platform discriminator
 
-**Single row per game.** A `consumption_mode` field discriminates whether you're playing it or watching gameplay.
+**Single row per game.** Two discriminating fields beyond the shared `type='game'`:
 
-- **`consumption_mode = 'playing'`** → use free-text `game_progress` ("Chapter 7", "60%", "Yoshiwara") + the shared `status` enum.
-- **`consumption_mode = 'watching'`** → reuse the episodic columns (`current_episode` / `total_episodes`) for part-of-walkthrough tracking + a single `video_url` for the playlist link.
-- **Edge case:** if you play AND watch the same game, just create two rows.
-- **Known v2 trigger:** if 30%+ of walkthroughs aren't in playlists, migrate to a `media_video_parts(media_id, part_number, title, url)` child table.
+1. **`platform`** enum (`mobile` / `console` / `pc` / `handheld` / `arcade`) — required for games. Mirrors how `region` discriminates within `drama` and `animation`. "Show me only mobile games" becomes `WHERE type='game' AND platform='mobile'`.
+2. **`consumption_mode`** enum (`'playing'` / `'watching'`) — discriminates whether you're playing the game yourself or watching someone else's gameplay videos.
+
+**Field usage by consumption mode:**
+
+- **`consumption_mode = 'playing'`** → free-text `game_progress` ("Chapter 7", "60%", "Yoshiwara") + the shared `status` enum
+- **`consumption_mode = 'watching'`** → episodic columns (`current_episode` / `total_episodes`) for part-position tracking, plus rows in `media_video_parts` (child table) for the URLs of each video part
+
+**Why a child table for video parts** (promoted from v2 to v1 based on real-world data — mobile game plot walkthroughs like FGO on Bilibili are routinely scattered across separate uploads, not organized into a single playlist):
+
+```sql
+CREATE TABLE media_video_parts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+  part_number INTEGER NOT NULL,
+  title TEXT,             -- optional; e.g. "Part 7: Babylonia"
+  url TEXT NOT NULL,
+  UNIQUE (media_id, part_number)
+);
+```
+
+The child table handles both single-URL (one row) and multi-URL (many rows) walkthroughs uniformly — no dual-path query logic, and per-part metadata (title, future fields like duration) lives in real columns rather than a text blob.
+
+**Scope:** `media_video_parts` is used **only for games in watching mode**. Other watching-content types (animation, drama, donghua) track via episode numbers directly — they have a canonical episode-count concept independent of where they're hosted. Game walkthroughs only exist as the creator's video parts. **URL-as-content vs Episode-as-content** is a real distinction that justifies the asymmetric treatment.
+
+**Edge case:** if you play AND watch the same game, create two rows (one per mode).
 
 ## 13. Status enum
 
@@ -193,9 +215,10 @@ CREATE TABLE media (
   total_chapters  INTEGER,
 
   -- Game-specific
+  platform         TEXT,          -- mobile | console | pc | handheld | arcade (games only)
   consumption_mode TEXT,          -- 'playing' | 'watching' (games only)
-  game_progress    TEXT,          -- free text: "Chapter 7", "60%", "Yoshiwara"
-  video_url        TEXT,          -- gameplay playlist URL (watching mode)
+  game_progress    TEXT,          -- free text: "Chapter 7", "60%", "Yoshiwara" (playing mode only)
+  -- Video URLs for watching-mode games live in media_video_parts (below), not on this row
 
   -- Movies
   runtime_minutes INTEGER,
@@ -204,9 +227,22 @@ CREATE TABLE media (
   date_updated    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_media_type_status   ON media(type, status);
-CREATE INDEX idx_media_region        ON media(region);
-CREATE INDEX idx_media_date_updated  ON media(date_updated DESC);
+CREATE INDEX idx_media_type_status      ON media(type, status);
+CREATE INDEX idx_media_region           ON media(region);
+CREATE INDEX idx_media_date_updated     ON media(date_updated DESC);
+CREATE INDEX idx_media_platform         ON media(platform);
+
+-- Used only for games in watching mode (URL-as-content); other watching types use episode numbers
+CREATE TABLE media_video_parts (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  media_id     INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+  part_number  INTEGER NOT NULL,
+  title        TEXT,                          -- optional; e.g. "Part 7: Babylonia"
+  url          TEXT NOT NULL,
+  UNIQUE (media_id, part_number)
+);
+
+CREATE INDEX idx_media_video_parts_media_id ON media_video_parts(media_id);
 ```
 
 ---
@@ -232,7 +268,6 @@ CREATE INDEX idx_media_date_updated  ON media(date_updated DESC);
 
 | Trigger | v2 response |
 |---|---|
-| Walkthroughs frequently aren't in playlists | Add `media_video_parts(media_id, part_number, title, url)` child table |
 | Library >50k items, or want prefix-search / ranked relevance | Migrate LIKE to SQLite FTS5 virtual table |
 | Simplified / Traditional Chinese search mismatch | OpenCC normalization at write-time |
 | Want offline access on the road | Add IndexedDB cache + background sync |
