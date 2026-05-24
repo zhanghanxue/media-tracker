@@ -65,6 +65,11 @@ Before any code:
 
 **Decisions inside:**
 - **JWT verification:** verify signature in the Worker, or trust the CF header? Recommendation: **verify**. CF Access at the edge is the primary defense, but in-Worker verification prevents bypass scenarios (e.g., if someone removes the Access policy or changes the route). ~20 lines of code using `jose` library or CF's own helper.
+- **CF Access: AUD Tag vs Application ID (gotcha — burned us in v1).** The dashboard exposes two similar-looking identifiers per application:
+  - `Application ID` — UUID format (e.g. `b2140886-3d76-460c-bb0d-6c304f996ec4`)
+  - `Application Audience (AUD) Tag` — 64-char hex (e.g. `6677cb04ab4c526c4091ca4edb1aca98a395188dd2cbe34e029222076d630abd`)
+
+  The JWT issued for authenticated requests carries the **AUD Tag** in its `aud` claim, NOT the Application ID. `jose.jwtVerify({ audience: <Application ID> })` rejects every valid token with `JWTClaimValidationFailed`. The value passed to `jwtVerify` must be the 64-char hex one. Sanity check: hitting the production URL unauth'd produces a 302 redirect whose `kid` query parameter exposes the actual AUD tag CF Access uses for this app — if `config.ts` doesn't match that string, JWT verification will fail.
 - **Local dev auth bypass:** when running `npm run dev`, you won't have CF Access. Add a `LOCAL_DEV_BYPASS=1` env var that injects a fake user header — but disable in production.
 
 **Acceptance:**
