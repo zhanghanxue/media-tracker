@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 interface HealthResponse {
   ok: boolean;
-  user: string | null;
+  user: string;
   timestamp: string;
 }
 
