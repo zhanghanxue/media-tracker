@@ -76,21 +76,27 @@ Before any code:
 
 ## Phase 2 — Schema + D1 migration
 
-**Goal:** create the `media` table in D1, apply via `wrangler d1 migrations apply`.
+**Goal:** create the `media` and `media_video_parts` tables in D1, apply via `wrangler d1 migrations apply`.
 
 **Deliverables:**
-- `migrations/0001_create_media.sql` — copy the schema from `DESIGN.md` § "Proposed schema (v1)"
+- `migrations/0001_create_media.sql` — copy the full schema from `DESIGN.md` § "Proposed schema (v1)". This includes:
+  - `media` table (with `platform` column for games and all five indexes: `type+status`, `region`, `date_updated`, `platform`)
+  - `media_video_parts` child table (with foreign key to `media` and `ON DELETE CASCADE`)
+  - Index on `media_video_parts(media_id)`
 - `wrangler.toml`: add `[[d1_databases]]` entry pointing at a real D1 database (create it first via `wrangler d1 create media-tracker-db`)
 - A `package.json` script: `"db:migrate": "wrangler d1 migrations apply media-tracker-db"`
 - Run migration locally (via `--local` flag) and on production
 
 **Decisions inside:**
-- **Indexes:** the schema in DESIGN.md proposes three indexes (`type+status`, `region`, `date_updated`). Confirm these match your most-common query patterns. If you anticipate filtering by `external_source` (e.g. "show me everything from AniList"), add an index on that too.
+- **Single migration file vs split:** put both tables (`media`, `media_video_parts`) in `0001_create_media.sql`. They're co-created and the foreign key requires `media` to exist first; one file with statements in the right order is cleaner than splitting into `0001_` + `0002_`.
+- **Indexes:** the schema in DESIGN.md proposes five indexes. Confirm these match your most-common query patterns. If you anticipate filtering by `external_source` (e.g. "show me everything from AniList"), add an index on that too.
 - **Naming convention for migrations:** stick with the `NNNN_description.sql` pattern wrangler expects.
+- **Foreign key enforcement:** SQLite requires `PRAGMA foreign_keys = ON` per-connection for `ON DELETE CASCADE` to actually cascade. D1 enables this by default in production but verify in tests — the cascade behavior on `media_video_parts` when a `media` row is deleted is part of the contract.
 
 **Acceptance:**
-- `wrangler d1 execute media-tracker-db --command='SELECT name FROM sqlite_master WHERE type="table"'` shows the `media` table both locally and on production
-- A test row can be inserted and selected back
+- `wrangler d1 execute media-tracker-db --command='SELECT name FROM sqlite_master WHERE type="table"'` shows both `media` and `media_video_parts` tables locally and on production
+- A test row can be inserted into `media`, plus 2-3 child rows into `media_video_parts`, and selected back via a JOIN
+- Deleting the parent `media` row cascades and removes the child `media_video_parts` rows (verifies foreign-key behavior)
 
 ---
 
