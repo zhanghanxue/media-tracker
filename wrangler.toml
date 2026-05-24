@@ -1,0 +1,23 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "media-tracker"
+main = "src/worker/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Production custom domain — bound at deploy time.
+# After first `wrangler deploy`, configure media.zhanghanxue.com under
+# Workers & Pages → media-tracker → Settings → Triggers → Custom Domains.
+
+# D1 database — Phase 2 will create via:
+#   wrangler d1 create media-tracker-db
+# then replace the placeholder database_id below with the real UUID.
+[[d1_databases]]
+binding = "DB"
+database_name = "media-tracker-db"
+database_id = "00000000-0000-0000-0000-000000000000"  # TODO Phase 2
+
+# R2 bucket — Phase 4 will create via:
+#   wrangler r2 bucket create media-tracker-covers
+[[r2_buckets]]
+binding = "COVERS"
+bucket_name = "media-tracker-covers"
