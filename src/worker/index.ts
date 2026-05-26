@@ -2,11 +2,14 @@ import { Hono } from "hono";
 import { cfAccessAuth, type AuthEnv, type AuthVariables } from "./middleware/auth";
 
 // Bindings injected by Cloudflare Workers runtime.
-// Phase 2 will use DB (D1 binding) for media CRUD.
-// Phase 4 will use COVERS (R2 binding) for cover image storage.
+// DB: D1 binding for media CRUD (Phase 2+).
+// COVERS: R2 binding for cover image storage (Phase 4).
+// COVERS_PUBLIC_URL_BASE: public hostname prefix where the COVERS bucket
+//   serves objects (custom domain, configured at the bucket level).
 type Env = AuthEnv & {
   DB: D1Database;
   COVERS: R2Bucket;
+  COVERS_PUBLIC_URL_BASE: string;
 };
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
