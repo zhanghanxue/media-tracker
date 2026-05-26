@@ -5,3 +5,8 @@
 # treats the request as coming from a local developer (email: dev@local).
 # NEVER set this in production — it would disable auth entirely.
 LOCAL_DEV_BYPASS=1
+
+# Public URL prefix for the COVERS R2 bucket. Production value lives in
+# wrangler.toml [vars]; this local override exists so the type-checked
+# COVERS_PUBLIC_URL_BASE binding has a value when running `npm run dev`.
+COVERS_PUBLIC_URL_BASE=https://covers.zhanghanxue.com

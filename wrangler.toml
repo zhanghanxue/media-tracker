@@ -18,7 +18,16 @@ binding = "DB"
 database_name = "media-tracker-db"
 database_id = "27c13a59-202f-4f56-a460-147aa79d20a0"
 
-# R2 bucket for cover images. Uploads land in Phase 4.
+# R2 bucket for cover images.
+# The bucket's public read access is exposed via the `covers.zhanghanxue.com`
+# custom domain (configured one-time via `wrangler r2 bucket domain add`,
+# not in this file — bucket-level domains aren't a wrangler.toml concept).
 [[r2_buckets]]
 binding = "COVERS"
 bucket_name = "media-tracker-covers"
+
+# Public URL prefix for cover objects. The upload pipeline joins this with
+# the R2 key (covers/{external_source}/{external_id}.{ext}) to produce the
+# `cover_url` stored in the `media` row. Override per environment if needed.
+[vars]
+COVERS_PUBLIC_URL_BASE = "https://covers.zhanghanxue.com"
