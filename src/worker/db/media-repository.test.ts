@@ -7,7 +7,13 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { AniListMapperResult } from "../sources/anilist-mapper";
-import { findByExternalRef, findById, insertMedia } from "./media-repository";
+import type { ListFilters } from "../api/list-query";
+import {
+  findByExternalRef,
+  findById,
+  insertMedia,
+  listMedia,
+} from "./media-repository";
 
 // A representative mapped anime row (what aniListToMediaRow returns for
 // Kimetsu no Yaiba). Tests clone + tweak this.
@@ -101,5 +107,184 @@ describe("findByExternalRef", () => {
     // Same numeric id, different source — must NOT collide.
     const found = await findByExternalRef(env.DB, "tmdb", "101922");
     expect(found).toBeNull();
+  });
+});
+
+// --- listMedia -------------------------------------------------------------
+
+function makeRow(overrides: Partial<AniListMapperResult>): AniListMapperResult {
+  return { ...ANIME_ROW, ...overrides };
+}
+
+function filters(overrides: Partial<ListFilters> = {}): ListFilters {
+  return {
+    types: [],
+    regions: [],
+    statuses: [],
+    q: null,
+    sort: "date_updated",
+    limit: 50,
+    offset: 0,
+    ...overrides,
+  };
+}
+
+// A small, varied corpus exercised by the filter/search tests.
+async function seedCorpus(): Promise<void> {
+  await insertMedia(
+    env.DB,
+    makeRow({
+      external_id: "101922",
+      type: "animation",
+      region: "japan",
+      status: "in_progress",
+      title_english: "Demon Slayer: Kimetsu no Yaiba",
+      title_native: "鬼滅の刃",
+    }),
+  );
+  await insertMedia(
+    env.DB,
+    makeRow({
+      external_id: "30002",
+      type: "manga",
+      region: "japan",
+      status: "completed",
+      title_english: "Berserk",
+      title_native: "ベルセルク",
+    }),
+  );
+  await insertMedia(
+    env.DB,
+    makeRow({
+      external_id: "50000",
+      type: "animation",
+      region: "china",
+      status: "planned",
+      title_english: "Demon's Heart",
+      title_native: "魔心",
+    }),
+  );
+  await insertMedia(
+    env.DB,
+    makeRow({
+      external_id: "999",
+      type: "light_novel",
+      region: "japan",
+      status: "planned",
+      title_english: "Re:Zero",
+      title_native: "リゼロ",
+    }),
+  );
+}
+
+describe("listMedia — filtering", () => {
+  it("returns everything with no filters", async () => {
+    await seedCorpus();
+    const { items, total } = await listMedia(env.DB, filters());
+    expect(total).toBe(4);
+    expect(items).toHaveLength(4);
+  });
+
+  it("filters by a single type (OR-within of one value)", async () => {
+    await seedCorpus();
+    const { items, total } = await listMedia(
+      env.DB,
+      filters({ types: ["animation"] }),
+    );
+    expect(total).toBe(2);
+    expect(items.every((r) => r.type === "animation")).toBe(true);
+  });
+
+  it("ANDs across facets: animation + japan + in_progress matches one row", async () => {
+    await seedCorpus();
+    const { items, total } = await listMedia(
+      env.DB,
+      filters({
+        types: ["animation"],
+        regions: ["japan"],
+        statuses: ["in_progress"],
+      }),
+    );
+    expect(total).toBe(1);
+    expect(items[0]!.external_id).toBe("101922");
+  });
+
+  it("ORs within a facet: type IN (animation, manga) matches three rows", async () => {
+    await seedCorpus();
+    const { total } = await listMedia(
+      env.DB,
+      filters({ types: ["animation", "manga"] }),
+    );
+    expect(total).toBe(3);
+  });
+});
+
+describe("listMedia — search (q)", () => {
+  it("matches across English titles case-insensitively (two 'demon' rows)", async () => {
+    await seedCorpus();
+    const { items, total } = await listMedia(env.DB, filters({ q: "demon" }));
+    expect(total).toBe(2);
+    expect(items.map((r) => r.external_id).sort()).toEqual(["101922", "50000"]);
+  });
+
+  it("matches a native (CJK) title via title_native LIKE", async () => {
+    await seedCorpus();
+    const { items, total } = await listMedia(env.DB, filters({ q: "鬼滅" }));
+    expect(total).toBe(1);
+    expect(items[0]!.external_id).toBe("101922");
+  });
+
+  it("returns nothing for a non-matching query", async () => {
+    await seedCorpus();
+    const { total } = await listMedia(env.DB, filters({ q: "zzzznomatch" }));
+    expect(total).toBe(0);
+  });
+});
+
+describe("listMedia — pagination", () => {
+  it("limits the page but reports the full match count in total", async () => {
+    await seedCorpus();
+    const page = await listMedia(env.DB, filters({ limit: 2, offset: 0 }));
+    expect(page.items).toHaveLength(2);
+    expect(page.total).toBe(4); // total ignores LIMIT/OFFSET
+  });
+
+  it("advances via offset without overlap", async () => {
+    await seedCorpus();
+    const first = await listMedia(env.DB, filters({ limit: 2, offset: 0 }));
+    const second = await listMedia(env.DB, filters({ limit: 2, offset: 2 }));
+
+    const firstIds = first.items.map((r) => r.id);
+    const secondIds = second.items.map((r) => r.id);
+    expect(second.items).toHaveLength(2);
+    // Disjoint pages.
+    expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
+  });
+});
+
+describe("listMedia — ordering", () => {
+  it("defaults to date_updated DESC (most recently updated first)", async () => {
+    await seedCorpus();
+    // Force distinct, known update times so the order is deterministic.
+    await env.DB.exec(
+      "UPDATE media SET date_updated = '2026-01-01 00:00:00' WHERE external_id = '101922'",
+    );
+    await env.DB.exec(
+      "UPDATE media SET date_updated = '2026-03-01 00:00:00' WHERE external_id = '30002'",
+    );
+    await env.DB.exec(
+      "UPDATE media SET date_updated = '2026-02-01 00:00:00' WHERE external_id = '50000'",
+    );
+    await env.DB.exec(
+      "UPDATE media SET date_updated = '2026-04-01 00:00:00' WHERE external_id = '999'",
+    );
+
+    const { items } = await listMedia(env.DB, filters());
+    expect(items.map((r) => r.external_id)).toEqual([
+      "999", // Apr
+      "30002", // Mar
+      "50000", // Feb
+      "101922", // Jan
+    ]);
   });
 });
