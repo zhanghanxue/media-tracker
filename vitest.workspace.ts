@@ -14,6 +14,9 @@ export default defineWorkspace([
         "src/worker/sources/**/*.test.ts",
         "src/worker/storage/**/*.test.ts",
         "src/worker/api/**/*.test.ts",
+        // Client-side pure helpers (e.g. displayTitle). NOT React components —
+        // those are deliberately untested in v1 (CLAUDE.md / TESTING.md).
+        "src/client/lib/**/*.test.ts",
       ],
       environment: "node",
     },
