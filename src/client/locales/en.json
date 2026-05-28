@@ -59,5 +59,21 @@
   "theme": {
     "toLight": "Switch to light theme",
     "toDark": "Switch to dark theme"
+  },
+  "add": {
+    "button": "+ Add",
+    "title": "Add media",
+    "searchPlaceholder": "Search AniList…",
+    "anime": "Anime",
+    "manga": "Manga",
+    "statusLabel": "Status",
+    "empty": "Type to search AniList.",
+    "searching": "Searching…",
+    "noResults": "No results.",
+    "error": "Search failed.",
+    "addButton": "Add",
+    "adding": "Adding…",
+    "alreadyAdded": "In library",
+    "close": "Close"
   }
 }

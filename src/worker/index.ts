@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cfAccessAuth, type AuthVariables } from "./middleware/auth";
 import type { AppEnv } from "./env";
 import { mediaRoutes } from "./routes/media";
+import { anilistRoutes } from "./routes/anilist";
 
 const app = new Hono<{ Bindings: AppEnv; Variables: AuthVariables }>();
 
@@ -17,7 +18,9 @@ app.get("/api/health", (c) => {
   });
 });
 
-// Phase 5: add media from an external source (AniList in v1).
+// Phase 5/6: media CRUD + list.
 app.route("/api/media", mediaRoutes);
+// Phase 8: AniList search proxy (browser can't hit AniList's GraphQL directly).
+app.route("/api/anilist", anilistRoutes);
 
 export default app;

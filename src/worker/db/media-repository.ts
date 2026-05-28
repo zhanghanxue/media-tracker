@@ -99,6 +99,30 @@ export async function listMedia(
 }
 
 /**
+ * Of the given external IDs (for one source), return the set that already
+ * exist in the library. Used to annotate AniList search results with
+ * "already added" so the UI can disable the Add button. Returns an empty set
+ * for an empty input (avoids an invalid `IN ()`).
+ */
+export async function findExistingExternalIds(
+  db: D1Database,
+  externalSource: ExternalSource,
+  externalIds: string[],
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+
+  const placeholders = externalIds.map(() => "?").join(", ");
+  const result = await db
+    .prepare(
+      `SELECT external_id FROM media WHERE external_source = ? AND external_id IN (${placeholders})`,
+    )
+    .bind(externalSource, ...externalIds)
+    .all<{ external_id: string }>();
+
+  return new Set(result.results.map((r) => r.external_id));
+}
+
+/**
  * Insert a mapped row and return the persisted record (with DB-assigned `id`,
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.
