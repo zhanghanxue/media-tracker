@@ -37,6 +37,11 @@ All four metadata APIs are needed long-term (you have 1000+ entries spanning eve
 - **Why sequential:** premature abstraction is the #1 failure mode of AI-assisted multi-integration work. Building one integration end-to-end and shipping it before starting the next gives you real-data feedback that informs each subsequent API client. The "unified MediaProvider interface" written before the second integration is always wrong.
 - **What would flip this:** team of reviewers + fixed spec up front — not your case.
 
+**Fetch-location decision (learned in Phase 11 dogfood, 2026-05-29):** *where* each API call runs is a per-source decision, not "always proxy through the Worker":
+- **AniList → browser-direct.** AniList blocks Cloudflare Worker egress IPs (HTTP 403 "API temporarily disabled" to Workers; 200 to normal IPs) but sends permissive CORS (`Access-Control-Allow-Origin: *`). So the browser calls AniList directly and POSTs the resulting media object to the Worker, which maps + persists it. The Worker never calls AniList. (This corrected the original "AniList has no CORS, proxy via the Worker" assumption — wrong on both counts.)
+- **Secret-bearing APIs (IGDB = Twitch OAuth) → Worker-side, mandatory.** A client secret must never reach the browser, so those calls stay server-side — and must be watched for the same Worker-egress-block class of problem.
+- **Cover images (§10):** the Worker still tries to re-host to R2, but if the image CDN also blocks Workers, `uploadCoverToR2` gracefully falls back to the upstream URL, so a row always has a usable `cover_url`.
+
 ## 4. Schema shape — Single `media` table + type discriminator + nullable per-type columns
 
 One table holds every media type. Type-specific fields (`current_episode`, `current_chapter`, `game_progress`, etc.) are nullable and only populated for relevant rows.
