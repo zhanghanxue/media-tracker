@@ -8,6 +8,8 @@
 // defaults (NULL), and date_added / date_updated default to datetime('now').
 
 import type { AniListMapperResult } from "../sources/anilist-mapper";
+import type { ListFilters } from "../api/list-query";
+import { buildMediaListQuery } from "../api/media-query-builder";
 import type { ExternalSource, MediaRow } from "./schema";
 
 const INSERT_COLUMNS = [
@@ -60,6 +62,40 @@ export async function findById(
     .prepare("SELECT * FROM media WHERE id = ?")
     .bind(id)
     .first<MediaRow>();
+}
+
+export interface MediaListPage {
+  items: MediaRow[];
+  // Total rows matching the filters, ignoring limit/offset — lets the UI render
+  // "showing 50 of 312" and drive pagination.
+  total: number;
+}
+
+/**
+ * List rows matching `filters`, newest-first by default. Runs two queries: the
+ * page (with LIMIT/OFFSET) and a COUNT(*) over the same WHERE for `total`. Both
+ * share the builder's parameterized WHERE so the filter logic lives in exactly
+ * one (pure, unit-tested) place.
+ */
+export async function listMedia(
+  db: D1Database,
+  filters: ListFilters,
+): Promise<MediaListPage> {
+  const { where, params, orderBy } = buildMediaListQuery(filters);
+
+  const listSql = `SELECT * FROM media ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  const listResult = await db
+    .prepare(listSql)
+    .bind(...params, filters.limit, filters.offset)
+    .all<MediaRow>();
+
+  const countSql = `SELECT COUNT(*) AS total FROM media ${where}`;
+  const countRow = await db
+    .prepare(countSql)
+    .bind(...params)
+    .first<{ total: number }>();
+
+  return { items: listResult.results, total: countRow?.total ?? 0 };
 }
 
 /**

@@ -17,10 +17,16 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
 import type { MediaType } from "../db/schema";
-import { findByExternalRef, insertMedia } from "../db/media-repository";
+import {
+  findByExternalRef,
+  findById,
+  insertMedia,
+  listMedia,
+} from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { getAniListDetail, type AniListMediaType } from "../sources/anilist";
 import { parseCreateMediaRequest } from "../api/validation";
+import { parseListQuery } from "../api/list-query";
 import { uploadCoverToR2 } from "../storage/covers";
 
 // AniList only knows ANIME and MANGA. Our richer `type` taxonomy collapses to
@@ -97,4 +103,38 @@ mediaRoutes.post("/", async (c) => {
 
   const inserted = await insertMedia(c.env.DB, row);
   return c.json(inserted, 201);
+});
+
+// GET /api/media — list with filters, search, sort, pagination.
+// Returns { items, total } where total ignores limit/offset.
+mediaRoutes.get("/", async (c) => {
+  const parsed = parseListQuery({
+    type: c.req.queries("type"),
+    region: c.req.queries("region"),
+    status: c.req.queries("status"),
+    q: c.req.query("q"),
+    sort: c.req.query("sort"),
+    limit: c.req.query("limit"),
+    offset: c.req.query("offset"),
+  });
+  if (!parsed.ok) {
+    return c.json({ error: "invalid query", details: parsed.errors }, 400);
+  }
+
+  const page = await listMedia(c.env.DB, parsed.value);
+  return c.json(page);
+});
+
+// GET /api/media/:id — single record (used by the detail view later).
+mediaRoutes.get("/:id", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+
+  const row = await findById(c.env.DB, Number(idParam));
+  if (row === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  return c.json(row);
 });
