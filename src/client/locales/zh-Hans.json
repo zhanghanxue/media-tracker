@@ -1,0 +1,59 @@
+{
+  "app": {
+    "title": "媒体追踪"
+  },
+  "search": {
+    "placeholder": "搜索你的收藏…"
+  },
+  "filters": {
+    "heading": "筛选",
+    "type": "类型",
+    "region": "地区",
+    "status": "状态",
+    "clear": "清除全部",
+    "toggle": "筛选"
+  },
+  "list": {
+    "loading": "加载中…",
+    "empty": "没有符合筛选条件的内容。",
+    "error": "无法加载你的收藏。",
+    "count": "{{total}} 项中的 {{shown}} 项"
+  },
+  "type": {
+    "animation": "动画",
+    "manga": "漫画",
+    "light_novel": "轻小说",
+    "drama": "剧集",
+    "movie": "电影",
+    "game": "游戏"
+  },
+  "status": {
+    "planned": "计划中",
+    "in_progress": "进行中",
+    "completed": "已完成",
+    "dropped": "已弃",
+    "paused": "暂停"
+  },
+  "region": {
+    "japan": "日本",
+    "china": "中国",
+    "korea": "韩国",
+    "taiwan": "台湾",
+    "hong_kong": "香港",
+    "usa": "美国",
+    "uk": "英国",
+    "thailand": "泰国"
+  },
+  "progress": {
+    "episodes": "第 {{current}} / {{total}} 集",
+    "episodesCurrentOnly": "第 {{current}} 集",
+    "episodesNone": "— 集",
+    "chapters": "第 {{current}} / {{total}} 话",
+    "chaptersCurrentOnly": "第 {{current}} 话",
+    "chaptersNone": "— 话",
+    "none": "—"
+  },
+  "language": {
+    "switchTo": "EN"
+  }
+}

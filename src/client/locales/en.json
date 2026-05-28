@@ -1,0 +1,59 @@
+{
+  "app": {
+    "title": "Media Tracker"
+  },
+  "search": {
+    "placeholder": "Search your library…"
+  },
+  "filters": {
+    "heading": "Filters",
+    "type": "Type",
+    "region": "Region",
+    "status": "Status",
+    "clear": "Clear all",
+    "toggle": "Filters"
+  },
+  "list": {
+    "loading": "Loading…",
+    "empty": "No media match your filters.",
+    "error": "Couldn't load your library.",
+    "count": "{{shown}} of {{total}}"
+  },
+  "type": {
+    "animation": "Animation",
+    "manga": "Manga",
+    "light_novel": "Light Novel",
+    "drama": "Drama",
+    "movie": "Movie",
+    "game": "Game"
+  },
+  "status": {
+    "planned": "Planned",
+    "in_progress": "In Progress",
+    "completed": "Completed",
+    "dropped": "Dropped",
+    "paused": "Paused"
+  },
+  "region": {
+    "japan": "Japan",
+    "china": "China",
+    "korea": "Korea",
+    "taiwan": "Taiwan",
+    "hong_kong": "Hong Kong",
+    "usa": "USA",
+    "uk": "UK",
+    "thailand": "Thailand"
+  },
+  "progress": {
+    "episodes": "{{current}} / {{total}} ep",
+    "episodesCurrentOnly": "{{current}} ep",
+    "episodesNone": "— ep",
+    "chapters": "{{current}} / {{total}} ch",
+    "chaptersCurrentOnly": "{{current}} ch",
+    "chaptersNone": "— ch",
+    "none": "—"
+  },
+  "language": {
+    "switchTo": "中文"
+  }
+}

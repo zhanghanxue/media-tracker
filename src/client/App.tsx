@@ -1,38 +1,57 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
-interface HealthResponse {
-  ok: boolean;
-  user: string;
-  timestamp: string;
-}
+import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
+import { LanguageToggle } from "./components/LanguageToggle";
+import { MediaList } from "./components/MediaList";
+import { SearchBar } from "./components/SearchBar";
+import type { MediaFilters } from "./lib/api";
+
+const EMPTY_FILTERS: MediaFilters = {
+  types: [],
+  regions: [],
+  statuses: [],
+  q: "",
+};
 
 export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const [filters, setFilters] = useState<MediaFilters>(EMPTY_FILTERS);
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) =>
-        r.ok
-          ? (r.json() as Promise<HealthResponse>)
-          : Promise.reject(new Error(`HTTP ${r.status}`)),
-      )
-      .then(setHealth)
-      .catch((e: Error) => setError(e.message));
-  }, []);
+  const toggleFacet = (facet: FacetKey, value: string) => {
+    setFilters((prev) => {
+      const next = new Set(prev[facet]);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return { ...prev, [facet]: [...next] };
+    });
+  };
+
+  const setQuery = (q: string) => setFilters((prev) => ({ ...prev, q }));
+  const clearAll = () => setFilters(EMPTY_FILTERS);
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: "2rem", maxWidth: 600 }}>
-      <h1>Media Tracker</h1>
-      <p>Phase 0 scaffold. See PLAN.md for the build sequence.</p>
-      <h2>Worker health check</h2>
-      {error ? (
-        <pre style={{ color: "crimson" }}>Error: {error}</pre>
-      ) : health ? (
-        <pre>{JSON.stringify(health, null, 2)}</pre>
-      ) : (
-        <p>Loading…</p>
-      )}
+    <div className="min-h-full">
+      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+          <h1 className="text-lg font-semibold">{t("app.title")}</h1>
+          <LanguageToggle />
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-4 py-4 md:flex md:gap-6">
+        <FilterSidebar
+          filters={filters}
+          onToggle={toggleFacet}
+          onClear={clearAll}
+        />
+        <main className="min-w-0 flex-1">
+          <div className="mb-4">
+            <SearchBar value={filters.q} onChange={setQuery} />
+          </div>
+          <MediaList filters={filters} />
+        </main>
+      </div>
     </div>
   );
 }

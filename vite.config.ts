@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 
 // @cloudflare/vite-plugin runs the Worker code alongside the Vite dev server,
@@ -12,5 +13,5 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 const isVitest = !!process.env.VITEST;
 
 export default defineConfig({
-  plugins: [react(), ...(isVitest ? [] : [cloudflare()])],
+  plugins: [react(), tailwindcss(), ...(isVitest ? [] : [cloudflare()])],
 });
