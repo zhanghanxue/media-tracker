@@ -203,6 +203,18 @@ async function get(path: string): Promise<Response> {
   return app.request(path, {}, env);
 }
 
+async function patch(path: string, body: unknown): Promise<Response> {
+  return app.request(
+    path,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    env,
+  );
+}
+
 async function seedThree(): Promise<void> {
   await insertMedia(env.DB, BASE_ROW);
   await insertMedia(env.DB, {
@@ -294,6 +306,76 @@ describe("GET /api/media/:id — single", () => {
 
   it("returns 400 for a non-numeric id", async () => {
     const res = await get("/api/media/abc");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/media/:id", () => {
+  it("updates a field and bumps date_updated", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    await env.DB.exec(
+      `UPDATE media SET date_updated = '2020-01-01 00:00:00' WHERE id = ${inserted.id}`,
+    );
+
+    const res = await patch(`/api/media/${inserted.id}`, { current_episode: 5 });
+    expect(res.status).toBe(200);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.current_episode).toBe(5);
+    expect(row.date_updated).not.toBe("2020-01-01 00:00:00");
+  });
+
+  it("does not clobber unrelated fields", async () => {
+    const inserted = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      title_english: "Keep Me",
+    });
+    const res = await patch(`/api/media/${inserted.id}`, { current_episode: 3 });
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.title_english).toBe("Keep Me");
+  });
+
+  it("auto-completes when current_episode reaches total_episodes", async () => {
+    // BASE_ROW has total_episodes = 26.
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {
+      current_episode: 26,
+    });
+    const row = (await res.json()) as { status: string };
+    expect(row.status).toBe("completed");
+  });
+
+  it("respects an explicit status over auto-complete", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {
+      current_episode: 26,
+      status: "paused",
+    });
+    const row = (await res.json()) as { status: string };
+    expect(row.status).toBe("paused");
+  });
+
+  it("returns 404 for a missing id", async () => {
+    const res = await patch("/api/media/999999", { current_episode: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for an invalid status", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, { status: "banana" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for an empty patch", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for an unknown field (e.g. video_url)", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {
+      video_url: "https://x",
+    });
     expect(res.status).toBe(400);
   });
 });

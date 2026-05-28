@@ -13,6 +13,7 @@ import {
   findById,
   insertMedia,
   listMedia,
+  updateMedia,
 } from "./media-repository";
 
 // A representative mapped anime row (what aniListToMediaRow returns for
@@ -259,6 +260,40 @@ describe("listMedia — pagination", () => {
     expect(second.items).toHaveLength(2);
     // Disjoint pages.
     expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
+  });
+});
+
+describe("updateMedia", () => {
+  it("applies a partial update without clobbering other columns", async () => {
+    const inserted = await insertMedia(
+      env.DB,
+      makeRow({ external_id: "1", title_english: "Keep Me", total_episodes: 26 }),
+    );
+
+    const updated = await updateMedia(env.DB, inserted.id, {
+      current_episode: 5,
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.current_episode).toBe(5);
+    // Untouched columns survive.
+    expect(updated!.title_english).toBe("Keep Me");
+    expect(updated!.total_episodes).toBe(26);
+  });
+
+  it("bumps date_updated", async () => {
+    const inserted = await insertMedia(env.DB, makeRow({ external_id: "2" }));
+    await env.DB.exec(
+      `UPDATE media SET date_updated = '2020-01-01 00:00:00' WHERE id = ${inserted.id}`,
+    );
+
+    const updated = await updateMedia(env.DB, inserted.id, { notes: "x" });
+    expect(updated!.date_updated).not.toBe("2020-01-01 00:00:00");
+  });
+
+  it("returns null for a non-existent id", async () => {
+    const updated = await updateMedia(env.DB, 999999, { status: "completed" });
+    expect(updated).toBeNull();
   });
 });
 

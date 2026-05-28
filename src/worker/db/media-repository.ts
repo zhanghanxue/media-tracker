@@ -9,6 +9,7 @@
 
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import type { ListFilters } from "../api/list-query";
+import type { MediaPatch } from "../api/patch-media";
 import { buildMediaListQuery } from "../api/media-query-builder";
 import type { ExternalSource, MediaRow } from "./schema";
 
@@ -120,6 +121,30 @@ export async function findExistingExternalIds(
     .all<{ external_id: string }>();
 
   return new Set(result.results.map((r) => r.external_id));
+}
+
+/**
+ * Apply a validated partial update and return the updated row (or null if no
+ * row has that id). `date_updated` is always bumped. Column names come only
+ * from MediaPatch's fixed keys (the validator never lets arbitrary strings in),
+ * so the dynamic SET is injection-safe; values are bound as ? placeholders.
+ */
+export async function updateMedia(
+  db: D1Database,
+  id: number,
+  patch: MediaPatch,
+): Promise<MediaRow | null> {
+  const keys = Object.keys(patch) as (keyof MediaPatch)[];
+
+  const assignments = keys.map((k) => `${k} = ?`);
+  assignments.push("date_updated = datetime('now')");
+  const values = keys.map((k) => patch[k]);
+
+  const sql = `UPDATE media SET ${assignments.join(", ")} WHERE id = ? RETURNING *`;
+  return db
+    .prepare(sql)
+    .bind(...values, id)
+    .first<MediaRow>();
 }
 
 /**
