@@ -75,5 +75,21 @@
     "adding": "Adding…",
     "alreadyAdded": "In library",
     "close": "Close"
+  },
+  "card": {
+    "increment": "Add one",
+    "editProgress": "Edit progress",
+    "progressPlaceholder": "e.g. Chapter 7"
+  },
+  "editor": {
+    "title": "Edit",
+    "status": "Status",
+    "episode": "Episode",
+    "chapter": "Chapter",
+    "progress": "Progress",
+    "notes": "Notes",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ofTotal": "of {{total}}"
   }
 }

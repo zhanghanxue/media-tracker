@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mediaProgress } from "./progress";
+import { mediaProgress, nextIncrementPatch } from "./progress";
 import type { MediaRow } from "./types";
 
 // Minimal row factory — only the fields mediaProgress reads matter.
@@ -69,5 +69,31 @@ describe("mediaProgress", () => {
         row({ type: "game", consumption_mode: "watching", current_episode: 2, total_episodes: 12 }),
       ),
     ).toEqual({ kind: "episodes", current: 2, total: 12 });
+  });
+});
+
+describe("nextIncrementPatch", () => {
+  it("increments current_episode for animation", () => {
+    expect(
+      nextIncrementPatch(row({ type: "animation", current_episode: 5 })),
+    ).toEqual({ current_episode: 6 });
+  });
+
+  it("counts from 0 when current_episode is null", () => {
+    expect(
+      nextIncrementPatch(row({ type: "animation", current_episode: null })),
+    ).toEqual({ current_episode: 1 });
+  });
+
+  it("increments current_chapter for manga / light_novel", () => {
+    expect(
+      nextIncrementPatch(row({ type: "manga", current_chapter: 41 })),
+    ).toEqual({ current_chapter: 42 });
+  });
+
+  it("returns null for a game in playing mode (free-text progress)", () => {
+    expect(
+      nextIncrementPatch(row({ type: "game", consumption_mode: "playing" })),
+    ).toBeNull();
   });
 });
