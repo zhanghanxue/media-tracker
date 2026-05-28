@@ -33,7 +33,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
       value={local}
       onChange={(e) => setLocal(e.target.value)}
       placeholder={t("search.placeholder")}
-      className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+      className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none light:border-zinc-300 light:bg-white light:text-zinc-900 light:placeholder:text-zinc-400"
     />
   );
 }

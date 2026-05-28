@@ -29,14 +29,14 @@ function CheckboxGroup({
   const { t } = useTranslation();
   return (
     <fieldset>
-      <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+      <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 light:text-zinc-500">
         {t(legendKey)}
       </legend>
       <div className="space-y-1.5">
         {values.map((value) => (
           <label
             key={value}
-            className="flex cursor-pointer items-center gap-2 text-sm text-zinc-200"
+            className="flex cursor-pointer items-center gap-2 text-sm text-zinc-200 light:text-zinc-700"
           >
             <input
               type="checkbox"
@@ -67,21 +67,21 @@ export function FilterSidebar({ filters, onToggle, onClear }: FilterSidebarProps
       <input id="filter-drawer" type="checkbox" className="peer hidden" />
       <label
         htmlFor="filter-drawer"
-        className="mb-3 inline-flex cursor-pointer items-center rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 md:hidden"
+        className="mb-3 inline-flex cursor-pointer items-center rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100 md:hidden"
       >
         {t("filters.toggle")}
       </label>
 
       <aside className="hidden shrink-0 space-y-6 peer-checked:block md:block md:w-56">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100">
+          <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
             {t("filters.heading")}
           </h2>
           {hasAny && (
             <button
               type="button"
               onClick={onClear}
-              className="text-xs text-blue-400 hover:underline"
+              className="text-xs text-blue-400 hover:underline light:text-blue-600"
             >
               {t("filters.clear")}
             </button>

@@ -55,5 +55,9 @@
   },
   "language": {
     "switchTo": "中文"
+  },
+  "theme": {
+    "toLight": "Switch to light theme",
+    "toDark": "Switch to dark theme"
   }
 }

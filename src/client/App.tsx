@@ -5,6 +5,7 @@ import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
 import { LanguageToggle } from "./components/LanguageToggle";
 import { MediaList } from "./components/MediaList";
 import { SearchBar } from "./components/SearchBar";
+import { ThemeToggle } from "./components/ThemeToggle";
 import type { MediaFilters } from "./lib/api";
 
 const EMPTY_FILTERS: MediaFilters = {
@@ -32,10 +33,13 @@ export function App() {
 
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur light:border-zinc-200 light:bg-white/90">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
           <h1 className="text-lg font-semibold">{t("app.title")}</h1>
-          <LanguageToggle />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
         </div>
       </header>
 

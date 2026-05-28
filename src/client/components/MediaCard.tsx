@@ -7,11 +7,14 @@ import { mediaProgress, type Progress } from "../lib/progress";
 import type { MediaRow } from "../lib/types";
 
 const STATUS_STYLES: Record<MediaStatus, string> = {
-  planned: "bg-zinc-700 text-zinc-200",
-  in_progress: "bg-blue-500/20 text-blue-300",
-  completed: "bg-green-500/20 text-green-300",
-  dropped: "bg-red-500/20 text-red-300",
-  paused: "bg-amber-500/20 text-amber-300",
+  planned: "bg-zinc-700 text-zinc-200 light:bg-zinc-200 light:text-zinc-700",
+  in_progress:
+    "bg-blue-500/20 text-blue-300 light:bg-blue-100 light:text-blue-700",
+  completed:
+    "bg-green-500/20 text-green-300 light:bg-green-100 light:text-green-700",
+  dropped: "bg-red-500/20 text-red-300 light:bg-red-100 light:text-red-700",
+  paused:
+    "bg-amber-500/20 text-amber-300 light:bg-amber-100 light:text-amber-700",
 };
 
 function progressLabel(t: TFunction, p: Progress): string {
@@ -41,8 +44,8 @@ export function MediaCard({ media }: { media: MediaRow }) {
   const progress = progressLabel(t, mediaProgress(media));
 
   return (
-    <article className="group overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-800 transition hover:ring-blue-500">
-      <div className="aspect-[2/3] bg-zinc-800">
+    <article className="group overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-800 transition hover:ring-blue-500 light:bg-white light:ring-zinc-200 light:shadow-sm">
+      <div className="aspect-[2/3] bg-zinc-800 light:bg-zinc-100">
         {media.cover_url && (
           <img
             src={media.cover_url}
@@ -65,7 +68,9 @@ export function MediaCard({ media }: { media: MediaRow }) {
           >
             {t(`status.${media.status}`)}
           </span>
-          <span className="truncate text-zinc-400">{progress}</span>
+          <span className="truncate text-zinc-400 light:text-zinc-500">
+            {progress}
+          </span>
         </div>
       </div>
     </article>
