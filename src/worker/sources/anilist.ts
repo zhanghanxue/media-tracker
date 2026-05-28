@@ -139,6 +139,8 @@ async function graphqlRequest<T>(
   // Retry loop covers HTTP 429 only; other errors surface immediately so we
   // don't hammer AniList with a broken request.
   while (true) {
+    // Runs in the BROWSER (not the Worker): AniList blocks Cloudflare Worker
+    // egress IPs, but allows CORS, so the client calls it directly.
     const response = await fetchImpl(ANILIST_ENDPOINT, {
       method: "POST",
       headers: {

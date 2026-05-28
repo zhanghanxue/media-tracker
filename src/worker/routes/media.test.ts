@@ -1,7 +1,7 @@
-// Integration tests for POST /api/media via vitest-pool-workers.
-// Real D1 + real R2 bindings; only the external boundaries are mocked:
-//   • AniList GraphQL endpoint (graphql.anilist.co) — fetchMock
-//   • cover image CDN (s4.anilist.co)               — fetchMock
+// Integration tests for the /api/media routes via vitest-pool-workers.
+// Real D1 + real R2 bindings. The Worker no longer calls AniList (the browser
+// does, then POSTs the media object) — so the only external boundary left is
+// the cover image CDN (s4.anilist.co), mocked with fetchMock.
 // LOCAL_DEV_BYPASS=1 (miniflare binding) makes the auth middleware pass.
 
 import { env, fetchMock } from "cloudflare:test";
@@ -12,16 +12,19 @@ import { findByExternalRef, insertMedia } from "../db/media-repository";
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import detailAnimeFixture from "../../../test/fixtures/anilist/detail_anime_101922.json";
 
-const ANILIST_ORIGIN = "https://graphql.anilist.co";
 const COVER_ORIGIN = "https://s4.anilist.co";
 const COVER_PATH =
   "/file/anilistcdn/media/anime/cover/large/bx101922-WBsBl0ClmgYL.jpg";
 
+// The AniList media object the browser POSTs (search & detail share fields).
+const MEDIA = (
+  detailAnimeFixture as { data: { Media: Record<string, unknown> } }
+).data.Media;
+
 const VALID_BODY = {
   external_source: "anilist",
-  external_id: 101922,
-  type: "animation",
   status: "planned",
+  media: MEDIA,
 };
 
 async function post(body: unknown): Promise<Response> {
@@ -34,16 +37,6 @@ async function post(body: unknown): Promise<Response> {
     },
     env,
   );
-}
-
-// Intercept the AniList detail query, returning the captured fixture.
-function mockAniListDetail(payload: object = detailAnimeFixture): void {
-  fetchMock
-    .get(ANILIST_ORIGIN)
-    .intercept({ method: "POST", path: "/" })
-    .reply(200, payload, {
-      headers: { "content-type": "application/json" },
-    });
 }
 
 // Intercept the cover image download.
@@ -72,8 +65,7 @@ afterEach(() => {
 });
 
 describe("POST /api/media — happy path", () => {
-  it("creates a row from an AniList id and returns it with 201", async () => {
-    mockAniListDetail();
+  it("maps the posted media object and returns the row with 201", async () => {
     mockCoverImage();
 
     const res = await post(VALID_BODY);
@@ -81,7 +73,7 @@ describe("POST /api/media — happy path", () => {
 
     const row = (await res.json()) as Record<string, unknown>;
     expect(row.id).toBeTypeOf("number");
-    expect(row.type).toBe("animation");
+    expect(row.type).toBe("animation"); // derived from format=TV
     expect(row.status).toBe("planned");
     expect(row.external_source).toBe("anilist");
     expect(row.external_id).toBe("101922");
@@ -90,7 +82,6 @@ describe("POST /api/media — happy path", () => {
   });
 
   it("re-hosts the cover to R2 and stores the public R2 URL", async () => {
-    mockAniListDetail();
     mockCoverImage();
 
     const res = await post(VALID_BODY);
@@ -99,13 +90,11 @@ describe("POST /api/media — happy path", () => {
     expect(row.cover_url).toBe(
       "https://covers.zhanghanxue.com/covers/anilist/101922.jpg",
     );
-    // The object actually landed in R2 under the expected key.
     const head = await env.COVERS.head("covers/anilist/101922.jpg");
     expect(head).not.toBeNull();
   });
 
   it("actually persists the row (readable via the repository)", async () => {
-    mockAniListDetail();
     mockCoverImage();
 
     await post(VALID_BODY);
@@ -117,10 +106,9 @@ describe("POST /api/media — happy path", () => {
 });
 
 describe("POST /api/media — conflict", () => {
-  it("returns 409 with the existing row on a duplicate (source, external_id)", async () => {
-    // Only the FIRST insert touches AniList + the CDN; the second short-circuits
-    // at the conflict probe, so we register exactly one set of interceptors.
-    mockAniListDetail();
+  it("returns 409 with the existing row on a duplicate (source, media.id)", async () => {
+    // Only the first insert uploads a cover; the second short-circuits at the
+    // conflict probe, so we register exactly one interceptor.
     mockCoverImage();
 
     const first = await post(VALID_BODY);
@@ -131,7 +119,6 @@ describe("POST /api/media — conflict", () => {
     expect(second.status).toBe(409);
     const secondRow = (await second.json()) as { id: number };
 
-    // Same row returned, not a duplicate insert.
     expect(secondRow.id).toBe(firstRow.id);
   });
 });
@@ -158,22 +145,14 @@ describe("POST /api/media — validation & routing errors", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 501 for a valid-but-unimplemented source", async () => {
-    const res = await post({ ...VALID_BODY, external_source: "tmdb" });
-    expect(res.status).toBe(501);
-  });
-
-  it("returns 400 for a type AniList can't serve (movie)", async () => {
-    const res = await post({ ...VALID_BODY, type: "movie" });
+  it("returns 400 when the media object is missing", async () => {
+    const res = await post({ external_source: "anilist", status: "planned" });
     expect(res.status).toBe(400);
   });
 
-  it("returns 404 when AniList has no media with that id", async () => {
-    // AniList responds with data.Media = null for an unknown id.
-    mockAniListDetail({ data: { Media: null } });
-
-    const res = await post({ ...VALID_BODY, external_id: 999999999 });
-    expect(res.status).toBe(404);
+  it("returns 501 for a valid-but-unimplemented source", async () => {
+    const res = await post({ ...VALID_BODY, external_source: "tmdb" });
+    expect(res.status).toBe(501);
   });
 });
 
@@ -342,6 +321,20 @@ describe("PATCH /api/media/:id", () => {
     });
     const row = (await res.json()) as { status: string };
     expect(row.status).toBe("completed");
+  });
+
+  it("fills current_episode up to the total when marked completed", async () => {
+    // BASE_ROW: total_episodes 26, current null.
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {
+      status: "completed",
+    });
+    const row = (await res.json()) as {
+      status: string;
+      current_episode: number;
+    };
+    expect(row.status).toBe("completed");
+    expect(row.current_episode).toBe(26);
   });
 
   it("respects an explicit status over auto-complete", async () => {

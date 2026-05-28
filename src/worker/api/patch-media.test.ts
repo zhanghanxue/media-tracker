@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { applyAutoComplete, parsePatchMediaRequest } from "./patch-media";
+import {
+  applyAutoComplete,
+  applyCompletionFill,
+  parsePatchMediaRequest,
+} from "./patch-media";
 import type { MediaRow } from "../db/schema";
 
 describe("parsePatchMediaRequest — valid", () => {
@@ -145,5 +149,44 @@ describe("applyAutoComplete", () => {
     const existing = row({ total_episodes: 12, current_episode: 11 });
     const result = applyAutoComplete(existing, { current_episode: 13 });
     expect(result.status).toBe("completed");
+  });
+});
+
+describe("applyCompletionFill", () => {
+  it("fills current_episode up to the total when marked completed", () => {
+    const existing = row({ total_episodes: 26, current_episode: 12 });
+    const result = applyCompletionFill(existing, { status: "completed" });
+    expect(result.current_episode).toBe(26);
+  });
+
+  it("fills current_chapter up to the total for manga/light_novel", () => {
+    const existing = row({ type: "manga", total_chapters: 200, current_chapter: 40 });
+    const result = applyCompletionFill(existing, { status: "completed" });
+    expect(result.current_chapter).toBe(200);
+  });
+
+  it("does nothing when the status isn't being set to completed", () => {
+    const existing = row({ total_episodes: 26, current_episode: 12 });
+    expect(applyCompletionFill(existing, { status: "paused" })).toEqual({
+      status: "paused",
+    });
+    expect(applyCompletionFill(existing, { current_episode: 13 })).toEqual({
+      current_episode: 13,
+    });
+  });
+
+  it("respects an explicitly-set current in the same request", () => {
+    const existing = row({ total_episodes: 26 });
+    const result = applyCompletionFill(existing, {
+      status: "completed",
+      current_episode: 5,
+    });
+    expect(result.current_episode).toBe(5);
+  });
+
+  it("does nothing when the total is unknown", () => {
+    const existing = row({ total_episodes: null, current_episode: 3 });
+    const result = applyCompletionFill(existing, { status: "completed" });
+    expect(result.current_episode).toBeUndefined();
   });
 });

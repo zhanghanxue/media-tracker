@@ -11,6 +11,7 @@ import type {
   MediaStatus,
   MediaType,
 } from "../db/schema";
+import type { AniListMedia } from "../sources/anilist";
 
 export const EXTERNAL_SOURCES = [
   "anilist",
@@ -36,13 +37,14 @@ export const MEDIA_STATUSES = [
   "paused",
 ] as const satisfies readonly MediaStatus[];
 
+// The browser fetches the AniList media object (search/detail share the same
+// field set) and POSTs it here for the Worker to map + persist — the Worker
+// can't call AniList itself (egress IPs are blocked). `media` is that object;
+// the server is authoritative for the mapping (aniListToMediaRow).
 export interface CreateMediaRequest {
   external_source: ExternalSource;
-  // Normalized to string — the `media.external_id` column is TEXT, and AniList
-  // IDs arrive as numbers. We accept either and canonicalize to string.
-  external_id: string;
-  type: MediaType;
   status: MediaStatus;
+  media: AniListMedia;
 }
 
 export type ValidationResult =
@@ -51,23 +53,6 @@ export type ValidationResult =
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Normalize `external_id` to a positive-integer string, or return null if it
- * isn't one. AniList IDs are positive integers; we accept a JSON number or a
- * numeric string and reject floats, zero, negatives, and junk.
- */
-function normalizeExternalId(raw: unknown): string | null {
-  if (typeof raw === "number") {
-    if (!Number.isInteger(raw) || raw <= 0) return null;
-    return String(raw);
-  }
-  if (typeof raw === "string") {
-    if (!/^[1-9][0-9]*$/.test(raw)) return null;
-    return raw;
-  }
-  return null;
 }
 
 export function parseCreateMediaRequest(body: unknown): ValidationResult {
@@ -84,19 +69,28 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     );
   }
 
-  const externalId = normalizeExternalId(body.external_id);
-  if (externalId === null) {
-    errors.push("external_id must be a positive integer");
-  }
-
-  const type = body.type;
-  if (!MEDIA_TYPES.includes(type as MediaType)) {
-    errors.push(`type must be one of: ${MEDIA_TYPES.join(", ")}`);
-  }
-
   const status = body.status;
   if (!MEDIA_STATUSES.includes(status as MediaStatus)) {
     errors.push(`status must be one of: ${MEDIA_STATUSES.join(", ")}`);
+  }
+
+  // Minimal shape check on the source payload; aniListToMediaRow does the rest
+  // (and throws on an unclassifiable format, which the route turns into a 400).
+  const media = body.media;
+  if (!isObject(media)) {
+    errors.push("media must be an object");
+  } else {
+    if (
+      typeof media.id !== "number" ||
+      !Number.isInteger(media.id) ||
+      media.id <= 0
+    ) {
+      errors.push("media.id must be a positive integer");
+    }
+    if (!isObject(media.title)) errors.push("media.title must be an object");
+    if (!isObject(media.coverImage)) {
+      errors.push("media.coverImage must be an object");
+    }
   }
 
   if (errors.length > 0) {
@@ -107,9 +101,8 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     ok: true,
     value: {
       external_source: source as ExternalSource,
-      external_id: externalId as string,
-      type: type as MediaType,
       status: status as MediaStatus,
+      media: media as unknown as AniListMedia,
     },
   };
 }

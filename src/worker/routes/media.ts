@@ -1,22 +1,22 @@
-// POST /api/media — add a media item from an external source.
+// POST /api/media — add a media item the browser fetched from AniList.
 //
-// Flow (AniList is the only wired source in v1):
-//   1. validate body                         → 400 on bad input
-//   2. reject non-AniList valid sources       → 501 (tmdb/igdb/bangumi land later)
-//   3. reject AniList-incompatible types      → 400 (anilist has no drama/movie/game)
-//   4. conflict probe (source, external_id)   → 409 + existing row
-//   5. fetch detail from AniList              → 404 if the id doesn't exist
-//   6. map → upload cover to R2 → insert      → 201 + inserted row
+// The browser does the AniList call (AniList blocks Cloudflare Worker egress
+// IPs but allows CORS) and POSTs the resulting media object. The Worker maps it
+// authoritatively, re-hosts the cover to R2 (best-effort), and inserts. It does
+// NOT call AniList itself.
 //
-// External boundaries (AniList GraphQL, the cover CDN) are reached via the
-// global fetch; the integration test mocks them with `fetchMock` from
-// cloudflare:test. D1 and R2 are real bindings.
+//   1. validate body { external_source, status, media } → 400
+//   2. reject non-AniList sources                        → 501
+//   3. conflict probe (source, media.id)                 → 409 + existing row
+//   4. map (400 if unclassifiable) → upload cover → insert → 201
+//
+// The cover CDN fetch is the only external boundary the Worker still makes;
+// the integration test mocks it with `fetchMock`. D1 and R2 are real bindings.
 
 import { Hono } from "hono";
 
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
-import type { MediaType } from "../db/schema";
 import {
   findByExternalRef,
   findById,
@@ -25,21 +25,14 @@ import {
   updateMedia,
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
-import { getAniListDetail, type AniListMediaType } from "../sources/anilist";
 import { parseCreateMediaRequest } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
-import { applyAutoComplete, parsePatchMediaRequest } from "../api/patch-media";
+import {
+  applyAutoComplete,
+  applyCompletionFill,
+  parsePatchMediaRequest,
+} from "../api/patch-media";
 import { uploadCoverToR2 } from "../storage/covers";
-
-// AniList only knows ANIME and MANGA. Our richer `type` taxonomy collapses to
-// one of those for the detail fetch; the mapper later derives the *precise*
-// stored type from AniList's `format` (e.g. NOVEL → light_novel). A type with
-// no AniList equivalent (drama/movie/game) returns null → 400.
-function anilistEndpointType(type: MediaType): AniListMediaType | null {
-  if (type === "animation") return "ANIME";
-  if (type === "manga" || type === "light_novel") return "MANGA";
-  return null;
-}
 
 export const mediaRoutes = new Hono<{
   Bindings: AppEnv;
@@ -58,7 +51,7 @@ mediaRoutes.post("/", async (c) => {
   if (!parsed.ok) {
     return c.json({ error: "validation failed", details: parsed.errors }, 400);
   }
-  const { external_source, external_id, type, status } = parsed.value;
+  const { external_source, status, media } = parsed.value;
 
   // v1 only implements AniList. Other valid sources are accepted by validation
   // but not yet wired — 501 distinguishes "known but unbuilt" from "bad input".
@@ -69,29 +62,24 @@ mediaRoutes.post("/", async (c) => {
     );
   }
 
-  const endpointType = anilistEndpointType(type);
-  if (endpointType === null) {
-    return c.json(
-      { error: `type '${type}' is not available from anilist` },
-      400,
-    );
-  }
+  const externalId = String(media.id);
 
   // Conflict probe: don't duplicate an item we already track.
-  const existing = await findByExternalRef(c.env.DB, external_source, external_id);
+  const existing = await findByExternalRef(c.env.DB, external_source, externalId);
   if (existing !== null) {
     return c.json(existing, 409);
   }
 
-  const detail = await getAniListDetail(Number(external_id), endpointType);
-  if (detail === null) {
+  let row;
+  try {
+    row = aniListToMediaRow(media, status);
+  } catch {
+    // Mapper throws on a missing/unknown `format` it can't classify.
     return c.json(
-      { error: `anilist has no ${endpointType} with id ${external_id}` },
-      404,
+      { error: "could not classify this media (missing or unknown format)" },
+      400,
     );
   }
-
-  const row = aniListToMediaRow(detail, status);
 
   // Re-host the cover to R2. On any upstream failure uploadCoverToR2 returns
   // the original URL (graceful degradation), so the row always has a usable
@@ -99,7 +87,7 @@ mediaRoutes.post("/", async (c) => {
   if (row.cover_url) {
     row.cover_url = await uploadCoverToR2(c.env, row.cover_url, {
       externalSource: external_source,
-      externalId: external_id,
+      externalId,
     });
   }
 
@@ -168,7 +156,12 @@ mediaRoutes.patch("/:id", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
 
-  const finalPatch = applyAutoComplete(existing, parsed.value);
+  // Two complementary conveniences: reaching the total auto-completes, and
+  // marking completed fills the count up to the total.
+  const finalPatch = applyCompletionFill(
+    existing,
+    applyAutoComplete(existing, parsed.value),
+  );
   const updated = await updateMedia(c.env.DB, id, finalPatch);
   if (updated === null) {
     // Row vanished between read and write (single-user app: effectively never).

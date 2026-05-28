@@ -15,12 +15,6 @@ const ADD_STATUSES: MediaStatus[] = [
   "dropped",
 ];
 
-// AniList's ANIME/MANGA search type maps to our coarse media type; the server
-// refines manga vs light_novel from `format` on insert.
-function mediaTypeFor(searchType: SearchType): "animation" | "manga" {
-  return searchType === "ANIME" ? "animation" : "manga";
-}
-
 function metaLine(item: AniListSearchItem): string {
   const parts: string[] = [];
   if (item.format) parts.push(item.format);
@@ -50,15 +44,14 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const pendingId = addMutation.isPending
-    ? addMutation.variables?.external_id
+    ? addMutation.variables?.media.id
     : undefined;
 
   const handleAdd = (item: AniListSearchItem) => {
     addMutation.mutate({
       external_source: "anilist",
-      external_id: item.id,
-      type: mediaTypeFor(searchType),
       status,
+      media: item,
     });
   };
 
