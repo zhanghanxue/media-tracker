@@ -1,7 +1,9 @@
 // Thin fetch wrapper for the media API. Returns parsed JSON or throws on a
 // non-2xx (React Query turns the throw into `error` state).
 
-import type { MediaListResponse } from "./types";
+import type { AniListMedia } from "../../worker/sources/anilist";
+import type { MediaStatus, MediaType } from "../../worker/db/schema";
+import type { MediaListResponse, MediaRow } from "./types";
 
 export interface MediaFilters {
   types: string[];
@@ -29,4 +31,47 @@ export async function fetchMediaList(
     throw new Error(`Failed to load media (HTTP ${res.status})`);
   }
   return (await res.json()) as MediaListResponse;
+}
+
+// --- AniList search + add (Phase 8) ---------------------------------------
+
+export type SearchType = "ANIME" | "MANGA";
+
+export type AniListSearchItem = AniListMedia & { alreadyAdded: boolean };
+
+export interface AniListSearchResponse {
+  results: AniListSearchItem[];
+}
+
+export async function searchAniListMedia(
+  q: string,
+  type: SearchType,
+): Promise<AniListSearchResponse> {
+  const params = new URLSearchParams({ q, type });
+  const res = await fetch(`/api/anilist/search?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`AniList search failed (HTTP ${res.status})`);
+  }
+  return (await res.json()) as AniListSearchResponse;
+}
+
+export interface AddMediaInput {
+  external_source: "anilist";
+  external_id: number;
+  type: MediaType;
+  status: MediaStatus;
+}
+
+export async function addMedia(input: AddMediaInput): Promise<MediaRow> {
+  const res = await fetch("/api/media", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  // 201 = inserted; 409 = already in library (server returns the existing row).
+  // Both mean "it's in the library now", so treat 409 as success.
+  if (!res.ok && res.status !== 409) {
+    throw new Error(`Add failed (HTTP ${res.status})`);
+  }
+  return (await res.json()) as MediaRow;
 }

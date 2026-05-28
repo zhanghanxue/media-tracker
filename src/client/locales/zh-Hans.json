@@ -59,5 +59,21 @@
   "theme": {
     "toLight": "切换到浅色主题",
     "toDark": "切换到深色主题"
+  },
+  "add": {
+    "button": "+ 添加",
+    "title": "添加媒体",
+    "searchPlaceholder": "搜索 AniList…",
+    "anime": "动画",
+    "manga": "漫画",
+    "statusLabel": "状态",
+    "empty": "输入以搜索 AniList。",
+    "searching": "搜索中…",
+    "noResults": "没有结果。",
+    "error": "搜索失败。",
+    "addButton": "添加",
+    "adding": "添加中…",
+    "alreadyAdded": "已在库中",
+    "close": "关闭"
   }
 }

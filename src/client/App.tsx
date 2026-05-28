@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AddMediaModal } from "./components/AddMediaModal";
 import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
 import { LanguageToggle } from "./components/LanguageToggle";
 import { MediaList } from "./components/MediaList";
@@ -18,6 +19,7 @@ const EMPTY_FILTERS: MediaFilters = {
 export function App() {
   const { t } = useTranslation();
   const [filters, setFilters] = useState<MediaFilters>(EMPTY_FILTERS);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const toggleFacet = (facet: FacetKey, value: string) => {
     setFilters((prev) => {
@@ -37,6 +39,13 @@ export function App() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
           <h1 className="text-lg font-semibold">{t("app.title")}</h1>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+            >
+              {t("add.button")}
+            </button>
             <ThemeToggle />
             <LanguageToggle />
           </div>
@@ -56,6 +65,10 @@ export function App() {
           <MediaList filters={filters} />
         </main>
       </div>
+
+      {showAddModal && (
+        <AddMediaModal onClose={() => setShowAddModal(false)} />
+      )}
     </div>
   );
 }
