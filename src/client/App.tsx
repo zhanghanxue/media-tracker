@@ -58,7 +58,7 @@ export function App() {
           onToggle={toggleFacet}
           onClear={clearAll}
         />
-        <main className="min-w-0 flex-1">
+        <main className="mt-4 min-w-0 flex-1 md:mt-0">
           <div className="mb-4">
             <SearchBar value={filters.q} onChange={setQuery} />
           </div>

@@ -160,3 +160,42 @@ export function applyAutoComplete(
   }
   return patch;
 }
+
+/**
+ * The inverse of applyAutoComplete: when the caller marks an item "completed",
+ * fill the progress count up to its known total (so you don't have to set the
+ * episode/chapter by hand). Fills whichever dimension has a known total
+ * (episodes for animation/drama/movie, chapters for manga/light_novel). Skips a
+ * dimension if the same request already set its current value explicitly
+ * (manual override wins) or if the total is unknown.
+ */
+export function applyCompletionFill(
+  existing: MediaRow,
+  patch: MediaPatch,
+): MediaPatch {
+  if (patch.status !== "completed") return patch;
+
+  const result = { ...patch };
+
+  const epTotal =
+    "total_episodes" in patch ? patch.total_episodes : existing.total_episodes;
+  if (
+    epTotal != null &&
+    !("current_episode" in patch) &&
+    existing.current_episode !== epTotal
+  ) {
+    result.current_episode = epTotal;
+  }
+
+  const chTotal =
+    "total_chapters" in patch ? patch.total_chapters : existing.total_chapters;
+  if (
+    chTotal != null &&
+    !("current_chapter" in patch) &&
+    existing.current_chapter !== chTotal
+  ) {
+    result.current_chapter = chTotal;
+  }
+
+  return result;
+}
