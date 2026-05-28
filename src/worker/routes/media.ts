@@ -22,11 +22,13 @@ import {
   findById,
   insertMedia,
   listMedia,
+  updateMedia,
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { getAniListDetail, type AniListMediaType } from "../sources/anilist";
 import { parseCreateMediaRequest } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
+import { applyAutoComplete, parsePatchMediaRequest } from "../api/patch-media";
 import { uploadCoverToR2 } from "../storage/covers";
 
 // AniList only knows ANIME and MANGA. Our richer `type` taxonomy collapses to
@@ -137,4 +139,40 @@ mediaRoutes.get("/:id", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
   return c.json(row);
+});
+
+// PATCH /api/media/:id — update mutable fields (status / progress / notes / …).
+// Bumps date_updated; auto-completes when progress reaches total unless status
+// is set explicitly. Returns the updated row.
+mediaRoutes.patch("/:id", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+
+  const parsed = parsePatchMediaRequest(body);
+  if (!parsed.ok) {
+    return c.json({ error: "validation failed", details: parsed.errors }, 400);
+  }
+
+  const id = Number(idParam);
+  const existing = await findById(c.env.DB, id);
+  if (existing === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+
+  const finalPatch = applyAutoComplete(existing, parsed.value);
+  const updated = await updateMedia(c.env.DB, id, finalPatch);
+  if (updated === null) {
+    // Row vanished between read and write (single-user app: effectively never).
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  return c.json(updated, 200);
 });
