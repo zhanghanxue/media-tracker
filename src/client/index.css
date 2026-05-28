@@ -1,7 +1,20 @@
 @import "tailwindcss";
 
-/* Dark-first shell. Tailwind v4 is configured CSS-first — no tailwind.config
-   needed unless we customize the theme later. */
+/* Theme strategy: dark is the BASE (untouched literal classes everywhere); the
+   light theme is layered on via this custom variant. Components keep their
+   existing dark classes and append `light:…` overrides, so dark renders exactly
+   as before and light is purely additive. Toggled by `data-theme` on <html>
+   (set pre-paint by the inline script in index.html). */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+/* Match native widgets (form controls, scrollbars) to the active theme. */
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  color-scheme: light;
+}
+
 html,
 body,
 #root {
@@ -13,4 +26,9 @@ body {
   background-color: #09090b; /* zinc-950 */
   color: #f4f4f5; /* zinc-100 */
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+[data-theme="light"] body {
+  background-color: #fafafa; /* zinc-50 */
+  color: #18181b; /* zinc-900 */
 }

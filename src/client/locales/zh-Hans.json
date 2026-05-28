@@ -55,5 +55,9 @@
   },
   "language": {
     "switchTo": "EN"
+  },
+  "theme": {
+    "toLight": "切换到浅色主题",
+    "toDark": "切换到深色主题"
   }
 }
