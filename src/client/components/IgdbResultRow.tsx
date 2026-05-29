@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import {
   guessPlatformBucket,
+  igdbChineseAlias,
   igdbCover,
   igdbPlatformNames,
   igdbYear,
@@ -41,6 +42,7 @@ export function IgdbResultRow({
   const cover = igdbCover(game);
   const year = igdbYear(game);
   const platformNames = igdbPlatformNames(game);
+  const cnAlias = igdbChineseAlias(game);
 
   return (
     <li className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100">
@@ -51,6 +53,11 @@ export function IgdbResultRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{game.name}</p>
+        {cnAlias && cnAlias !== game.name && (
+          <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
+            {cnAlias}
+          </p>
+        )}
         <p className="text-xs text-zinc-500">
           {[year, platformNames].filter(Boolean).join(" · ")}
         </p>
