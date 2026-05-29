@@ -17,6 +17,8 @@ export default defineWorkspace([
         // Client-side pure helpers (e.g. displayTitle). NOT React components —
         // those are deliberately untested in v1 (CLAUDE.md / TESTING.md).
         "src/client/lib/**/*.test.ts",
+        // Phase 12 import tooling (Node scripts, out of the app bundle).
+        "scripts/**/*.test.ts",
       ],
       environment: "node",
     },
