@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AniListError,
   getAniListDetail,
+  getAniListRelations,
   searchAniList,
 } from "./anilist";
 
@@ -129,6 +130,46 @@ describe("getAniListDetail", () => {
     const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
     expect(body.variables).toEqual({ id: 101922, type: "ANIME" });
     expect(body.query).toMatch(/Media\(id:\s*\$id,\s*type:\s*\$type\)/);
+  });
+});
+
+describe("getAniListRelations", () => {
+  // Trimmed shape mirroring the live probe of Attack on Titan (id 16498).
+  const relationsResponse = {
+    data: {
+      Media: {
+        relations: {
+          edges: [
+            { relationType: "SEQUEL", node: { id: 20958, type: "ANIME", format: "TV" } },
+            { relationType: "ADAPTATION", node: { id: 53390, type: "MANGA", format: "MANGA" } },
+            { relationType: "PREQUEL", node: { id: 20811, type: "ANIME", format: "OVA" } },
+          ],
+        },
+      },
+    },
+  };
+
+  it("returns the relation edges and sends id as the only variable", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(relationsResponse));
+
+    const edges = await getAniListRelations(16498, { fetch: fetchMock });
+
+    expect(edges).toHaveLength(3);
+    expect(edges[0]).toEqual({
+      relationType: "SEQUEL",
+      node: { id: 20958, type: "ANIME", format: "TV" },
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    expect(body.variables).toEqual({ id: 16498 });
+    expect(body.query).toContain("relations");
+  });
+
+  it("returns [] when the Media has no relations / is null", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: { Media: null } }));
+
+    expect(await getAniListRelations(1, { fetch: fetchMock })).toEqual([]);
   });
 });
 

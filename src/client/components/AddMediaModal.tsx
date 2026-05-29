@@ -10,6 +10,7 @@ import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
+import { autoLinkAniListSeries } from "../lib/seriesAutoLink";
 import { TmdbResultRow } from "./TmdbResultRow";
 import {
   fetchTmdbSeasons,
@@ -21,6 +22,7 @@ import {
 import { addMedia, type AniListSearchItem, type SearchType } from "../lib/api";
 import type { BangumiSubject, BangumiType } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
+import type { MediaRow } from "../lib/types";
 
 // Where to search. AniList = English/Japanese (canonical, anime/manga). Bangumi =
 // search by Chinese name (donghua/manhua AniList lacks). TMDB = movies/drama,
@@ -75,6 +77,22 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   // The show whose seasons are being bulk-added (disables its button meanwhile).
   const [addingAllId, setAddingAllId] = useState<number | null>(null);
+  // Transient note when a just-added anime auto-grouped into a series.
+  const [autoLinkNotice, setAutoLinkNotice] = useState<string | null>(null);
+
+  // After an AniList add (direct, or resolved from a Bangumi pick), try to group
+  // the new row with a sequel/prequel already in the library. Best-effort.
+  const runAutoLink = async (row: MediaRow) => {
+    try {
+      const res = await autoLinkAniListSeries(row);
+      if (res.linked) {
+        setAutoLinkNotice(res.created ? t("add.autoGrouped") : t("add.autoLinked"));
+        void queryClient.invalidateQueries({ queryKey: ["media"] });
+      }
+    } catch {
+      // Grouping is a convenience — never let it surface as an add failure.
+    }
+  };
 
   // Close on Escape.
   useEffect(() => {
@@ -94,10 +112,17 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     : undefined;
 
   const handleAdd = (item: AniListSearchItem) => {
-    addMutation.mutate({ external_source: "anilist", status, media: item });
+    setAutoLinkNotice(null);
+    addMutation.mutate(
+      { external_source: "anilist", status, media: item },
+      { onSuccess: (row) => void runAutoLink(row) },
+    );
   };
   const handleAddBangumi = (subject: BangumiSubject) => {
-    addByChinese.mutate({ subject, status });
+    setAutoLinkNotice(null);
+    // The Bangumi pick may resolve to a canonical AniList row; if so, auto-link
+    // it too (runAutoLink no-ops for Bangumi-direct rows).
+    addByChinese.mutate({ subject, status }, { onSuccess: (row) => void runAutoLink(row) });
   };
   const handleAddTmdb = (item: TmdbSearchResultRaw) => {
     addMutation.mutate({
@@ -301,6 +326,11 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
           {(addMutation.isError || addByChinese.isError) && (
             <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 light:text-red-600">
               {t("add.addFailed")}
+            </p>
+          )}
+          {autoLinkNotice && (
+            <p className="mb-3 rounded-md bg-blue-500/10 px-3 py-2 text-xs text-blue-300 light:text-blue-700">
+              {autoLinkNotice}
             </p>
           )}
           {debouncedQuery.trim().length === 0 ? (

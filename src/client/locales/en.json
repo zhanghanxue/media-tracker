@@ -96,6 +96,8 @@
     "alreadyAdded": "In library",
     "maybeInLibrary": "Maybe in library",
     "addFailed": "Couldn't add that item. Try again, or use another source.",
+    "autoLinked": "Linked into a series already in your library.",
+    "autoGrouped": "Grouped with a related entry already in your library.",
     "close": "Close"
   },
   "card": {
