@@ -53,9 +53,11 @@
   "progress": {
     "episodes": "{{current}} / {{total}} ep",
     "episodesCurrentOnly": "{{current}} ep",
+    "episodesTotalOnly": "0 / {{total}} ep",
     "episodesNone": "— ep",
     "chapters": "{{current}} / {{total}} ch",
     "chaptersCurrentOnly": "{{current}} ch",
+    "chaptersTotalOnly": "0 / {{total}} ch",
     "chaptersNone": "— ch",
     "none": "—"
   },

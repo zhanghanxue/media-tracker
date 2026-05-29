@@ -138,20 +138,25 @@ export function SeriesCard({
               {sorted.map((m, i) => {
                 const p = mediaProgress(m);
                 const inc = nextIncrementPatch(m);
-                const label =
-                  p.kind === "episodes"
-                    ? p.current != null && p.total != null
-                      ? `${p.current}/${p.total}`
-                      : p.current != null
-                        ? `${p.current}`
-                        : "—"
-                    : p.kind === "chapters"
-                      ? p.current != null && p.total != null
-                        ? `${p.current}/${p.total}`
-                        : "—"
-                      : p.kind === "text"
-                        ? p.value
+                // Show "cur/total", "cur" (no total), "0/total" (unstarted but
+                // known length — the planned-clue the main cards show too), else "—".
+                const countLabel = (
+                  cur: number | null,
+                  total: number | null,
+                ): string =>
+                  cur != null && total != null
+                    ? `${cur}/${total}`
+                    : cur != null
+                      ? `${cur}`
+                      : total != null
+                        ? `0/${total}`
                         : "—";
+                const label =
+                  p.kind === "episodes" || p.kind === "chapters"
+                    ? countLabel(p.current, p.total)
+                    : p.kind === "text"
+                      ? p.value
+                      : "—";
                 return (
                   <li key={m.id} className="flex items-center gap-1 text-xs">
                     <span className="flex shrink-0 flex-col -space-y-1 leading-none">
