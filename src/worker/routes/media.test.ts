@@ -831,6 +831,82 @@ describe("POST /api/media/:id/refresh-cover", () => {
   });
 });
 
+// --- Video parts (media_video_parts) ---------------------------------------
+
+describe("video parts (/api/media/:id/parts)", () => {
+  async function addPart(id: number, body: unknown): Promise<Response> {
+    return app.request(
+      `/api/media/${id}/parts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+  const listParts = (id: number | string) =>
+    app.request(`/api/media/${id}/parts`, {}, env);
+
+  it("appends parts with auto-incrementing part_number and lists them ordered", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+
+    const a = await addPart(m.id, { url: "https://yt/1", title: "Part one" });
+    expect(a.status).toBe(201);
+    expect((await a.json()) as { part_number: number }).toMatchObject({
+      part_number: 1,
+      title: "Part one",
+      url: "https://yt/1",
+    });
+
+    const b = await addPart(m.id, { url: "https://yt/2" }); // no title
+    expect((await b.json()) as { part_number: number }).toMatchObject({
+      part_number: 2,
+      title: null,
+    });
+
+    const list = (await (await listParts(m.id)).json()) as {
+      parts: Array<{ part_number: number; url: string }>;
+    };
+    expect(list.parts.map((p) => p.part_number)).toEqual([1, 2]);
+  });
+
+  it("deletes a part (and cascades when the media is deleted)", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    const created = (await (await addPart(m.id, { url: "https://yt/x" })).json()) as {
+      id: number;
+    };
+
+    const delRes = await app.request(
+      `/api/media/${m.id}/parts/${created.id}`,
+      { method: "DELETE" },
+      env,
+    );
+    expect(delRes.status).toBe(204);
+    const list = (await (await listParts(m.id)).json()) as { parts: unknown[] };
+    expect(list.parts).toHaveLength(0);
+  });
+
+  it("400s on a blank url", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    expect((await addPart(m.id, { url: "   " })).status).toBe(400);
+  });
+
+  it("404s when adding to a missing media", async () => {
+    expect((await addPart(999999, { url: "https://yt/1" })).status).toBe(404);
+  });
+
+  it("404s when deleting a non-existent part", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    const res = await app.request(
+      `/api/media/${m.id}/parts/999999`,
+      { method: "DELETE" },
+      env,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
 // --- POST /api/media/:id/refresh-episodes (ongoing episode-count refresh) ----
 
 async function refreshEpisodes(

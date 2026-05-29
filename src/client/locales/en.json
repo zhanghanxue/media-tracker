@@ -147,6 +147,13 @@
     "playing": "Playing",
     "watching": "Watching",
     "platform": "Platform",
+    "videoParts": "Video links",
+    "videoPartsLoading": "Loading links…",
+    "videoPartsEmpty": "No links yet.",
+    "videoPartUrl": "Paste a video URL…",
+    "videoPartTitle": "Label (optional)",
+    "videoPartAdd": "Add",
+    "videoPartRemove": "Remove link",
     "refreshCover": "↻ Refresh cover (origin poster)",
     "refreshingCover": "Refreshing cover…",
     "refreshCoverFailed": "Couldn't refresh the cover."

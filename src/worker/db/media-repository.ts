@@ -10,7 +10,12 @@
 import type { ListFilters } from "../api/list-query";
 import type { MediaPatch } from "../api/patch-media";
 import { buildMediaListQuery } from "../api/media-query-builder";
-import type { ExternalSource, MediaInsert, MediaRow } from "./schema";
+import type {
+  ExternalSource,
+  MediaInsert,
+  MediaRow,
+  MediaVideoPart,
+} from "./schema";
 
 const INSERT_COLUMNS = [
   "type",
@@ -238,6 +243,67 @@ export async function setTotalEpisodes(
     .prepare("UPDATE media SET total_episodes = ? WHERE id = ? RETURNING *")
     .bind(total, id)
     .first<MediaRow>();
+}
+
+// --- Video parts (media_video_parts) ---------------------------------------
+// Watching-mode content tracked as a list of URLs (e.g. a game's letsplay split
+// across many videos). Ordered by part_number; the child table cascades on a
+// media delete.
+
+export async function listVideoParts(
+  db: D1Database,
+  mediaId: number,
+): Promise<MediaVideoPart[]> {
+  const result = await db
+    .prepare(
+      "SELECT * FROM media_video_parts WHERE media_id = ? ORDER BY part_number",
+    )
+    .bind(mediaId)
+    .all<MediaVideoPart>();
+  return result.results;
+}
+
+/**
+ * Append a video part with the next part_number (max+1, starting at 1). Returns
+ * the inserted row. Caller has verified the parent media exists.
+ */
+export async function addVideoPart(
+  db: D1Database,
+  mediaId: number,
+  url: string,
+  title: string | null,
+): Promise<MediaVideoPart> {
+  const next = await db
+    .prepare(
+      "SELECT COALESCE(MAX(part_number), 0) + 1 AS n FROM media_video_parts WHERE media_id = ?",
+    )
+    .bind(mediaId)
+    .first<{ n: number }>();
+  const partNumber = next?.n ?? 1;
+
+  const inserted = await db
+    .prepare(
+      "INSERT INTO media_video_parts (media_id, part_number, title, url) VALUES (?, ?, ?, ?) RETURNING *",
+    )
+    .bind(mediaId, partNumber, title, url)
+    .first<MediaVideoPart>();
+  if (inserted === null) {
+    throw new Error("addVideoPart: INSERT ... RETURNING * returned no row");
+  }
+  return inserted;
+}
+
+/** Delete one part (scoped to its media). Returns true if a row was removed. */
+export async function deleteVideoPart(
+  db: D1Database,
+  mediaId: number,
+  partId: number,
+): Promise<boolean> {
+  const result = await db
+    .prepare("DELETE FROM media_video_parts WHERE id = ? AND media_id = ?")
+    .bind(partId, mediaId)
+    .run();
+  return result.meta.changes > 0;
 }
 
 /**

@@ -9,6 +9,7 @@ import { useSeriesIndex } from "../hooks/useSeriesIndex";
 import { useRenameSeries } from "../hooks/useRenameSeries";
 import { BangumiTitlePicker } from "./BangumiTitlePicker";
 import { AniListTitlePicker } from "./AniListTitlePicker";
+import { VideoPartsEditor } from "./VideoPartsEditor";
 import { mediaProgress } from "../lib/progress";
 import { REGION_FACETS } from "../lib/facets";
 import { newSeriesId } from "../lib/series";
@@ -377,6 +378,12 @@ export function MediaDetailEditor({
               className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
             />
           </label>
+        )}
+
+        {/* Watching-mode items track content as a list of video URLs
+            (media_video_parts) — e.g. a game watched as a multi-part playthrough. */}
+        {isGame && consumptionMode === "watching" && (
+          <VideoPartsEditor mediaId={media.id} />
         )}
 
         <div className="text-sm">
