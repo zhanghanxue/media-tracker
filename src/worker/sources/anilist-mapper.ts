@@ -14,7 +14,7 @@ import type {
   MediaStatus,
   MediaType,
 } from "../db/schema";
-import type { AniListFormat, AniListMedia } from "./anilist";
+import type { AniListFormat, AniListMedia, AniListMediaType } from "./anilist";
 import { countryToRegion } from "./country-region";
 
 const ANIME_FORMATS = new Set<AniListFormat>([
@@ -37,7 +37,7 @@ export function aniListToMediaRow(
   detail: AniListMedia,
   status: MediaStatus,
 ): AniListMapperResult {
-  const type = formatToType(detail.format);
+  const type = formatToType(detail.format, detail.type);
 
   const region = countryToRegion(detail.countryOfOrigin);
 
@@ -68,13 +68,24 @@ export function aniListToMediaRow(
     current_chapter: null,
     total_chapters: totalChapters,
     runtime_minutes: null, // AniList doesn't model runtime; TMDB-only field.
+    series_id: null,
+    series_name: null,
+    season_number: null,
   };
 }
 
-function formatToType(format: AniListFormat | null): MediaType {
+function formatToType(
+  format: AniListFormat | null,
+  mediaType?: AniListMediaType | null,
+): MediaType {
   if (format === null) {
+    // NOT_YET_RELEASED titles have no format yet. Fall back to the coarse
+    // ANIME/MANGA type so they're still addable (e.g. an announced remake like
+    // "THE ONE PIECE"). Can't distinguish light_novel from null, so MANGA → manga.
+    if (mediaType === "ANIME") return "animation";
+    if (mediaType === "MANGA") return "manga";
     throw new Error(
-      "AniList detail is missing `format` — cannot determine media type",
+      "AniList detail is missing both `format` and `type` — cannot determine media type",
     );
   }
   if (format === "NOVEL") return "light_novel";

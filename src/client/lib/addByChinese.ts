@@ -52,22 +52,27 @@ export async function addByBangumiSubject(
   }
 
   if (anilistMatch) {
-    const row = await addMedia({
-      external_source: "anilist",
-      status,
-      media: anilistMatch,
-    });
-    // We already know the Chinese title (the picked subject) — set it directly
-    // rather than re-deriving, unless the row already has one (409 re-add).
-    const cn = detail.name_cn?.trim();
-    if (!row.title_chinese && cn) {
-      try {
-        await saveChineseTitle(row.id, await toSimplified(cn));
-      } catch {
-        // best-effort; the row is already added
+    try {
+      const row = await addMedia({
+        external_source: "anilist",
+        status,
+        media: anilistMatch,
+      });
+      // We already know the Chinese title (the picked subject) — set it directly
+      // rather than re-deriving, unless the row already has one (409 re-add).
+      const cn = detail.name_cn?.trim();
+      if (!row.title_chinese && cn) {
+        try {
+          await saveChineseTitle(row.id, await toSimplified(cn));
+        } catch {
+          // best-effort; the row is already added
+        }
       }
+      return row;
+    } catch {
+      // The AniList add failed (e.g. an entry the mapper still can't classify).
+      // Fall through to a Bangumi-direct add rather than failing the whole thing.
     }
-    return row;
   }
 
   // A: Bangumi-direct. Normalize name_cn to Simplified before the Worker

@@ -33,10 +33,16 @@ import {
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
-import { tmdbToMediaRow } from "../sources/tmdb-mapper";
+import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../sources/tmdb-mapper";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
-import { getTmdbDetail, type TmdbDetail } from "../sources/tmdb";
+import {
+  getTmdbDetail,
+  getTmdbSeason,
+  type TmdbDetail,
+  type TmdbSeasonDetail,
+  type TmdbSeasonSummary,
+} from "../sources/tmdb";
 import { parseCreateMediaRequest, type TmdbAddRef } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
 import {
@@ -77,11 +83,18 @@ mediaRoutes.post("/", async (c) => {
   }
 
   // The conflict key. TMDB movie ids and tv ids collide, so the key is kind-
-  // prefixed ("movie:603"); the other sources use the bare id.
-  const externalId =
-    external_source === "tmdb"
-      ? `${(media as TmdbAddRef).media_type}:${(media as TmdbAddRef).id}`
-      : String(media.id);
+  // prefixed ("movie:603"); a season add keys per season ("tv:1399:s2"); the
+  // other sources use the bare id.
+  let externalId: string;
+  if (external_source === "tmdb") {
+    const ref = media as TmdbAddRef;
+    externalId =
+      ref.season_number !== undefined
+        ? `tv:${ref.id}:s${ref.season_number}`
+        : `${ref.media_type}:${ref.id}`;
+  } else {
+    externalId = String(media.id);
+  }
 
   // Conflict probe: don't duplicate an item we already track. For TMDB this runs
   // BEFORE the (slower, key-bearing) detail fetch — a re-add costs no TMDB call.
@@ -94,20 +107,37 @@ mediaRoutes.post("/", async (c) => {
   // Kept outside the mapping try/catch so an upstream failure surfaces as 502/503
   // rather than a misleading "couldn't classify" 400.
   let tmdbDetail: TmdbDetail | null = null;
+  let tmdbSeason: TmdbSeasonDetail | null = null;
+  let tmdbSeasonSummary: TmdbSeasonSummary | undefined;
   if (external_source === "tmdb") {
     if (!c.env.TMDB_API_KEY) {
       return c.json({ error: "TMDB integration is not configured" }, 503);
     }
+    const ref = media as TmdbAddRef;
     try {
-      const ref = media as TmdbAddRef;
       tmdbDetail = await getTmdbDetail(ref.id, ref.media_type, {
         apiKey: c.env.TMDB_API_KEY,
+        images: true, // need posters across languages to pick the origin cover
       });
+      if (tmdbDetail !== null && ref.season_number !== undefined) {
+        tmdbSeason = await getTmdbSeason(ref.id, ref.season_number, {
+          apiKey: c.env.TMDB_API_KEY,
+          images: true,
+        });
+      }
     } catch {
       return c.json({ error: "TMDB request failed" }, 502);
     }
     if (tmdbDetail === null) {
       return c.json({ error: "media not found on TMDB" }, 404);
+    }
+    if (ref.season_number !== undefined) {
+      tmdbSeasonSummary = tmdbDetail.seasons?.find(
+        (s) => s.season_number === ref.season_number,
+      );
+      if (!tmdbSeasonSummary) {
+        return c.json({ error: "no such season on TMDB" }, 404);
+      }
     }
   }
 
@@ -119,7 +149,14 @@ mediaRoutes.post("/", async (c) => {
         ? aniListToMediaRow(media as AniListMedia, status)
         : external_source === "bangumi"
           ? bangumiToMediaRow(media as BangumiSubject, status)
-          : tmdbToMediaRow(tmdbDetail!, (media as TmdbAddRef).media_type, status);
+          : (media as TmdbAddRef).season_number !== undefined
+            ? tmdbSeasonToMediaRow(
+                tmdbDetail!,
+                tmdbSeasonSummary!,
+                tmdbSeason,
+                status,
+              )
+            : tmdbToMediaRow(tmdbDetail!, (media as TmdbAddRef).media_type, status);
   } catch {
     // Mappers throw on an item they can't classify (unknown AniList format /
     // unsupported Bangumi subject type).

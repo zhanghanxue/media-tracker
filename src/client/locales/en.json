@@ -87,8 +87,14 @@
     "noResults": "No results.",
     "error": "Search failed.",
     "addButton": "Add",
+    "addShow": "Add all",
+    "showSeasons": "Seasons ▾",
+    "hideSeasons": "Hide seasons ▴",
+    "noSeasons": "No seasons.",
     "adding": "Adding…",
     "alreadyAdded": "In library",
+    "maybeInLibrary": "Maybe in library",
+    "addFailed": "Couldn't add that item. Try again, or use another source.",
     "close": "Close"
   },
   "card": {

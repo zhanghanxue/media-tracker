@@ -21,6 +21,9 @@ import type { TmdbKind } from "../sources/tmdb";
 export interface TmdbAddRef {
   id: number;
   media_type: TmdbKind;
+  // tv only: when present, add that ONE season (pre-linked into the show's
+  // series) instead of the whole show as a single row.
+  season_number?: number;
 }
 
 export const TMDB_KINDS = ["movie", "tv"] as const satisfies readonly TmdbKind[];
@@ -117,6 +120,14 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     } else if (source === "tmdb") {
       if (!TMDB_KINDS.includes(media.media_type as TmdbKind)) {
         errors.push(`media.media_type must be one of: ${TMDB_KINDS.join(", ")}`);
+      }
+      if ("season_number" in media && media.season_number !== undefined) {
+        const sn = media.season_number;
+        if (typeof sn !== "number" || !Number.isInteger(sn) || sn < 0) {
+          errors.push("media.season_number must be a non-negative integer");
+        } else if (media.media_type !== "tv") {
+          errors.push("media.season_number is only valid for tv");
+        }
       }
     }
     // Other (valid-but-unimplemented) sources skip shape checks here; the route

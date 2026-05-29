@@ -26,6 +26,9 @@ export type AniListSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
 
 export interface AniListMedia {
   id: number;
+  // ANIME | MANGA — the classifier fallback when `format` is null (e.g. a
+  // NOT_YET_RELEASED title). Optional so older captured fixtures still type-check.
+  type?: AniListMediaType | null;
   title: {
     romaji: string | null;
     english: string | null;
@@ -56,6 +59,7 @@ interface AniListGraphQLResponse<T> {
 
 const MEDIA_FIELDS = `
   id
+  type
   title { romaji english native }
   coverImage { extraLarge }
   format

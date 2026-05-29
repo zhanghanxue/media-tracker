@@ -53,3 +53,32 @@ describe("GET /api/tmdb/search", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("GET /api/tmdb/tv/:id/seasons", () => {
+  it("returns real seasons (excludes the specials bucket / season 0)", async () => {
+    const showResp = {
+      id: 211089,
+      seasons: [
+        { season_number: 0, name: "特别篇", episode_count: 0 },
+        { season_number: 1, name: "第 1 季", episode_count: 36, air_date: "2022-09-27", poster_path: "/s1.jpg" },
+        { season_number: 2, name: "西行", episode_count: 40, air_date: "2024-07-18", poster_path: "/s2.jpg" },
+      ],
+    };
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/tv\/211089/ })
+      .reply(200, JSON.stringify(showResp), {
+        headers: { "content-type": "application/json" },
+      });
+
+    const res = await app.request("/api/tmdb/tv/211089/seasons", {}, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { seasons: { season_number: number }[] };
+    expect(body.seasons.map((s) => s.season_number)).toEqual([1, 2]);
+  });
+
+  it("400s on a non-numeric id", async () => {
+    const res = await app.request("/api/tmdb/tv/abc/seasons", {}, env);
+    expect(res.status).toBe(400);
+  });
+});
