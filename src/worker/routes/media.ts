@@ -30,6 +30,7 @@ import {
   insertMedia,
   listMedia,
   setCoverUrl,
+  setTotalEpisodes,
   updateMedia,
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
@@ -48,6 +49,7 @@ import { parseCreateMediaRequest, type TmdbAddRef } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
 import {
   applyAutoComplete,
+  applyAutoStart,
   applyCompletionFill,
   applyCompletionFillOnCreate,
   parsePatchMediaRequest,
@@ -246,11 +248,13 @@ mediaRoutes.patch("/:id", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
 
-  // Two complementary conveniences: reaching the total auto-completes, and
-  // marking completed fills the count up to the total.
+  // Status conveniences (each a no-op when status was set explicitly): reaching
+  // the total auto-completes; first progress on a planned item starts it; and
+  // marking completed fills the count up to the total. Order matters — complete
+  // is checked before start so hitting the total in one go completes (not starts).
   const finalPatch = applyCompletionFill(
     existing,
-    applyAutoComplete(existing, parsed.value),
+    applyAutoStart(existing, applyAutoComplete(existing, parsed.value)),
   );
   const updated = await updateMedia(c.env.DB, id, finalPatch);
   if (updated === null) {
@@ -349,6 +353,85 @@ mediaRoutes.post("/:id/refresh-cover", async (c) => {
   const busted = `${rehosted}${rehosted.includes("?") ? "&" : "?"}v=${Date.now()}`;
 
   const updated = await setCoverUrl(c.env.DB, id, busted);
+  if (updated === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  return c.json(updated, 200);
+});
+
+// POST /api/media/:id/refresh-episodes — update an ongoing item's total_episodes
+// to its newest count. Two paths by source, because the Worker can't call every
+// API itself:
+//   • body { total_episodes } present → the browser already computed it (AniList
+//     is browser-direct; the client sends nextAiringEpisode-1 / episodes).
+//   • no body → the row must be TMDB (Worker holds the key): fetch detail/season
+//     and read number_of_episodes / the season's episode_count.
+// Never bumps date_updated (a bulk refresh shouldn't reorder the list).
+mediaRoutes.post("/:id/refresh-episodes", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+  const id = Number(idParam);
+  const existing = await findById(c.env.DB, id);
+  if (existing === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+
+  // Optional body { total_episodes } — the browser-computed count (AniList).
+  let bodyTotal: number | undefined;
+  try {
+    const raw = await c.req.json();
+    if (raw && typeof raw === "object" && "total_episodes" in raw) {
+      const v = (raw as Record<string, unknown>).total_episodes;
+      if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+        return c.json({ error: "total_episodes must be a non-negative integer" }, 400);
+      }
+      bodyTotal = v;
+    }
+  } catch {
+    // No / invalid JSON body → fall through to the source-fetch path.
+  }
+
+  let total: number | null = bodyTotal ?? null;
+
+  if (total === null) {
+    // No browser-supplied count → only a TMDB row can be refreshed server-side.
+    if (existing.external_source !== "tmdb") {
+      return c.json(
+        { error: "provide total_episodes, or use a TMDB item" },
+        422,
+      );
+    }
+    if (!c.env.TMDB_API_KEY) {
+      return c.json({ error: "TMDB integration is not configured" }, 503);
+    }
+    const match = /^tv:(\d+)(?::s(\d+))?$/.exec(existing.external_id ?? "");
+    if (!match) {
+      // Movies (and odd ids) have no episode count to refresh.
+      return c.json({ error: "this item has no refreshable episode count" }, 422);
+    }
+    const tmdbId = Number(match[1]);
+    const seasonNumber = match[2] !== undefined ? Number(match[2]) : undefined;
+    try {
+      const detail = await getTmdbDetail(tmdbId, "tv", { apiKey: c.env.TMDB_API_KEY });
+      if (detail === null) return c.json({ error: "media not found on TMDB" }, 404);
+      if (seasonNumber !== undefined) {
+        const summary = detail.seasons?.find((s) => s.season_number === seasonNumber);
+        total = summary?.episode_count ?? null;
+      } else {
+        total = detail.number_of_episodes ?? null;
+      }
+    } catch {
+      return c.json({ error: "TMDB request failed" }, 502);
+    }
+  }
+
+  if (total === null) {
+    return c.json({ error: "no episode count available" }, 422);
+  }
+
+  const updated = await setTotalEpisodes(c.env.DB, id, total);
   if (updated === null) {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }

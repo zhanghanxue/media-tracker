@@ -125,6 +125,34 @@ describe("bangumiToMediaRow — live-action (type 6)", () => {
     expect(bangumiToMediaRow(live({ platform: "" }), "planned").region).toBeNull();
   });
 
+  it("prefers the infobox 国家/地区 over the generic 华语剧 platform (HK case)", () => {
+    // 使徒行者 (verified live): platform 华语剧 but 国家/地区 = 香港 → hong_kong,
+    // NOT china (the bug the user hit).
+    const row = bangumiToMediaRow(
+      live({
+        platform: "华语剧",
+        infobox: [{ key: "国家/地区", value: "香港" }],
+      }),
+      "planned",
+    );
+    expect(row.region).toBe("hong_kong");
+  });
+
+  it("reads 国家/地区 = 中国大陆 → china and 台湾 → taiwan", () => {
+    expect(
+      bangumiToMediaRow(
+        live({ platform: "华语剧", infobox: [{ key: "国家/地区", value: "中国大陆" }] }),
+        "planned",
+      ).region,
+    ).toBe("china");
+    expect(
+      bangumiToMediaRow(
+        live({ platform: "华语剧", infobox: [{ key: "国家/地区", value: "台湾" }] }),
+        "planned",
+      ).region,
+    ).toBe("taiwan");
+  });
+
   it("lets an explicit region override the platform inference", () => {
     const row = bangumiToMediaRow(live(), "planned", "taiwan");
     expect(row.region).toBe("taiwan");

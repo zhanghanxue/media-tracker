@@ -736,3 +736,86 @@ describe("POST /api/media/:id/refresh-cover", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// --- POST /api/media/:id/refresh-episodes (ongoing episode-count refresh) ----
+
+async function refreshEpisodes(
+  id: number | string,
+  body?: unknown,
+): Promise<Response> {
+  return app.request(
+    `/api/media/${id}/refresh-episodes`,
+    {
+      method: "POST",
+      ...(body !== undefined
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : {}),
+    },
+    env,
+  );
+}
+
+describe("POST /api/media/:id/refresh-episodes", () => {
+  it("sets total_episodes from a browser-supplied count (AniList path) without bumping date_updated", async () => {
+    const inserted = await insertMedia(env.DB, { ...BASE_ROW, total_episodes: 26 });
+
+    const res = await refreshEpisodes(inserted.id, { total_episodes: 1163 });
+    expect(res.status).toBe(200);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.total_episodes).toBe(1163);
+    // No date bump — a bulk refresh shouldn't reorder a date-sorted list.
+    expect(row.date_updated).toBe(inserted.date_updated);
+  });
+
+  it("fetches the count from TMDB for a tv row with no body", async () => {
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/tv\/211089/ })
+      .reply(200, JSON.stringify({ id: 211089, number_of_episodes: 36 }), {
+        headers: { "content-type": "application/json" },
+      });
+    const inserted = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      type: "drama",
+      external_source: "tmdb",
+      external_id: "tv:211089",
+    });
+
+    const res = await refreshEpisodes(inserted.id);
+    expect(res.status).toBe(200);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.total_episodes).toBe(36);
+  });
+
+  it("422s for a TMDB movie (no episode count to refresh)", async () => {
+    const inserted = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      type: "movie",
+      external_source: "tmdb",
+      external_id: "movie:603",
+    });
+    const res = await refreshEpisodes(inserted.id);
+    expect(res.status).toBe(422);
+  });
+
+  it("422s for a non-TMDB row with no body", async () => {
+    const inserted = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      external_source: "bangumi",
+      external_id: "12345",
+    });
+    const res = await refreshEpisodes(inserted.id);
+    expect(res.status).toBe(422);
+  });
+
+  it("400s on a negative total_episodes", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await refreshEpisodes(inserted.id, { total_episodes: -3 });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s for a missing id", async () => {
+    const res = await refreshEpisodes(999999, { total_episodes: 5 });
+    expect(res.status).toBe(404);
+  });
+});

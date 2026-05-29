@@ -6,6 +6,7 @@ import { EnrichChineseButton } from "./components/EnrichChineseButton";
 import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
 import { LanguageToggle } from "./components/LanguageToggle";
 import { MediaList } from "./components/MediaList";
+import { RefreshEpisodesButton } from "./components/RefreshEpisodesButton";
 import { SearchBar } from "./components/SearchBar";
 import { ThemeToggle } from "./components/ThemeToggle";
 import type { MediaFilters } from "./lib/api";
@@ -52,6 +53,7 @@ export function App() {
             >
               {t("add.button")}
             </button>
+            <RefreshEpisodesButton />
             <EnrichChineseButton />
             <ThemeToggle />
             <LanguageToggle />

@@ -132,6 +132,12 @@
     "refreshingCover": "Refreshing cover…",
     "refreshCoverFailed": "Couldn't refresh the cover."
   },
+  "refresh": {
+    "button": "↻ Update episodes",
+    "running": "Updating episodes…",
+    "done": "Updated {{updated}} of {{checked}}",
+    "error": "Couldn't update episodes"
+  },
   "enrich": {
     "button": "Enrich titles",
     "running": "Filling {{done}}/{{total}}…",

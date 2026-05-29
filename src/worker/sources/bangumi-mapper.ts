@@ -128,25 +128,55 @@ function bangumiToType(subject: BangumiSubject): MediaType {
 }
 
 /**
- * Best-effort region for a live-action (type 6) subject, read from its
- * `platform` string. Unlike anime — where Bangumi-direct adds catch Japanese
- * works and "china" would mislabel them (hence the null default) — type-6
- * platforms reliably encode the country (华语剧 / 日剧 / 韩剧 / 欧美剧 …), and the
- * user's live-action library is overwhelmingly Chinese drama, so seeding a
- * region here saves manual work. Substring match (platforms vary), null when
- * unrecognized or non-type-6 → the editor assigns. Verified live: 华语剧 → china.
+ * Best-effort region for a live-action (type 6) subject. Unlike anime — where
+ * Bangumi-direct adds catch Japanese works and "china" would mislabel them
+ * (hence the null default) — live-action carries reliable country signals, and
+ * the user's live-action library is overwhelmingly Chinese-region drama, so
+ * seeding a region here saves manual work. Null when non-type-6 or unrecognized
+ * → the editor assigns. Two signals, in order:
+ *   1. the infobox 国家/地区 (or 地区/产地/制作国家/地区) field — most reliable;
+ *      it distinguishes 香港 from 中国大陆 where the generic 华语剧 platform can't
+ *      (verified live: 使徒行者 has platform 华语剧 but 国家/地区 = 香港).
+ *   2. the `platform` string (华语剧 / 日剧 / …) as a fallback.
  */
 function regionFromBangumi(subject: BangumiSubject): MediaRow["region"] {
   if (subject.type !== 6) return null;
-  const p = subject.platform ?? "";
-  if (/华语|国产|大陆|中国/.test(p)) return "china";
-  if (/台/.test(p)) return "taiwan";
-  if (/港/.test(p)) return "hong_kong";
-  if (/日剧|日本/.test(p)) return "japan";
-  if (/韩剧|韩国|韓/.test(p)) return "korea";
-  if (/英剧/.test(p)) return "uk";
-  if (/美剧|欧美/.test(p)) return "usa";
+  const fromInfobox = regionFromText(
+    infoboxText(subject.infobox, ["国家/地区", "地区", "产地", "制作国家/地区"]),
+  );
+  if (fromInfobox) return fromInfobox;
+  return regionFromText(subject.platform ?? "");
+}
+
+// Map a country/region label (infobox value or platform) to our region enum by
+// substring. Order matters: region-specific labels (香港 / 台湾) are checked
+// before the broad 中国 / 大陆 so a HK or TW entry isn't swallowed by "china".
+function regionFromText(text: string): MediaRow["region"] {
+  if (/香港|港剧/.test(text)) return "hong_kong";
+  if (/台湾|臺灣|台剧|台灣/.test(text)) return "taiwan";
+  if (/日本|日剧/.test(text)) return "japan";
+  if (/韩国|韓國|韩剧|韓/.test(text)) return "korea";
+  if (/英国|英國|英剧/.test(text)) return "uk";
+  if (/泰国|泰國/.test(text)) return "thailand";
+  if (/美国|美國|美剧|欧美/.test(text)) return "usa";
+  if (/华语|国产|大陆|内地|中国/.test(text)) return "china";
   return null;
+}
+
+// First value of any of the given infobox keys, as plain text (array values —
+// e.g. 别名 — are joined). Empty string when none present.
+function infoboxText(
+  infobox: BangumiInfoboxItem[] | undefined,
+  keys: string[],
+): string {
+  if (!infobox) return "";
+  for (const item of infobox) {
+    if (!item.key || !keys.includes(item.key)) continue;
+    const v = item.value;
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return v.map((e) => e?.v ?? "").join(" ");
+  }
+  return "";
 }
 
 function firstPositive(...values: (number | null | undefined)[]): number | null {

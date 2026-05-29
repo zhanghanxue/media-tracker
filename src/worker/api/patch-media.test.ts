@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyAutoComplete,
+  applyAutoStart,
   applyCompletionFill,
   applyCompletionFillOnCreate,
   parsePatchMediaRequest,
@@ -193,6 +194,45 @@ describe("applyAutoComplete", () => {
     const existing = row({ total_episodes: 12, current_episode: 11 });
     const result = applyAutoComplete(existing, { current_episode: 13 });
     expect(result.status).toBe("completed");
+  });
+});
+
+describe("applyAutoStart", () => {
+  it("moves a planned item to in_progress on the first episode increment", () => {
+    const existing = row({ status: "planned", current_episode: 0 });
+    const result = applyAutoStart(existing, { current_episode: 1 });
+    expect(result.status).toBe("in_progress");
+  });
+
+  it("also starts on a chapter increment (manga)", () => {
+    const existing = row({ status: "planned", type: "manga", current_chapter: 0 });
+    const result = applyAutoStart(existing, { current_chapter: 3 });
+    expect(result.status).toBe("in_progress");
+  });
+
+  it("does not start when the new count is 0", () => {
+    const existing = row({ status: "planned" });
+    const result = applyAutoStart(existing, { current_episode: 0 });
+    expect(result.status).toBeUndefined();
+  });
+
+  it("leaves a non-planned item alone (one-way)", () => {
+    const existing = row({ status: "dropped" });
+    const result = applyAutoStart(existing, { current_episode: 2 });
+    expect(result.status).toBeUndefined();
+  });
+
+  it("defers to an explicit status / a prior auto-complete (doesn't downgrade)", () => {
+    const existing = row({ status: "planned" });
+    // applyAutoComplete already set completed when the patch hit the total.
+    const result = applyAutoStart(existing, { current_episode: 12, status: "completed" });
+    expect(result.status).toBe("completed");
+  });
+
+  it("is a no-op when the patch changes no progress", () => {
+    const existing = row({ status: "planned" });
+    const result = applyAutoStart(existing, { notes: "hi" });
+    expect(result.status).toBeUndefined();
   });
 });
 
