@@ -19,11 +19,15 @@ export interface MediaListQuery {
 }
 
 // Whitelist: maps the validated SortKey to a fixed, injection-safe clause.
+// Title sort COALESCE order mirrors the display-title fallback (displayTitle.ts)
+// for each language, so the list orders by the title the user actually sees.
 const SORT_CLAUSES: Record<SortKey, string> = {
   date_updated: "date_updated DESC",
   date_added: "date_added DESC",
   title:
     "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE ASC",
+  title_zh:
+    "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
 };
 
 function placeholders(n: number): string {

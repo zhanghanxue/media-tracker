@@ -8,7 +8,7 @@ import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import app from "../index";
-import { findByExternalRef, insertMedia } from "../db/media-repository";
+import { findById, findByExternalRef, insertMedia } from "../db/media-repository";
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import detailAnimeFixture from "../../../test/fixtures/anilist/detail_anime_101922.json";
 
@@ -103,6 +103,15 @@ describe("POST /api/media — happy path", () => {
     expect(stored).not.toBeNull();
     expect(stored!.title_native).toBe("鬼滅の刃");
   });
+
+  it("fills progress to the total when added as completed", async () => {
+    mockCoverImage();
+
+    const res = await post({ ...VALID_BODY, status: "completed" });
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.status).toBe("completed");
+    expect(row.current_episode).toBe(26); // total_episodes from the fixture
+  });
 });
 
 describe("POST /api/media — conflict", () => {
@@ -153,6 +162,85 @@ describe("POST /api/media — validation & routing errors", () => {
   it("returns 501 for a valid-but-unimplemented source", async () => {
     const res = await post({ ...VALID_BODY, external_source: "tmdb" });
     expect(res.status).toBe(501);
+  });
+});
+
+// --- Bangumi source (Option A: Chinese donghua/manhua AniList lacks) -------
+
+const BGM_COVER_ORIGIN = "https://lain.bgm.tv";
+const BGM_COVER_PATH = "/pic/cover/l/9d/d1/245665_5an54.jpg";
+
+// A Bangumi subject as the browser POSTs it — note the shape differs from
+// AniList (name/name_cn/images, no title/coverImage). name_cn is already
+// Simplified because the browser ran it through toSimplified() first.
+const BGM_BODY = {
+  external_source: "bangumi",
+  status: "planned",
+  media: {
+    id: 245665,
+    type: 2,
+    name: "鬼滅の刃",
+    name_cn: "鬼灭之刃",
+    platform: "TV",
+    eps: 26,
+    total_episodes: 26,
+    images: {
+      large: `${BGM_COVER_ORIGIN}${BGM_COVER_PATH}`,
+      common: null,
+      medium: null,
+      small: null,
+      grid: null,
+    },
+  },
+};
+
+function mockBangumiCover(): void {
+  fetchMock
+    .get(BGM_COVER_ORIGIN)
+    .intercept({ method: "GET", path: BGM_COVER_PATH })
+    .reply(200, "fake-image-bytes", {
+      headers: { "content-type": "image/jpeg" },
+    });
+}
+
+describe("POST /api/media — Bangumi source", () => {
+  it("maps the Bangumi subject to an animation row (region unset) with 201", async () => {
+    mockBangumiCover();
+
+    const res = await post(BGM_BODY);
+    expect(res.status).toBe(201);
+
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.type).toBe("animation");
+    expect(row.region).toBeNull(); // unknown by default for Bangumi-direct adds
+    expect(row.external_source).toBe("bangumi");
+    expect(row.external_id).toBe("245665");
+    expect(row.title_native).toBe("鬼滅の刃");
+    expect(row.title_chinese).toBe("鬼灭之刃");
+    expect(row.total_episodes).toBe(26);
+  });
+
+  it("re-hosts the Bangumi cover to R2 under the bangumi/ prefix", async () => {
+    mockBangumiCover();
+
+    const res = await post(BGM_BODY);
+    const row = (await res.json()) as Record<string, unknown>;
+
+    expect(row.cover_url).toBe(
+      "https://covers.zhanghanxue.com/covers/bangumi/245665.jpg",
+    );
+    const head = await env.COVERS.head("covers/bangumi/245665.jpg");
+    expect(head).not.toBeNull();
+  });
+
+  it("dedups a Bangumi item independently of AniList (same id, different source)", async () => {
+    mockBangumiCover();
+
+    const first = await post(BGM_BODY);
+    expect(first.status).toBe(201);
+
+    const second = await post(BGM_BODY);
+    expect(second.status).toBe(409);
   });
 });
 
@@ -347,6 +435,17 @@ describe("PATCH /api/media/:id", () => {
     expect(row.status).toBe("paused");
   });
 
+  it("updates title_chinese (the Bangumi enricher write path)", async () => {
+    // BASE_ROW.title_chinese is null — the enricher fills it.
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await patch(`/api/media/${inserted.id}`, {
+      title_chinese: "鬼灭之刃",
+    });
+    expect(res.status).toBe(200);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.title_chinese).toBe("鬼灭之刃");
+  });
+
   it("returns 404 for a missing id", async () => {
     const res = await patch("/api/media/999999", { current_episode: 1 });
     expect(res.status).toBe(404);
@@ -369,6 +468,29 @@ describe("PATCH /api/media/:id", () => {
     const res = await patch(`/api/media/${inserted.id}`, {
       video_url: "https://x",
     });
+    expect(res.status).toBe(400);
+  });
+});
+
+async function del(path: string): Promise<Response> {
+  return app.request(path, { method: "DELETE" }, env);
+}
+
+describe("DELETE /api/media/:id", () => {
+  it("removes the row and returns 204", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW);
+    const res = await del(`/api/media/${inserted.id}`);
+    expect(res.status).toBe(204);
+    expect(await findById(env.DB, inserted.id)).toBeNull();
+  });
+
+  it("returns 404 when the id doesn't exist", async () => {
+    const res = await del("/api/media/999999");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for a non-numeric id", async () => {
+    const res = await del("/api/media/abc");
     expect(res.status).toBe(400);
   });
 });

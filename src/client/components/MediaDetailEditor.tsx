@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
+import { useDeleteMedia } from "../hooks/useDeleteMedia";
+import { BangumiTitlePicker } from "./BangumiTitlePicker";
+import { AniListTitlePicker } from "./AniListTitlePicker";
 import { mediaProgress } from "../lib/progress";
+import { REGION_FACETS } from "../lib/facets";
+import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import type { MediaPatch } from "../../worker/api/patch-media";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { MediaRow } from "../lib/types";
@@ -24,8 +29,25 @@ export function MediaDetailEditor({
   media: MediaRow;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const update = useUpdateMedia();
+  const del = useDeleteMedia();
+  const lang = uiLangFromI18n(i18n.language);
+  const headerTitle = displayTitle(media, lang);
+
+  const handleDelete = () => {
+    if (!window.confirm(t("editor.confirmDelete"))) return;
+    del.mutate(media.id, { onSuccess: onClose });
+  };
+
+  const handleAniListPick = (titles: {
+    english: string | null;
+    romaji: string | null;
+  }) => {
+    if (titles.english) setTitleEnglish(titles.english);
+    if (titles.romaji) setTitleRomaji(titles.romaji);
+    setShowAniListPicker(false);
+  };
 
   const isGamePlaying =
     media.type === "game" && media.consumption_mode === "playing";
@@ -58,6 +80,23 @@ export function MediaDetailEditor({
   );
   const [gameProgress, setGameProgress] = useState(media.game_progress ?? "");
   const [notes, setNotes] = useState(media.notes ?? "");
+  // Chinese title + region: manual-correction escape hatch when a Bangumi
+  // enrichment (or its default region "china") got it wrong.
+  const [titleChinese, setTitleChinese] = useState(media.title_chinese ?? "");
+  const [titleEnglish, setTitleEnglish] = useState(media.title_english ?? "");
+  const [titleRomaji, setTitleRomaji] = useState(media.title_romaji ?? "");
+  const [region, setRegion] = useState(media.region ?? "");
+  const [showPicker, setShowPicker] = useState(false);
+  const [showAniListPicker, setShowAniListPicker] = useState(false);
+  // Seed the picker with a Latin title (best for Bangumi's v0 search).
+  const pickerQuery =
+    media.title_english ?? media.title_romaji ?? media.title_native ?? "";
+
+  // If the current region isn't one of the curated facets, keep it selectable.
+  const regionOptions =
+    region && !REGION_FACETS.includes(region)
+      ? [region, ...REGION_FACETS]
+      : REGION_FACETS;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,6 +110,18 @@ export function MediaDetailEditor({
     const patch: MediaPatch = {};
     if (status !== media.status) patch.status = status;
     if (notes !== (media.notes ?? "")) patch.notes = notes === "" ? null : notes;
+    if (titleChinese !== (media.title_chinese ?? "")) {
+      patch.title_chinese = titleChinese.trim() === "" ? null : titleChinese.trim();
+    }
+    if (titleEnglish !== (media.title_english ?? "")) {
+      patch.title_english = titleEnglish.trim() === "" ? null : titleEnglish.trim();
+    }
+    if (titleRomaji !== (media.title_romaji ?? "")) {
+      patch.title_romaji = titleRomaji.trim() === "" ? null : titleRomaji.trim();
+    }
+    if (region !== (media.region ?? "")) {
+      patch.region = region === "" ? null : region;
+    }
 
     if (isGamePlaying) {
       if (gameProgress !== (media.game_progress ?? "")) {
@@ -106,7 +157,27 @@ export function MediaDetailEditor({
         aria-modal="true"
         aria-label={t("editor.title")}
       >
-        <h2 className="text-base font-semibold">{t("editor.title")}</h2>
+        <div>
+          <h2 className="text-base font-semibold leading-snug">
+            {headerTitle || t("editor.title")}
+          </h2>
+          {/* Always show the native title as a secondary line (incl. Chinese
+              mode) when it differs from the primary shown. */}
+          {media.title_native && media.title_native !== headerTitle && (
+            <p className="mt-0.5 text-xs text-zinc-400 light:text-zinc-500">
+              {media.title_native}
+            </p>
+          )}
+          {/* Provenance: which source this row is linked to, so it's not a
+              guess. Bangumi-direct means AniList had no matching entry. */}
+          <p className="mt-1 text-xs text-zinc-500">
+            {media.external_source === "anilist"
+              ? t("editor.sourceAniList", { id: media.external_id })
+              : media.external_source === "bangumi"
+                ? t("editor.sourceBangumi", { id: media.external_id })
+                : t("editor.sourceManual")}
+          </p>
+        </div>
 
         <label className="block text-sm">
           <span className="mb-1 block text-zinc-400 light:text-zinc-500">
@@ -162,6 +233,102 @@ export function MediaDetailEditor({
           </label>
         )}
 
+        <div className="text-sm">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-zinc-400 light:text-zinc-500">
+              {t("editor.titleEnglish")}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAniListPicker((v) => !v)}
+              className="text-xs text-blue-400 hover:underline light:text-blue-600"
+            >
+              {showAniListPicker ? t("picker.close") : t("picker.buttonAniList")}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={titleEnglish}
+            onChange={(e) => setTitleEnglish(e.target.value)}
+            placeholder={t("editor.titleEnglishPlaceholder")}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+          />
+          {showAniListPicker && (
+            <div className="mt-2">
+              <AniListTitlePicker
+                mediaType={media.type}
+                initialQuery={pickerQuery}
+                onPick={handleAniListPick}
+              />
+            </div>
+          )}
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+            {t("editor.titleRomaji")}
+          </span>
+          <input
+            type="text"
+            value={titleRomaji}
+            onChange={(e) => setTitleRomaji(e.target.value)}
+            placeholder={t("editor.titleRomajiPlaceholder")}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+          />
+        </label>
+
+        <div className="text-sm">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-zinc-400 light:text-zinc-500">
+              {t("editor.titleChinese")}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPicker((v) => !v)}
+              className="text-xs text-blue-400 hover:underline light:text-blue-600"
+            >
+              {showPicker ? t("picker.close") : t("picker.button")}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={titleChinese}
+            onChange={(e) => setTitleChinese(e.target.value)}
+            placeholder={t("editor.titleChinesePlaceholder")}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+          />
+          {showPicker && (
+            <div className="mt-2">
+              <BangumiTitlePicker
+                mediaType={media.type}
+                initialQuery={pickerQuery}
+                onPick={(cn) => {
+                  setTitleChinese(cn);
+                  setShowPicker(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+            {t("editor.region")}
+          </span>
+          <select
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+          >
+            <option value="">{t("editor.regionNone")}</option>
+            {regionOptions.map((r) => (
+              <option key={r} value={r}>
+                {t(`region.${r}`, r)}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="block text-sm">
           <span className="mb-1 block text-zinc-400 light:text-zinc-500">
             {t("editor.notes")}
@@ -174,22 +341,32 @@ export function MediaDetailEditor({
           />
         </label>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
+            onClick={handleDelete}
+            disabled={del.isPending}
+            className="rounded-md px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/40 disabled:opacity-50 light:text-red-600 light:hover:bg-red-50"
           >
-            {t("editor.cancel")}
+            {t("editor.delete")}
           </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={update.isPending}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          >
-            {t("editor.save")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
+            >
+              {t("editor.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={update.isPending}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {t("editor.save")}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyAutoComplete,
   applyCompletionFill,
+  applyCompletionFillOnCreate,
   parsePatchMediaRequest,
 } from "./patch-media";
-import type { MediaRow } from "../db/schema";
+import type { MediaInsert, MediaRow } from "../db/schema";
 
 describe("parsePatchMediaRequest — valid", () => {
   it("accepts a single-field update", () => {
@@ -27,6 +28,21 @@ describe("parsePatchMediaRequest — valid", () => {
   it("accepts is_rewatching 0 and 1", () => {
     expect(parsePatchMediaRequest({ is_rewatching: 1 }).ok).toBe(true);
     expect(parsePatchMediaRequest({ is_rewatching: 0 }).ok).toBe(true);
+  });
+
+  it("accepts title_chinese (the enricher / manual-correction field)", () => {
+    const r = parsePatchMediaRequest({ title_chinese: "鬼灭之刃" });
+    expect(r).toEqual({ ok: true, value: { title_chinese: "鬼灭之刃" } });
+  });
+
+  it("accepts null title_chinese (clear it) and a region edit", () => {
+    expect(parsePatchMediaRequest({ title_chinese: null }).ok).toBe(true);
+    const r = parsePatchMediaRequest({ region: "japan" });
+    expect(r).toEqual({ ok: true, value: { region: "japan" } });
+  });
+
+  it("rejects a non-string title_chinese", () => {
+    expect(parsePatchMediaRequest({ title_chinese: 123 }).ok).toBe(false);
   });
 });
 
@@ -188,5 +204,58 @@ describe("applyCompletionFill", () => {
     const existing = row({ total_episodes: null, current_episode: 3 });
     const result = applyCompletionFill(existing, { status: "completed" });
     expect(result.current_episode).toBeUndefined();
+  });
+});
+
+// --- applyCompletionFillOnCreate -------------------------------------------
+
+function insert(overrides: Partial<MediaInsert>): MediaInsert {
+  return {
+    type: "animation",
+    region: "japan",
+    title_native: null,
+    title_romaji: null,
+    title_english: "X",
+    title_chinese: null,
+    status: "planned",
+    is_rewatching: 0,
+    cover_url: null,
+    external_id: "1",
+    external_source: "anilist",
+    current_episode: null,
+    total_episodes: null,
+    current_chapter: null,
+    total_chapters: null,
+    ...overrides,
+  };
+}
+
+describe("applyCompletionFillOnCreate", () => {
+  it("seeds current_episode to the total when adding as completed", () => {
+    const r = applyCompletionFillOnCreate(
+      insert({ status: "completed", total_episodes: 26 }),
+    );
+    expect(r.current_episode).toBe(26);
+  });
+
+  it("seeds current_chapter to the total for manga", () => {
+    const r = applyCompletionFillOnCreate(
+      insert({ type: "manga", status: "completed", total_chapters: 200 }),
+    );
+    expect(r.current_chapter).toBe(200);
+  });
+
+  it("leaves progress null when status isn't completed", () => {
+    const r = applyCompletionFillOnCreate(
+      insert({ status: "planned", total_episodes: 26 }),
+    );
+    expect(r.current_episode).toBeNull();
+  });
+
+  it("leaves current null when the total is unknown", () => {
+    const r = applyCompletionFillOnCreate(
+      insert({ status: "completed", total_episodes: null }),
+    );
+    expect(r.current_episode).toBeNull();
   });
 });

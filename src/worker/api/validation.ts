@@ -12,6 +12,7 @@ import type {
   MediaType,
 } from "../db/schema";
 import type { AniListMedia } from "../sources/anilist";
+import type { BangumiSubject } from "../sources/bangumi";
 
 export const EXTERNAL_SOURCES = [
   "anilist",
@@ -37,14 +38,16 @@ export const MEDIA_STATUSES = [
   "paused",
 ] as const satisfies readonly MediaStatus[];
 
-// The browser fetches the AniList media object (search/detail share the same
-// field set) and POSTs it here for the Worker to map + persist — the Worker
-// can't call AniList itself (egress IPs are blocked). `media` is that object;
-// the server is authoritative for the mapping (aniListToMediaRow).
+// The browser fetches the source's media object (AniList, or a Bangumi subject)
+// and POSTs it here for the Worker to map + persist — the Worker can't call
+// these APIs itself (AniList blocks Worker egress; Bangumi we keep browser-side
+// too). `media` is that object; the server is authoritative for the mapping.
+// Its shape is validated per `external_source`, so the route can map it with the
+// matching mapper.
 export interface CreateMediaRequest {
   external_source: ExternalSource;
   status: MediaStatus;
-  media: AniListMedia;
+  media: AniListMedia | BangumiSubject;
 }
 
 export type ValidationResult =
@@ -74,8 +77,9 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     errors.push(`status must be one of: ${MEDIA_STATUSES.join(", ")}`);
   }
 
-  // Minimal shape check on the source payload; aniListToMediaRow does the rest
-  // (and throws on an unclassifiable format, which the route turns into a 400).
+  // Minimal shape check on the source payload, branched by source; the mapper
+  // does the rest (and throws on an unclassifiable item, which the route turns
+  // into a 400). All sources need a positive integer id (the conflict key).
   const media = body.media;
   if (!isObject(media)) {
     errors.push("media must be an object");
@@ -87,10 +91,21 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     ) {
       errors.push("media.id must be a positive integer");
     }
-    if (!isObject(media.title)) errors.push("media.title must be an object");
-    if (!isObject(media.coverImage)) {
-      errors.push("media.coverImage must be an object");
+    if (source === "anilist") {
+      if (!isObject(media.title)) errors.push("media.title must be an object");
+      if (!isObject(media.coverImage)) {
+        errors.push("media.coverImage must be an object");
+      }
+    } else if (source === "bangumi") {
+      if (typeof media.name !== "string" || media.name.trim() === "") {
+        errors.push("media.name must be a non-empty string");
+      }
+      if (typeof media.type !== "number") {
+        errors.push("media.type must be a number");
+      }
     }
+    // Other (valid-but-unimplemented) sources skip shape checks here; the route
+    // returns 501 before any mapping runs.
   }
 
   if (errors.length > 0) {
@@ -102,7 +117,7 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     value: {
       external_source: source as ExternalSource,
       status: status as MediaStatus,
-      media: media as unknown as AniListMedia,
+      media: media as unknown as AniListMedia | BangumiSubject,
     },
   };
 }

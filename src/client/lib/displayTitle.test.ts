@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { displayTitle, uiLangFromI18n } from "./displayTitle";
+import {
+  compareByDisplayTitle,
+  displayTitle,
+  uiLangFromI18n,
+} from "./displayTitle";
 
 const FULL = {
   title_native: "鬼滅の刃",
@@ -70,6 +74,37 @@ describe("displayTitle — Chinese UI", () => {
         "zh",
       ),
     ).toBe("");
+  });
+});
+
+describe("compareByDisplayTitle", () => {
+  const naruto = {
+    title_native: "NARUTO -ナルト-",
+    title_romaji: "NARUTO",
+    title_english: "Naruto",
+    title_chinese: "火影忍者",
+  };
+  const bleach = {
+    title_native: "BLEACH",
+    title_romaji: "BLEACH",
+    title_english: "Bleach",
+    title_chinese: "死神",
+  };
+
+  it("orders Chinese titles by PINYIN, not code point (火影忍者 before 死神)", () => {
+    // Code point would put 死 (0x6b7b) before 火 (0x706b) — wrong. Pinyin: huǒ < sǐ.
+    expect(compareByDisplayTitle(naruto, bleach, "zh")).toBeLessThan(0);
+    expect(compareByDisplayTitle(bleach, naruto, "zh")).toBeGreaterThan(0);
+  });
+
+  it("orders English titles alphabetically (Bleach before Naruto)", () => {
+    expect(compareByDisplayTitle(bleach, naruto, "en")).toBeLessThan(0);
+  });
+
+  it("sorts numbers naturally (Movie 2 before Movie 10)", () => {
+    const m2 = { title_native: null, title_romaji: null, title_english: "Movie 2", title_chinese: null };
+    const m10 = { title_native: null, title_romaji: null, title_english: "Movie 10", title_chinese: null };
+    expect(compareByDisplayTitle(m2, m10, "en")).toBeLessThan(0);
   });
 });
 

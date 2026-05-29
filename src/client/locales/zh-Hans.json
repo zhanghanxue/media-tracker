@@ -5,6 +5,12 @@
   "search": {
     "placeholder": "搜索你的收藏…"
   },
+  "sort": {
+    "label": "排序",
+    "date_updated": "最近更新",
+    "date_added": "最近添加",
+    "title": "标题 A–Z"
+  },
   "filters": {
     "heading": "筛选",
     "type": "类型",
@@ -64,10 +70,14 @@
     "button": "+ 添加",
     "title": "添加媒体",
     "searchPlaceholder": "搜索 AniList…",
+    "searchPlaceholderBangumi": "按中文名搜索（Bangumi）…",
+    "sourceAniList": "AniList",
+    "sourceBangumi": "中文 (Bangumi)",
     "anime": "动画",
     "manga": "漫画",
     "statusLabel": "状态",
     "empty": "输入以搜索 AniList。",
+    "emptyBangumi": "输入中文名以搜索 Bangumi。",
     "searching": "搜索中…",
     "noResults": "没有结果。",
     "error": "搜索失败。",
@@ -90,6 +100,40 @@
     "notes": "备注",
     "save": "保存",
     "cancel": "取消",
-    "ofTotal": "共 {{total}}"
+    "delete": "删除",
+    "confirmDelete": "删除这一条目？此操作无法撤销。",
+    "ofTotal": "共 {{total}}",
+    "titleEnglish": "英文标题",
+    "titleEnglishPlaceholder": "例如：Record of Ragnarok",
+    "titleRomaji": "罗马音标题",
+    "titleRomajiPlaceholder": "例如：Shuumatsu no Valkyrie",
+    "sourceAniList": "已关联 AniList · #{{id}}",
+    "sourceBangumi": "来自 Bangumi · #{{id}}（AniList 无对应条目）",
+    "sourceManual": "手动添加",
+    "titleChinese": "中文标题",
+    "titleChinesePlaceholder": "例如：鬼灭之刃",
+    "region": "地区",
+    "regionNone": "—"
+  },
+  "enrich": {
+    "button": "补全标题",
+    "running": "补全中 {{done}}/{{total}}…",
+    "done": "已补全 {{filled}}，跳过 {{skipped}}",
+    "none": "所有标题已补全",
+    "error": "补全失败",
+    "skippedHeading": "无法匹配以下条目",
+    "skippedWhy": "在 Bangumi/AniList 上没有可靠匹配（例如缺少拉丁别名）。请逐条打开，在编辑器中手动填写标题。"
+  },
+  "picker": {
+    "button": "在 Bangumi 搜索",
+    "buttonAniList": "在 AniList 搜索",
+    "close": "关闭",
+    "searchPlaceholder": "搜索 Bangumi（英 / 日 / 中）…",
+    "searchPlaceholderAniList": "搜索 AniList（英 / 罗马音 / 日）…",
+    "empty": "输入以搜索 Bangumi。",
+    "emptyAniList": "输入以搜索 AniList。",
+    "searching": "搜索中…",
+    "noResults": "没有结果。",
+    "error": "搜索失败。"
   }
 }

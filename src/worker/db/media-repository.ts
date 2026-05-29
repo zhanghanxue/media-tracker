@@ -2,16 +2,15 @@
 // Spec-first hybrid per TESTING.md: schema + query shape are ours, so the
 // integration tests run against a REAL D1 (vitest-pool-workers), never a mock.
 //
-// Insertion takes an `AniListMapperResult` (the 15 columns the AniList import
-// path populates). Columns the importer doesn't touch — platform,
+// Insertion takes a `MediaInsert` (the 15 columns every source mapper —
+// AniList or Bangumi — populates). Columns no mapper touches — platform,
 // consumption_mode, game_progress, runtime_minutes, notes — fall to their SQL
 // defaults (NULL), and date_added / date_updated default to datetime('now').
 
-import type { AniListMapperResult } from "../sources/anilist-mapper";
 import type { ListFilters } from "../api/list-query";
 import type { MediaPatch } from "../api/patch-media";
 import { buildMediaListQuery } from "../api/media-query-builder";
-import type { ExternalSource, MediaRow } from "./schema";
+import type { ExternalSource, MediaInsert, MediaRow } from "./schema";
 
 const INSERT_COLUMNS = [
   "type",
@@ -148,13 +147,29 @@ export async function updateMedia(
 }
 
 /**
+ * Delete a row by id. Returns true if a row was removed, false if no row had
+ * that id (→ 404). The R2 cover object is left in place — it's harmless, cheap,
+ * and keyed by (source, external_id) so a future re-add reuses it.
+ */
+export async function deleteMedia(
+  db: D1Database,
+  id: number,
+): Promise<boolean> {
+  const result = await db
+    .prepare("DELETE FROM media WHERE id = ?")
+    .bind(id)
+    .run();
+  return result.meta.changes > 0;
+}
+
+/**
  * Insert a mapped row and return the persisted record (with DB-assigned `id`,
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.
  */
 export async function insertMedia(
   db: D1Database,
-  row: AniListMapperResult,
+  row: MediaInsert,
 ): Promise<MediaRow> {
   const inserted = await db
     .prepare(INSERT_SQL)

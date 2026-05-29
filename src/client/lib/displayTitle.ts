@@ -30,3 +30,21 @@ export function displayTitle(media: TitleFields, lang: UiLang): string {
 export function uiLangFromI18n(language: string): UiLang {
   return language.startsWith("zh") ? "zh" : "en";
 }
+
+/**
+ * Locale-aware comparator for "Title A–Z" sorting, by the displayed title.
+ * Uses the language's collation: PINYIN order for Chinese (so 火影忍者 < 死神,
+ * which code-point order — what SQLite does — gets backwards) and dictionary
+ * order for English. `numeric` so "Movie 2" < "Movie 10". This is why title
+ * sorting runs in the client: SQLite can't do pinyin collation.
+ */
+export function compareByDisplayTitle(
+  a: TitleFields,
+  b: TitleFields,
+  lang: UiLang,
+): number {
+  return displayTitle(a, lang).localeCompare(displayTitle(b, lang), lang, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}

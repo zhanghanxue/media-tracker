@@ -93,9 +93,15 @@ describe("buildMediaListQuery — sort whitelist", () => {
     expect(build({ sort: "date_added" }).orderBy).toBe("date_added DESC");
   });
 
-  it("maps title to a COALESCE NOCASE clause", () => {
+  it("maps title to a COALESCE NOCASE clause (English-first)", () => {
     expect(build({ sort: "title" }).orderBy).toBe(
       "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE ASC",
+    );
+  });
+
+  it("maps title_zh to a Chinese-first COALESCE clause", () => {
+    expect(build({ sort: "title_zh" }).orderBy).toBe(
+      "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
     );
   });
 });

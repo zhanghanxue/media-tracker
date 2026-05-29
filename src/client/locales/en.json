@@ -5,6 +5,12 @@
   "search": {
     "placeholder": "Search your library…"
   },
+  "sort": {
+    "label": "Sort",
+    "date_updated": "Recently updated",
+    "date_added": "Recently added",
+    "title": "Title A–Z"
+  },
   "filters": {
     "heading": "Filters",
     "type": "Type",
@@ -64,10 +70,14 @@
     "button": "+ Add",
     "title": "Add media",
     "searchPlaceholder": "Search AniList…",
+    "searchPlaceholderBangumi": "Search by Chinese name (Bangumi)…",
+    "sourceAniList": "AniList",
+    "sourceBangumi": "中文 (Bangumi)",
     "anime": "Anime",
     "manga": "Manga",
     "statusLabel": "Status",
     "empty": "Type to search AniList.",
+    "emptyBangumi": "Type a Chinese name to search Bangumi.",
     "searching": "Searching…",
     "noResults": "No results.",
     "error": "Search failed.",
@@ -90,6 +100,40 @@
     "notes": "Notes",
     "save": "Save",
     "cancel": "Cancel",
-    "ofTotal": "of {{total}}"
+    "delete": "Delete",
+    "confirmDelete": "Delete this entry? This can't be undone.",
+    "ofTotal": "of {{total}}",
+    "titleEnglish": "English title",
+    "titleEnglishPlaceholder": "e.g. Record of Ragnarok",
+    "titleRomaji": "Romaji title",
+    "titleRomajiPlaceholder": "e.g. Shuumatsu no Valkyrie",
+    "sourceAniList": "Linked to AniList · #{{id}}",
+    "sourceBangumi": "From Bangumi · #{{id}} (no AniList match)",
+    "sourceManual": "Manual entry",
+    "titleChinese": "Chinese title",
+    "titleChinesePlaceholder": "e.g. 鬼灭之刃",
+    "region": "Region",
+    "regionNone": "—"
+  },
+  "enrich": {
+    "button": "Enrich titles",
+    "running": "Filling {{done}}/{{total}}…",
+    "done": "Filled {{filled}}, skipped {{skipped}}",
+    "none": "All titles already filled",
+    "error": "Couldn't fill titles",
+    "skippedHeading": "Couldn't match these",
+    "skippedWhy": "No confident match on Bangumi/AniList (e.g. no Latin alias). Open each and set the title by hand in the editor."
+  },
+  "picker": {
+    "button": "Find on Bangumi",
+    "buttonAniList": "Find on AniList",
+    "close": "Close",
+    "searchPlaceholder": "Search Bangumi (EN / 日本語 / 中文)…",
+    "searchPlaceholderAniList": "Search AniList (EN / romaji / 日本語)…",
+    "empty": "Type to search Bangumi.",
+    "emptyAniList": "Type to search AniList.",
+    "searching": "Searching…",
+    "noResults": "No results.",
+    "error": "Search failed."
   }
 }
