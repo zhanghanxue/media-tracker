@@ -94,6 +94,8 @@ export function tmdbToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: runtimeMinutes,
+    platform: null, // game-only fields (IGDB)
+    consumption_mode: null,
     series_id: null,
     series_name: null,
     season_number: null,
@@ -162,6 +164,8 @@ export function tmdbSeasonToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    platform: null, // game-only fields (IGDB)
+    consumption_mode: null,
     series_id: `tmdb:tv:${show.id}`,
     series_name: null, // auto-derived per language from members' titles
     season_number: n,

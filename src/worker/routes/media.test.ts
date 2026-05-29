@@ -9,6 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import app from "../index";
 import { findById, findByExternalRef, insertMedia } from "../db/media-repository";
+import { resetIgdbTokenCache } from "../sources/igdb";
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import detailAnimeFixture from "../../../test/fixtures/anilist/detail_anime_101922.json";
 import tmdbMovieDetailFixture from "../../../test/fixtures/tmdb/detail_movie_496243.json";
@@ -57,6 +58,9 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await env.DB.exec("DELETE FROM media");
+  // The IGDB client caches the Twitch token module-side; clear it so each igdb
+  // test mints a fresh one (and its token interceptor is actually consumed).
+  resetIgdbTokenCache();
 });
 
 afterEach(() => {
@@ -160,10 +164,6 @@ describe("POST /api/media — validation & routing errors", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 501 for a valid-but-unimplemented source (igdb)", async () => {
-    const res = await post({ ...VALID_BODY, external_source: "igdb" });
-    expect(res.status).toBe(501);
-  });
 });
 
 // --- Bangumi source (Option A: Chinese donghua/manhua AniList lacks) -------
@@ -407,6 +407,98 @@ describe("POST /api/media — TMDB source", () => {
   });
 });
 
+// --- IGDB source (games; Twitch-OAuth-bearing → Worker fetches token + detail) -
+
+const TWITCH_ORIGIN = "https://id.twitch.tv";
+const IGDB_API_ORIGIN = "https://api.igdb.com";
+const IGDB_IMG_ORIGIN = "https://images.igdb.com";
+
+function mockTwitchToken(): void {
+  fetchMock
+    .get(TWITCH_ORIGIN)
+    .intercept({ method: "POST", path: /^\/oauth2\/token/ })
+    .reply(200, JSON.stringify({ access_token: "tok", expires_in: 3600 }), {
+      headers: { "content-type": "application/json" },
+    });
+}
+
+function mockIgdbDetail(game: Record<string, unknown>): void {
+  fetchMock
+    .get(IGDB_API_ORIGIN)
+    .intercept({ method: "POST", path: "/v4/games" })
+    .reply(200, JSON.stringify([game]), {
+      headers: { "content-type": "application/json" },
+    });
+}
+
+function mockIgdbCover(imageId: string): void {
+  fetchMock
+    .get(IGDB_IMG_ORIGIN)
+    .intercept({
+      method: "GET",
+      path: `/igdb/image/upload/t_cover_big/${imageId}.jpg`,
+    })
+    .reply(200, "img", { headers: { "content-type": "image/jpeg" } });
+}
+
+describe("POST /api/media — IGDB source", () => {
+  it("mints a token, fetches detail, and maps a game row with the chosen fields", async () => {
+    mockTwitchToken();
+    mockIgdbDetail({ id: 1942, name: "The Witcher 3", cover: { id: 1, image_id: "cowit" } });
+    mockIgdbCover("cowit");
+
+    const res = await post({
+      external_source: "igdb",
+      status: "in_progress",
+      media: { id: 1942, consumption_mode: "playing", platform: "pc" },
+    });
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.type).toBe("game");
+    expect(row.title_english).toBe("The Witcher 3");
+    expect(row.consumption_mode).toBe("playing");
+    expect(row.platform).toBe("pc");
+    expect(row.external_source).toBe("igdb");
+    expect(row.external_id).toBe("1942");
+    expect(row.cover_url).toBe(
+      "https://covers.zhanghanxue.com/covers/igdb/1942.jpg",
+    );
+  });
+
+  it("returns 404 when IGDB has no such game (empty result)", async () => {
+    mockTwitchToken();
+    fetchMock
+      .get(IGDB_API_ORIGIN)
+      .intercept({ method: "POST", path: "/v4/games" })
+      .reply(200, "[]", { headers: { "content-type": "application/json" } });
+
+    const res = await post({
+      external_source: "igdb",
+      status: "planned",
+      media: { id: 999999, consumption_mode: "playing", platform: null },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("validates consumption_mode (400 on a bad value)", async () => {
+    const res = await post({
+      external_source: "igdb",
+      status: "planned",
+      media: { id: 5, consumption_mode: "banana", platform: null },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("validates platform (400 on an unknown bucket)", async () => {
+    const res = await post({
+      external_source: "igdb",
+      status: "planned",
+      media: { id: 5, consumption_mode: "playing", platform: "switch" },
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 // --- GET routes ------------------------------------------------------------
 // These exercise the read path only (no AniList / R2), so no fetchMock
 // interceptors are registered. Data is seeded directly via the repository.
@@ -428,6 +520,8 @@ const BASE_ROW: AniListMapperResult = {
   current_chapter: null,
   total_chapters: null,
   runtime_minutes: null,
+  platform: null,
+  consumption_mode: null,
   series_id: null,
   series_name: null,
   season_number: null,

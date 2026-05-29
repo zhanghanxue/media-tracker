@@ -8,6 +8,8 @@
 
 import type {
   ExternalSource,
+  MediaConsumptionMode,
+  MediaPlatform,
   MediaStatus,
   MediaType,
 } from "../db/schema";
@@ -27,6 +29,29 @@ export interface TmdbAddRef {
 }
 
 export const TMDB_KINDS = ["movie", "tv"] as const satisfies readonly TmdbKind[];
+
+// IGDB add contract: the browser sends the game id plus its two game-specific
+// choices — consumption_mode (the Playing/Watching toggle) and platform (the
+// bucket the user confirmed, auto-filled from IGDB's platforms in the browser;
+// null = unset). The Worker fetches full detail and maps authoritatively.
+export interface IgdbAddRef {
+  id: number;
+  consumption_mode: MediaConsumptionMode;
+  platform: MediaPlatform | null;
+}
+
+export const CONSUMPTION_MODES = [
+  "playing",
+  "watching",
+] as const satisfies readonly MediaConsumptionMode[];
+
+export const MEDIA_PLATFORMS = [
+  "mobile",
+  "console",
+  "pc",
+  "handheld",
+  "arcade",
+] as const satisfies readonly MediaPlatform[];
 
 export const EXTERNAL_SOURCES = [
   "anilist",
@@ -61,7 +86,7 @@ export const MEDIA_STATUSES = [
 export interface CreateMediaRequest {
   external_source: ExternalSource;
   status: MediaStatus;
-  media: AniListMedia | BangumiSubject | TmdbAddRef;
+  media: AniListMedia | BangumiSubject | TmdbAddRef | IgdbAddRef;
 }
 
 export type ValidationResult =
@@ -129,9 +154,21 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
           errors.push("media.season_number is only valid for tv");
         }
       }
+    } else if (source === "igdb") {
+      if (!CONSUMPTION_MODES.includes(media.consumption_mode as MediaConsumptionMode)) {
+        errors.push(
+          `media.consumption_mode must be one of: ${CONSUMPTION_MODES.join(", ")}`,
+        );
+      }
+      // platform is optional but, when present, must be a known bucket or null.
+      if ("platform" in media && media.platform !== null) {
+        if (!MEDIA_PLATFORMS.includes(media.platform as MediaPlatform)) {
+          errors.push(
+            `media.platform must be null or one of: ${MEDIA_PLATFORMS.join(", ")}`,
+          );
+        }
+      }
     }
-    // Other (valid-but-unimplemented) sources skip shape checks here; the route
-    // returns 501 before any mapping runs.
   }
 
   if (errors.length > 0) {
@@ -143,7 +180,11 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     value: {
       external_source: source as ExternalSource,
       status: status as MediaStatus,
-      media: media as unknown as AniListMedia | BangumiSubject | TmdbAddRef,
+      media: media as unknown as
+        | AniListMedia
+        | BangumiSubject
+        | TmdbAddRef
+        | IgdbAddRef,
     },
   };
 }

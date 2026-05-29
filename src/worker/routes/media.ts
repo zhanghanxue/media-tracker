@@ -10,14 +10,13 @@
 // In all cases the Worker re-hosts the cover to R2 (best-effort) and inserts.
 //
 //   1. validate body { external_source, status, media } → 400
-//   2. reject unimplemented sources (igdb)               → 501
-//   3. conflict probe (source, externalId)               → 409 + existing row
-//   4. [tmdb only] fetch detail (503 unconfigured / 502 upstream / 404 missing)
-//   5. map (400 if unclassifiable) → upload cover → insert → 201
+//   2. conflict probe (source, externalId)               → 409 + existing row
+//   3. [tmdb/igdb only] fetch detail (503 unconfigured / 502 upstream / 404 missing)
+//   4. map (400 if unclassifiable) → upload cover → insert → 201
 //
-// External boundaries the Worker makes: the cover CDN fetch (always) and the
-// TMDB detail fetch (tmdb adds only); integration tests mock both via fetchMock.
-// D1 and R2 are real bindings.
+// External boundaries the Worker makes: the cover CDN fetch (always), the TMDB
+// detail fetch (tmdb adds), and the Twitch token + IGDB detail fetch (igdb adds);
+// integration tests mock them via fetchMock. D1 and R2 are real bindings.
 
 import { Hono } from "hono";
 
@@ -36,6 +35,7 @@ import {
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
 import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../sources/tmdb-mapper";
+import { igdbToMediaRow } from "../sources/igdb-mapper";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
 import {
@@ -45,7 +45,12 @@ import {
   type TmdbSeasonDetail,
   type TmdbSeasonSummary,
 } from "../sources/tmdb";
-import { parseCreateMediaRequest, type TmdbAddRef } from "../api/validation";
+import { getIgdbDetail, type IgdbGame } from "../sources/igdb";
+import {
+  parseCreateMediaRequest,
+  type IgdbAddRef,
+  type TmdbAddRef,
+} from "../api/validation";
 import { parseListQuery } from "../api/list-query";
 import {
   applyAutoComplete,
@@ -75,19 +80,9 @@ mediaRoutes.post("/", async (c) => {
   }
   const { external_source, status, media } = parsed.value;
 
-  // v1.x implements AniList (EN/JP), Bangumi (Chinese donghua/manhua AniList
-  // lacks) and TMDB (movies/drama). IGDB is accepted by validation but unwired —
-  // 501 distinguishes "known but unbuilt" from "bad input".
-  if (external_source === "igdb") {
-    return c.json(
-      { error: `source '${external_source}' is not implemented yet` },
-      501,
-    );
-  }
-
   // The conflict key. TMDB movie ids and tv ids collide, so the key is kind-
   // prefixed ("movie:603"); a season add keys per season ("tv:1399:s2"); the
-  // other sources use the bare id.
+  // other sources (AniList, Bangumi, IGDB) use the bare id.
   let externalId: string;
   if (external_source === "tmdb") {
     const ref = media as TmdbAddRef;
@@ -144,22 +139,50 @@ mediaRoutes.post("/", async (c) => {
     }
   }
 
+  // IGDB is also Worker-side (Twitch-OAuth-bearing): fetch full detail here from
+  // the id the browser sent. Same failure-mapping shape as TMDB.
+  let igdbGame: IgdbGame | null = null;
+  if (external_source === "igdb") {
+    const clientId = c.env.TWITCH_CLIENT_ID;
+    const clientSecret = c.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return c.json({ error: "IGDB integration is not configured" }, 503);
+    }
+    const ref = media as IgdbAddRef;
+    try {
+      igdbGame = await getIgdbDetail(ref.id, { clientId, clientSecret });
+    } catch {
+      return c.json({ error: "IGDB request failed" }, 502);
+    }
+    if (igdbGame === null) {
+      return c.json({ error: "game not found on IGDB" }, 404);
+    }
+  }
+
   let row;
   try {
     // Validation guarantees `media` matches `external_source`'s shape.
-    row =
-      external_source === "anilist"
-        ? aniListToMediaRow(media as AniListMedia, status)
-        : external_source === "bangumi"
-          ? bangumiToMediaRow(media as BangumiSubject, status)
-          : (media as TmdbAddRef).season_number !== undefined
-            ? tmdbSeasonToMediaRow(
-                tmdbDetail!,
-                tmdbSeasonSummary!,
-                tmdbSeason,
-                status,
-              )
-            : tmdbToMediaRow(tmdbDetail!, (media as TmdbAddRef).media_type, status);
+    if (external_source === "anilist") {
+      row = aniListToMediaRow(media as AniListMedia, status);
+    } else if (external_source === "bangumi") {
+      row = bangumiToMediaRow(media as BangumiSubject, status);
+    } else if (external_source === "igdb") {
+      const ref = media as IgdbAddRef;
+      row = igdbToMediaRow(igdbGame!, {
+        status,
+        consumptionMode: ref.consumption_mode,
+        platform: ref.platform,
+      });
+    } else if ((media as TmdbAddRef).season_number !== undefined) {
+      row = tmdbSeasonToMediaRow(
+        tmdbDetail!,
+        tmdbSeasonSummary!,
+        tmdbSeason,
+        status,
+      );
+    } else {
+      row = tmdbToMediaRow(tmdbDetail!, (media as TmdbAddRef).media_type, status);
+    }
   } catch {
     // Mappers throw on an item they can't classify (unknown AniList format /
     // unsupported Bangumi subject type).

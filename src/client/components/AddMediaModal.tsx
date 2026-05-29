@@ -5,13 +5,16 @@ import { useTranslation } from "react-i18next";
 import { useAniListSearch } from "../hooks/useAniListSearch";
 import { useBangumiSearch } from "../hooks/useBangumiSearch";
 import { useTmdbSearch } from "../hooks/useTmdbSearch";
+import { useIgdbSearch } from "../hooks/useIgdbSearch";
 import { useAddMedia } from "../hooks/useAddMedia";
 import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
+import type { IgdbGame } from "../lib/igdbSearch";
 import { autoLinkAniListSeries } from "../lib/seriesAutoLink";
 import { TmdbResultRow } from "./TmdbResultRow";
+import { IgdbResultRow } from "./IgdbResultRow";
 import {
   fetchTmdbSeasons,
   tmdbDisplayTitle,
@@ -21,13 +24,14 @@ import {
 } from "../lib/tmdbSearch";
 import { addMedia, type AniListSearchItem, type SearchType } from "../lib/api";
 import type { BangumiSubject, BangumiType } from "../../worker/sources/bangumi";
-import type { MediaStatus } from "../../worker/db/schema";
+import type { MediaConsumptionMode, MediaPlatform, MediaStatus } from "../../worker/db/schema";
 import type { MediaRow } from "../lib/types";
 
 // Where to search. AniList = English/Japanese (canonical, anime/manga). Bangumi =
-// search by Chinese name (donghua/manhua AniList lacks). TMDB = movies/drama,
-// searched by any name; the Worker holds the key and fetches detail on add.
-type Source = "anilist" | "bangumi" | "tmdb";
+// search by Chinese name (donghua/manhua AniList lacks). TMDB = movies/drama.
+// IGDB = games. TMDB + IGDB are key-bearing → the Worker holds the key and
+// fetches detail on add (the browser sends only ids + the user's choices).
+type Source = "anilist" | "bangumi" | "tmdb" | "igdb";
 
 // Statuses offered at add-time (paused is an edit-time state, omitted here).
 const ADD_STATUSES: MediaStatus[] = [
@@ -53,6 +57,9 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   // Bangumi has its own sub-type: 2 anime/donghua · 1 book · 6 live-action (影视).
   const [bgmType, setBgmType] = useState<BangumiType>(2);
   const [tmdbKind, setTmdbKind] = useState<TmdbKind>("movie");
+  // Games: are you Playing it (free-text progress) or Watching a playthrough
+  // (episode counts)? Chosen once here; per-result platform is on the row.
+  const [gameMode, setGameMode] = useState<MediaConsumptionMode>("playing");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<MediaStatus>("planned");
   const debouncedQuery = useDebouncedValue(input, 300);
@@ -70,6 +77,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     source === "tmdb" ? debouncedQuery : "",
     tmdbKind,
   );
+  const igdbSearch = useIgdbSearch(source === "igdb" ? debouncedQuery : "");
 
   const addMutation = useAddMedia();
   const addByChinese = useAddByChinese();
@@ -131,6 +139,13 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       media: { id: item.id, media_type: tmdbKind },
     });
   };
+  const handleAddIgdb = (game: IgdbGame, platform: MediaPlatform | null) => {
+    addMutation.mutate({
+      external_source: "igdb",
+      status,
+      media: { id: game.id, consumption_mode: gameMode, platform },
+    });
+  };
   const handleAddTmdbSeason = (item: TmdbSearchResultRaw, seasonNumber: number) => {
     addMutation.mutate({
       external_source: "tmdb",
@@ -143,6 +158,10 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const pendingTmdb =
     addMutation.isPending && addMutation.variables?.external_source === "tmdb"
       ? addMutation.variables.media
+      : undefined;
+  const pendingIgdbId =
+    addMutation.isPending && addMutation.variables?.external_source === "igdb"
+      ? addMutation.variables.media.id
       : undefined;
 
   // "Add" on a TV show splits it into seasons (what the user wants — not one row
@@ -173,19 +192,29 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   };
 
   const search =
-    source === "anilist" ? aniSearch : source === "tmdb" ? tmdbSearch : bgmSearch;
+    source === "anilist"
+      ? aniSearch
+      : source === "tmdb"
+        ? tmdbSearch
+        : source === "igdb"
+          ? igdbSearch
+          : bgmSearch;
   const placeholder =
     source === "anilist"
       ? t("add.searchPlaceholder")
       : source === "tmdb"
         ? t("add.searchPlaceholderTmdb")
-        : t("add.searchPlaceholderBangumi");
+        : source === "igdb"
+          ? t("add.searchPlaceholderIgdb")
+          : t("add.searchPlaceholderBangumi");
   const emptyMessage =
     source === "anilist"
       ? t("add.empty")
       : source === "tmdb"
         ? t("add.emptyTmdb")
-        : t("add.emptyBangumi");
+        : source === "igdb"
+          ? t("add.emptyIgdb")
+          : t("add.emptyBangumi");
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm ${
@@ -245,6 +274,13 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             >
               {t("add.sourceTmdb")}
             </button>
+            <button
+              type="button"
+              onClick={() => setSource("igdb")}
+              className={tabClass(source === "igdb")}
+            >
+              {t("add.sourceIgdb")}
+            </button>
           </div>
 
           {/* Sub-type toggle: Movie/TV for TMDB; Anime/Book/影视 for Bangumi
@@ -259,6 +295,19 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                   className={tabClass(tmdbKind === kind)}
                 >
                   {t(kind === "movie" ? "add.movie" : "add.tv")}
+                </button>
+              ))}
+            </div>
+          ) : source === "igdb" ? (
+            <div className="flex gap-2">
+              {(["playing", "watching"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setGameMode(mode)}
+                  className={tabClass(gameMode === mode)}
+                >
+                  {t(mode === "playing" ? "add.playing" : "add.watching")}
                 </button>
               ))}
             </div>
@@ -453,6 +502,24 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                         : handleAddTmdb(item)
                     }
                     onAddSeason={(n) => handleAddTmdbSeason(item, n)}
+                  />
+                ))}
+              </ul>
+            )
+          ) : source === "igdb" ? (
+            igdbSearch.data!.length === 0 ? (
+              <p className="py-8 text-center text-sm text-zinc-500">
+                {t("add.noResults")}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {igdbSearch.data!.map((game) => (
+                  <IgdbResultRow
+                    key={game.id}
+                    game={game}
+                    maybeInLibrary={titleInLibrary(libraryTitles, [game.name])}
+                    pending={pendingIgdbId === game.id}
+                    onAdd={(platform) => handleAddIgdb(game, platform)}
                   />
                 ))}
               </ul>

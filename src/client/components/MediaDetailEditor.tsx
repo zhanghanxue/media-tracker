@@ -14,7 +14,11 @@ import { REGION_FACETS } from "../lib/facets";
 import { newSeriesId } from "../lib/series";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import type { MediaPatch } from "../../worker/api/patch-media";
-import type { MediaStatus } from "../../worker/db/schema";
+import type {
+  MediaConsumptionMode,
+  MediaPlatform,
+  MediaStatus,
+} from "../../worker/db/schema";
 import type { MediaRow } from "../lib/types";
 
 const STATUSES: MediaStatus[] = [
@@ -23,6 +27,14 @@ const STATUSES: MediaStatus[] = [
   "completed",
   "dropped",
   "paused",
+];
+
+const PLATFORMS: MediaPlatform[] = [
+  "pc",
+  "console",
+  "handheld",
+  "mobile",
+  "arcade",
 ];
 
 // Long-press / right-click editor for a card: change status, set an arbitrary
@@ -56,8 +68,18 @@ export function MediaDetailEditor({
     setShowAniListPicker(false);
   };
 
-  const isGamePlaying =
-    media.type === "game" && media.consumption_mode === "playing";
+  const isGame = media.type === "game";
+  // Game-only fields, staged here and saved with the rest. Declared before
+  // isGamePlaying since the progress field's visibility depends on the mode.
+  const [consumptionMode, setConsumptionMode] = useState<MediaConsumptionMode>(
+    media.consumption_mode ?? "playing",
+  );
+  const [platform, setPlatform] = useState<MediaPlatform | "">(
+    media.platform ?? "",
+  );
+  // Reactive to the in-editor consumption-mode toggle so the progress field
+  // shows/hides as you switch Playing ↔ Watching.
+  const isGamePlaying = isGame && consumptionMode === "playing";
 
   const kind = mediaProgress(media).kind; // episodes | chapters | text | none
   const dimension = isGamePlaying
@@ -181,6 +203,14 @@ export function MediaDetailEditor({
       patch.region = region === "" ? null : region;
     }
 
+    if (isGame) {
+      if (consumptionMode !== media.consumption_mode) {
+        patch.consumption_mode = consumptionMode;
+      }
+      const plat = platform === "" ? null : platform;
+      if (plat !== (media.platform ?? null)) patch.platform = plat;
+    }
+
     if (isGamePlaying) {
       if (gameProgress !== (media.game_progress ?? "")) {
         patch.game_progress = gameProgress === "" ? null : gameProgress;
@@ -272,6 +302,45 @@ export function MediaDetailEditor({
             ))}
           </select>
         </label>
+
+        {isGame && (
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+                {t("editor.consumptionMode")}
+              </span>
+              <select
+                value={consumptionMode}
+                onChange={(e) =>
+                  setConsumptionMode(e.target.value as MediaConsumptionMode)
+                }
+                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+              >
+                <option value="playing">{t("editor.playing")}</option>
+                <option value="watching">{t("editor.watching")}</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+                {t("editor.platform")}
+              </span>
+              <select
+                value={platform}
+                onChange={(e) =>
+                  setPlatform(e.target.value as MediaPlatform | "")
+                }
+                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+              >
+                <option value="">{t("editor.regionNone")}</option>
+                {PLATFORMS.map((p) => (
+                  <option key={p} value={p}>
+                    {t(`platform.${p}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         {dimension && (
           <label className="block text-sm">

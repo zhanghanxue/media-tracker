@@ -17,10 +17,11 @@
 import type {
   MediaConsumptionMode,
   MediaInsert,
+  MediaPlatform,
   MediaRow,
   MediaStatus,
 } from "../db/schema";
-import { MEDIA_STATUSES } from "./validation";
+import { MEDIA_PLATFORMS, MEDIA_STATUSES } from "./validation";
 
 export interface MediaPatch {
   status?: MediaStatus;
@@ -30,6 +31,7 @@ export interface MediaPatch {
   total_chapters?: number | null;
   game_progress?: string | null;
   consumption_mode?: MediaConsumptionMode | null;
+  platform?: MediaPlatform | null;
   notes?: string | null;
   is_rewatching?: 0 | 1;
   title_chinese?: string | null;
@@ -73,6 +75,7 @@ const ALLOWED_FIELDS = new Set<string>([
   ...NULLABLE_INT_FIELDS,
   ...NULLABLE_STRING_FIELDS,
   "consumption_mode",
+  "platform",
   "is_rewatching",
 ]);
 
@@ -131,6 +134,15 @@ export function parsePatchMediaRequest(body: unknown): PatchResult {
       patch.consumption_mode = v as MediaConsumptionMode | null;
     } else {
       errors.push("consumption_mode must be 'playing', 'watching', or null");
+    }
+  }
+
+  if ("platform" in body) {
+    const v = body.platform;
+    if (v === null || MEDIA_PLATFORMS.includes(v as MediaPlatform)) {
+      patch.platform = v as MediaPlatform | null;
+    } else {
+      errors.push(`platform must be null or one of: ${MEDIA_PLATFORMS.join(", ")}`);
     }
   }
 

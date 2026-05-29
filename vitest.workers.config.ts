@@ -37,6 +37,10 @@ export default defineWorkersProject(async () => {
               // A dummy TMDB token so the tmdb routes are "configured" in tests;
               // the actual TMDB HTTP calls are intercepted via fetchMock.
               TMDB_API_KEY: "test-tmdb-token",
+              // Dummy Twitch/IGDB creds so the igdb routes are "configured";
+              // the Twitch token + IGDB HTTP calls are intercepted via fetchMock.
+              TWITCH_CLIENT_ID: "test-twitch-id",
+              TWITCH_CLIENT_SECRET: "test-twitch-secret",
             },
           },
         },

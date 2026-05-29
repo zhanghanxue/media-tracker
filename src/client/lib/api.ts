@@ -7,7 +7,7 @@ import {
   type AniListMediaType,
 } from "../../worker/sources/anilist";
 import type { BangumiSubject } from "../../worker/sources/bangumi";
-import type { TmdbAddRef } from "../../worker/api/validation";
+import type { TmdbAddRef, IgdbAddRef } from "../../worker/api/validation";
 import type { SortKey } from "../../worker/api/list-query";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { MediaListResponse, MediaRow } from "./types";
@@ -99,7 +99,8 @@ export async function searchAniListMedia(
 export type AddMediaInput =
   | { external_source: "anilist"; status: MediaStatus; media: AniListMedia }
   | { external_source: "bangumi"; status: MediaStatus; media: BangumiSubject }
-  | { external_source: "tmdb"; status: MediaStatus; media: TmdbAddRef };
+  | { external_source: "tmdb"; status: MediaStatus; media: TmdbAddRef }
+  | { external_source: "igdb"; status: MediaStatus; media: IgdbAddRef };
 
 export async function addMedia(input: AddMediaInput): Promise<MediaRow> {
   const res = await fetch("/api/media", {

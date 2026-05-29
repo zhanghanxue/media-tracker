@@ -91,10 +91,11 @@ export interface MediaVideoPart {
 }
 
 // The column subset every source mapper produces for an INSERT (the rest —
-// notes, platform, consumption_mode, game_progress, id, dates — fall to their
-// SQL defaults). aniListToMediaRow, bangumiToMediaRow and tmdbToMediaRow all
-// return this exact shape, and insertMedia consumes it. `runtime_minutes` joined
-// the set when TMDB (movies) shipped — anime/manga sources set it to null.
+// notes, game_progress, id, dates — fall to their SQL defaults). aniListToMediaRow,
+// bangumiToMediaRow, tmdbToMediaRow and igdbToMediaRow all return this exact
+// shape, and insertMedia consumes it. `runtime_minutes` joined the set when TMDB
+// (movies) shipped; `platform` + `consumption_mode` joined when IGDB (games)
+// shipped — every non-game mapper sets them null.
 export type MediaInsert = Pick<
   MediaRow,
   | "type"
@@ -113,6 +114,11 @@ export type MediaInsert = Pick<
   | "current_chapter"
   | "total_chapters"
   | "runtime_minutes"
+  // Game fields: only IGDB adds populate these at insert time (consumption_mode
+  // drives the card's tracking model, so a "playing" game must carry it from the
+  // start); every other mapper sets them null.
+  | "platform"
+  | "consumption_mode"
   // Series grouping: only TMDB season adds populate these at insert time; every
   // other mapper sets them null (a row starts ungrouped and is linked later).
   | "series_id"

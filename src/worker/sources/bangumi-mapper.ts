@@ -76,6 +76,8 @@ export function bangumiToMediaRow(
     current_chapter: null,
     total_chapters: totalChapters,
     runtime_minutes: null, // anime/manga don't track runtime; TMDB-only field.
+    platform: null, // game-only fields (IGDB)
+    consumption_mode: null,
     series_id: null,
     series_name: null,
     season_number: null,
