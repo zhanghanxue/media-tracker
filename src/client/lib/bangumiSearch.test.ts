@@ -9,14 +9,18 @@ describe("bangumiTypeFor", () => {
     expect(bangumiTypeFor("light_novel")).toBe(1);
   });
 
-  it("maps drama and movie to live-action (type 6)", () => {
+  it("maps drama / movie / variety to live-action (type 6)", () => {
     expect(bangumiTypeFor("drama")).toBe(6);
     expect(bangumiTypeFor("movie")).toBe(6);
+    expect(bangumiTypeFor("variety")).toBe(6);
   });
 
-  it("maps animation (and game) to anime (type 2)", () => {
+  it("maps game to Bangumi games (type 4)", () => {
+    expect(bangumiTypeFor("game")).toBe(4);
+  });
+
+  it("maps animation to anime (type 2)", () => {
     expect(bangumiTypeFor("animation")).toBe(2);
-    expect(bangumiTypeFor("game")).toBe(2);
   });
 });
 

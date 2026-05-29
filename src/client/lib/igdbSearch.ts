@@ -23,6 +23,21 @@ export function igdbYear(game: IgdbGame): number | null {
   return new Date(game.first_release_date * 1000).getUTCFullYear();
 }
 
+/**
+ * A CJK alternative title for the game (so a Chinese search result is
+ * recognizable next to its English `name`), or null. Picks the first alt-name
+ * that's predominantly CJK and isn't just the English name again.
+ */
+export function igdbChineseAlias(game: IgdbGame): string | null {
+  const candidates = (game.alternative_names ?? [])
+    .map((a) => (a.name ?? "").trim())
+    .filter((s) => (s.match(/[㐀-鿿]/g) ?? []).length >= 2); // ≥2 CJK ideographs
+  if (candidates.length === 0) return null;
+  // Prefer the cleanest title — the shortest tends to be the bare name
+  // (逸剑风云决) over a descriptive variant (逸剑风云决 (中日英韩文版) - …).
+  return candidates.sort((a, b) => a.length - b.length)[0]!;
+}
+
 /** The game's platforms as a short display string (e.g. "PC, PS5, Switch"). */
 export function igdbPlatformNames(game: IgdbGame): string {
   return (game.platforms ?? [])

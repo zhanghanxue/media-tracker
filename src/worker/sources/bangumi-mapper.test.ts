@@ -169,9 +169,23 @@ describe("bangumiToMediaRow — live-action (type 6)", () => {
   });
 });
 
+describe("bangumiToMediaRow — game (type 4)", () => {
+  it("maps a type-4 subject to a playing game (no episode/chapter tracking)", () => {
+    const row = bangumiToMediaRow(
+      book({ type: 4, name: "原神", name_cn: "原神", platform: undefined }),
+      "in_progress",
+    );
+    expect(row.type).toBe("game");
+    expect(row.consumption_mode).toBe("playing"); // default so the card shows progress text
+    expect(row.total_episodes).toBeNull();
+    expect(row.total_chapters).toBeNull();
+    expect(row.title_chinese).toBe("原神");
+  });
+});
+
 describe("bangumiToMediaRow — unsupported", () => {
-  it("throws on a game/music subject type", () => {
-    expect(() => bangumiToMediaRow(book({ type: 4 }), "planned")).toThrow(
+  it("throws on a music (type 3) subject", () => {
+    expect(() => bangumiToMediaRow(book({ type: 3 }), "planned")).toThrow(
       /Unsupported Bangumi subject type/,
     );
   });

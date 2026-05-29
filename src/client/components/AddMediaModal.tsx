@@ -313,7 +313,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : source === "bangumi" ? (
             <div className="flex gap-2">
-              {([2, 1, 6] as const).map((bt) => (
+              {([2, 1, 4, 6] as const).map((bt) => (
                 <button
                   key={bt}
                   type="button"
@@ -325,7 +325,9 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                       ? "add.anime"
                       : bt === 1
                         ? "add.manga"
-                        : "add.liveAction",
+                        : bt === 4
+                          ? "type.game"
+                          : "add.liveAction",
                   )}
                 </button>
               ))}

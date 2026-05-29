@@ -46,6 +46,9 @@ export interface IgdbGame {
   cover?: { id: number; image_id?: string } | null;
   first_release_date?: number | null;
   platforms?: IgdbPlatform[];
+  // Localized / regional titles — we surface a CJK one so a Chinese search
+  // result is recognizable next to its English `name` (逸剑风云决 / Wandering Sword).
+  alternative_names?: { name?: string }[];
   involved_companies?: IgdbInvolvedCompany[];
   summary?: string;
 }
@@ -128,7 +131,7 @@ async function getTwitchToken(options: IgdbClientOptions): Promise<string> {
 // --- IGDB queries ----------------------------------------------------------
 
 const GAME_FIELDS =
-  "name,cover.image_id,first_release_date,platforms.name,platforms.abbreviation";
+  "name,cover.image_id,first_release_date,platforms.name,platforms.abbreviation,alternative_names.name";
 
 export async function searchIgdb(
   query: string,

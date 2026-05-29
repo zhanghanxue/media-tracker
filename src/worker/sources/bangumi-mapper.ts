@@ -77,8 +77,10 @@ export function bangumiToMediaRow(
     current_chapter: null,
     total_chapters: totalChapters,
     runtime_minutes: null, // anime/manga don't track runtime; TMDB-only field.
-    platform: null, // game-only fields (IGDB)
-    consumption_mode: null,
+    platform: null, // platform is editor-set for Bangumi-direct games
+    // Default a Bangumi-direct game to "playing" so its card shows free-text
+    // progress (not episode counts); the editor can switch it to watching.
+    consumption_mode: type === "game" ? "playing" : null,
     series_id: null,
     series_name: null,
     season_number: null,
@@ -114,6 +116,7 @@ export function pickLatinAlias(infobox?: BangumiInfoboxItem[]): string | null {
 
 function bangumiToType(subject: BangumiSubject): MediaType {
   if (subject.type === 2) return "animation";
+  if (subject.type === 4) return "game";
   if (subject.type === 1) {
     return subject.platform && NOVEL_PLATFORMS.has(subject.platform)
       ? "light_novel"

@@ -31,10 +31,10 @@ export async function addByBangumiSubject(
   const detail = (await getBangumiSubject(subject.id)) ?? subject;
   const latinAlias = pickLatinAlias(detail.infobox);
 
-  // Live-action (type 6) has no AniList counterpart — AniList is anime/manga
-  // only — so skip resolution entirely and add Bangumi-direct. Books (1) resolve
-  // as MANGA, anime/donghua (2) as ANIME.
-  const isLiveAction = detail.type === 6;
+  // Live-action (6) and games (4) have no AniList counterpart — AniList is
+  // anime/manga only — so skip resolution entirely and add Bangumi-direct. Books
+  // (1) resolve as MANGA, anime/donghua (2) as ANIME.
+  const skipAniList = detail.type === 6 || detail.type === 4;
   const aniType = detail.type === 1 ? "MANGA" : "ANIME";
 
   // B: resolve to the canonical AniList entry. Search by the native name
@@ -46,7 +46,7 @@ export async function addByBangumiSubject(
     (q): q is string => !!q && q.trim().length > 0,
   );
   let anilistMatch = null;
-  if (!isLiveAction) {
+  if (!skipAniList) {
     for (const q of queries) {
       try {
         const results = await searchAniList(q, aniType, { perPage: 10 });

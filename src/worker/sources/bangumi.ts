@@ -22,9 +22,10 @@
 const BANGUMI_BASE = "https://api.bgm.tv";
 
 // Subject types we support. 1 = book (manga / light novel), 2 = anime / donghua,
-// 6 = real / 三次元 (live-action → drama / movie; the fallback for Chinese dramas
-// TMDB lacks or mis-models). 3 (music), 4 (game) remain out of scope.
-export type BangumiType = 1 | 2 | 6;
+// 4 = game (the CJK-search fallback for Chinese games IGDB lacks or that are hard
+// to recognize under English names), 6 = real / 三次元 (live-action → drama /
+// movie / variety). 3 (music) remains out of scope.
+export type BangumiType = 1 | 2 | 4 | 6;
 
 export interface BangumiImages {
   large: string | null;
