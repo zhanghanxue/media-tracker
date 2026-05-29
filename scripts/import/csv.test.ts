@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { csvField, toCsv } from "./csv";
+import { csvField, parseCsv, rowsToCsv, toCsv } from "./csv";
 
 describe("csvField", () => {
   it("leaves plain values unquoted", () => {
@@ -17,5 +17,21 @@ describe("toCsv", () => {
   it("joins headers + rows with CRLF and a trailing newline", () => {
     const csv = toCsv(["a", "b"], [["1", "x,y"]]);
     expect(csv).toBe('a,b\r\n1,"x,y"\r\n');
+  });
+});
+
+describe("parseCsv", () => {
+  it("round-trips quoted fields, embedded commas/quotes, CJK, and a BOM", () => {
+    const rows = [
+      ["line", "title", "alt"],
+      ["6", "海贼王, ONE PIECE", 'say "hi"'],
+      ["7", "唐朝诡事录", ""],
+    ];
+    const text = "﻿" + rowsToCsv(rows);
+    expect(parseCsv(text)).toEqual(rows);
+  });
+
+  it("keeps a blank line as an empty row (used as a section separator)", () => {
+    expect(parseCsv("a\r\n\r\nb\r\n")).toEqual([["a"], [""], ["b"]]);
   });
 });

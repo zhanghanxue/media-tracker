@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseList, type ParsedEntry } from "./import/parse";
 import { matchEntry, type MatchResult } from "./import/match";
 import { buildSearch } from "./import/sources";
-import { toCsv } from "./import/csv";
+import { parseCsv, rowsToCsv } from "./import/csv";
 
 interface Args {
   file: string;
@@ -28,10 +28,13 @@ interface Args {
   sample: boolean;
   perType: number;
   limit: number | null;
+  regroup: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { file: "娱乐列表.md", out: "review.csv", sample: false, perType: 5, limit: null };
+  const a: Args = {
+    file: "娱乐列表.md", out: "review.csv", sample: false, perType: 5, limit: null, regroup: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const v = argv[i];
     if (v === "--sample") a.sample = true;
@@ -39,8 +42,40 @@ function parseArgs(argv: string[]): Args {
     else if (v === "--out") a.out = argv[++i] ?? a.out;
     else if (v === "--per") a.perType = Number(argv[++i] ?? a.perType);
     else if (v === "--limit") a.limit = Number(argv[++i] ?? "0") || null;
+    // Re-group an existing review.csv by bucket (no re-matching).
+    else if (v === "--regroup") a.regroup = argv[++i] ?? "review.csv";
   }
   return a;
+}
+
+// review.csv is grouped by bucket so you can work top-down: the auto-fillable
+// matches first, then the ones to confirm, then the no-matches to add by hand —
+// each block separated by blank rows and a label, with its own column headers.
+const BUCKET_ORDER = ["auto", "review", "none"] as const;
+const BUCKET_LABEL: Record<string, string> = {
+  auto: "AUTO · high-confidence, ready to add",
+  review: "REVIEW · confirm or pick the right match",
+  none: "NONE · no match found — add by hand",
+};
+const BUCKET_COL = 10; // index of "bucket" in REVIEW_HEADERS
+
+function groupRows(header: string[], data: string[][]): string[][] {
+  const out: string[][] = [];
+  let first = true;
+  for (const bucket of BUCKET_ORDER) {
+    const group = data.filter((r) => r[BUCKET_COL] === bucket);
+    if (group.length === 0) continue;
+    if (!first) out.push([], [], []); // a few blank rows between blocks
+    first = false;
+    out.push([`── ${BUCKET_LABEL[bucket]} (${group.length}) ──`]);
+    out.push(header);
+    out.push(...group);
+  }
+  return out;
+}
+
+function writeReview(rows: string[][], out: string): void {
+  writeFileSync(out, "﻿" + rowsToCsv(groupRows(REVIEW_HEADERS, rows)), "utf8");
 }
 
 function loadDotenv(path: string): Record<string, string> {
@@ -117,6 +152,20 @@ function toRow(r: MatchResult): string[] {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
+  // --regroup: just re-order an existing review.csv by bucket (no matching).
+  if (args.regroup) {
+    const parsed = parseCsv(readFileSync(args.regroup, "utf8")).filter((r) =>
+      r.some((c) => c !== ""),
+    );
+    const header = parsed.find((r) => r[0] === "line") ?? REVIEW_HEADERS;
+    const data = parsed.filter(
+      (r) => r.length > BUCKET_COL && (BUCKET_ORDER as readonly string[]).includes(r[BUCKET_COL]!),
+    );
+    writeFileSync(args.regroup, "﻿" + rowsToCsv(groupRows(header, data)), "utf8");
+    console.error("regrouped", args.regroup, "→", tally(data, (r) => r[BUCKET_COL]!));
+    return;
+  }
+
   if (!existsSync(args.file)) {
     console.error(`List file not found: ${args.file}`);
     process.exit(1);
@@ -156,8 +205,7 @@ async function main() {
   }
   const secs = ((Date.now() - started) / 1000).toFixed(1);
 
-  const csv = toCsv(REVIEW_HEADERS, results.map(toRow));
-  writeFileSync(args.out, "﻿" + csv, "utf8");
+  writeReview(results.map(toRow), args.out);
 
   console.error(`\n\nDone in ${secs}s → ${args.out}`);
   console.error("by bucket:", tally(results, (r) => r.bucket));
