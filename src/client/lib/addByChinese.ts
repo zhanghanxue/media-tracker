@@ -30,6 +30,11 @@ export async function addByBangumiSubject(
   // Bangumi-direct row's romaji title (via the mapper).
   const detail = (await getBangumiSubject(subject.id)) ?? subject;
   const latinAlias = pickLatinAlias(detail.infobox);
+
+  // Live-action (type 6) has no AniList counterpart — AniList is anime/manga
+  // only — so skip resolution entirely and add Bangumi-direct. Books (1) resolve
+  // as MANGA, anime/donghua (2) as ANIME.
+  const isLiveAction = detail.type === 6;
   const aniType = detail.type === 1 ? "MANGA" : "ANIME";
 
   // B: resolve to the canonical AniList entry. Search by the native name
@@ -41,13 +46,15 @@ export async function addByBangumiSubject(
     (q): q is string => !!q && q.trim().length > 0,
   );
   let anilistMatch = null;
-  for (const q of queries) {
-    try {
-      const results = await searchAniList(q, aniType, { perPage: 10 });
-      anilistMatch = pickAniListMatch(targets, results);
-      if (anilistMatch) break;
-    } catch {
-      // AniList unreachable for this query → try the next / fall through.
+  if (!isLiveAction) {
+    for (const q of queries) {
+      try {
+        const results = await searchAniList(q, aniType, { perPage: 10 });
+        anilistMatch = pickAniListMatch(targets, results);
+        if (anilistMatch) break;
+      } catch {
+        // AniList unreachable for this query → try the next / fall through.
+      }
     }
   }
 

@@ -77,8 +77,62 @@ describe("bangumiToMediaRow — book (type 1)", () => {
   });
 });
 
+describe("bangumiToMediaRow — live-action (type 6)", () => {
+  // A Chinese drama season: native name is already Chinese, name_cn often empty,
+  // platform 华语剧, eps 0 (Bangumi doesn't always fill it). Mirrors the live probe.
+  function live(overrides: Partial<BangumiSubject> = {}): BangumiSubject {
+    return {
+      id: 613761,
+      type: 6,
+      name: "唐朝诡事录之蜀道",
+      name_cn: "",
+      platform: "华语剧",
+      eps: 0,
+      total_episodes: 0,
+      images: { large: "https://lain.bgm.tv/d.jpg", common: null, medium: null, small: null, grid: null },
+      ...overrides,
+    };
+  }
+
+  it("maps a 华语剧 platform to a China drama with episode tracking", () => {
+    const row = bangumiToMediaRow(live(), "in_progress");
+    expect(row.type).toBe("drama");
+    expect(row.region).toBe("china"); // inferred from the live-action platform
+    expect(row.title_native).toBe("唐朝诡事录之蜀道");
+    expect(row.total_chapters).toBeNull(); // dramas track episodes, not chapters
+  });
+
+  it("fills total_episodes from eps/total_episodes when present", () => {
+    expect(bangumiToMediaRow(live({ total_episodes: 40 }), "planned").total_episodes).toBe(40);
+    expect(bangumiToMediaRow(live({ eps: 36, total_episodes: 0 }), "planned").total_episodes).toBe(36);
+    expect(bangumiToMediaRow(live(), "planned").total_episodes).toBeNull(); // eps 0 → unknown
+  });
+
+  it("maps a 电影 platform to a movie that tracks neither episodes nor chapters", () => {
+    const row = bangumiToMediaRow(
+      live({ platform: "电影", name: "流浪地球", name_cn: "" }),
+      "completed",
+    );
+    expect(row.type).toBe("movie");
+    expect(row.total_episodes).toBeNull();
+    expect(row.total_chapters).toBeNull();
+  });
+
+  it("infers region from other live-action platforms", () => {
+    expect(bangumiToMediaRow(live({ platform: "日剧" }), "planned").region).toBe("japan");
+    expect(bangumiToMediaRow(live({ platform: "韩剧" }), "planned").region).toBe("korea");
+    expect(bangumiToMediaRow(live({ platform: "欧美剧" }), "planned").region).toBe("usa");
+    expect(bangumiToMediaRow(live({ platform: "" }), "planned").region).toBeNull();
+  });
+
+  it("lets an explicit region override the platform inference", () => {
+    const row = bangumiToMediaRow(live(), "planned", "taiwan");
+    expect(row.region).toBe("taiwan");
+  });
+});
+
 describe("bangumiToMediaRow — unsupported", () => {
-  it("throws on a game/music/real subject type", () => {
+  it("throws on a game/music subject type", () => {
     expect(() => bangumiToMediaRow(book({ type: 4 }), "planned")).toThrow(
       /Unsupported Bangumi subject type/,
     );

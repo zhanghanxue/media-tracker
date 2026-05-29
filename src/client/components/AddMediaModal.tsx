@@ -19,7 +19,7 @@ import {
   type TmdbSearchResultRaw,
 } from "../lib/tmdbSearch";
 import { addMedia, type AniListSearchItem, type SearchType } from "../lib/api";
-import type { BangumiSubject } from "../../worker/sources/bangumi";
+import type { BangumiSubject, BangumiType } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
 
 // Where to search. AniList = English/Japanese (canonical, anime/manga). Bangumi =
@@ -48,6 +48,8 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [source, setSource] = useState<Source>("anilist");
   const [searchType, setSearchType] = useState<SearchType>("ANIME");
+  // Bangumi has its own sub-type: 2 anime/donghua · 1 book · 6 live-action (影视).
+  const [bgmType, setBgmType] = useState<BangumiType>(2);
   const [tmdbKind, setTmdbKind] = useState<TmdbKind>("movie");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<MediaStatus>("planned");
@@ -58,7 +60,6 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     source === "anilist" ? debouncedQuery : "",
     searchType,
   );
-  const bgmType = searchType === "MANGA" ? 1 : 2;
   const bgmSearch = useBangumiSearch(
     source === "bangumi" ? debouncedQuery : "",
     bgmType,
@@ -221,7 +222,8 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {/* Sub-type toggle: Anime/Manga for AniList+Bangumi, Movie/TV for TMDB */}
+          {/* Sub-type toggle: Movie/TV for TMDB; Anime/Book/影视 for Bangumi
+              (it also catches live-action); Anime/Manga for AniList. */}
           {source === "tmdb" ? (
             <div className="flex gap-2">
               {(["movie", "tv"] as const).map((kind) => (
@@ -232,6 +234,25 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                   className={tabClass(tmdbKind === kind)}
                 >
                   {t(kind === "movie" ? "add.movie" : "add.tv")}
+                </button>
+              ))}
+            </div>
+          ) : source === "bangumi" ? (
+            <div className="flex gap-2">
+              {([2, 1, 6] as const).map((bt) => (
+                <button
+                  key={bt}
+                  type="button"
+                  onClick={() => setBgmType(bt)}
+                  className={tabClass(bgmType === bt)}
+                >
+                  {t(
+                    bt === 2
+                      ? "add.anime"
+                      : bt === 1
+                        ? "add.manga"
+                        : "add.liveAction",
+                  )}
                 </button>
               ))}
             </div>

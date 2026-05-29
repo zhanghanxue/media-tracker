@@ -15,7 +15,9 @@ import type { MediaType } from "../../worker/db/schema";
 
 /** Map a library row's type to the Bangumi subject type to search. */
 export function bangumiTypeFor(mediaType: MediaType): BangumiType {
-  return mediaType === "manga" || mediaType === "light_novel" ? 1 : 2;
+  if (mediaType === "manga" || mediaType === "light_novel") return 1; // book
+  if (mediaType === "drama" || mediaType === "movie") return 6; // live-action
+  return 2; // animation (+ game, which has no Chinese-title use case)
 }
 
 /** Best cover URL across the two response shapes (v0 `image` vs legacy

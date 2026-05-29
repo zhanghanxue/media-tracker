@@ -40,17 +40,25 @@ export function bangumiToMediaRow(
 ): BangumiMapperResult {
   const type = bangumiToType(subject);
 
-  const isAnime = type === "animation";
-  const totalEpisodes = isAnime ? firstPositive(subject.total_episodes, subject.eps) : null;
-  // Books track by chapter/volume; Bangumi puts the count in `eps`, falling back
-  // to `volumes`. We store it in total_chapters (no separate volume column).
-  const totalChapters = isAnime ? null : firstPositive(subject.eps, subject.volumes);
+  // Episodic (anime + live-action drama) tracks episodes; books track chapters;
+  // films track neither. Bangumi puts the book count in `eps`, falling back to
+  // `volumes`; we store it in total_chapters (no separate volume column).
+  const tracksEpisodes = type === "animation" || type === "drama";
+  const tracksChapters = type === "manga" || type === "light_novel";
+  const totalEpisodes = tracksEpisodes
+    ? firstPositive(subject.total_episodes, subject.eps)
+    : null;
+  const totalChapters = tracksChapters
+    ? firstPositive(subject.eps, subject.volumes)
+    : null;
 
   const nameCn = subject.name_cn?.trim();
 
   return {
     type,
-    region,
+    // Caller-supplied region wins; otherwise infer for live-action (type 6),
+    // whose platform encodes the country far more reliably than anime.
+    region: region ?? regionFromBangumi(subject),
     title_native: subject.name || null,
     title_romaji: null, // Bangumi has no romaji (the Japanese reading) field
     // …but its 别名 (aliases) infobox usually carries the localized ENGLISH title
@@ -108,8 +116,37 @@ function bangumiToType(subject: BangumiSubject): MediaType {
       ? "light_novel"
       : "manga";
   }
-  // 3 (music), 4 (game), 6 (real) aren't part of the Chinese-title feature.
+  if (subject.type === 6) {
+    // Live-action (三次元). A film is flagged via platform (电影 / 剧场版); every
+    // other platform (电视剧 / 华语剧 / 日剧 / 综艺 / …) is episodic → drama.
+    return subject.platform && /电影|剧场版/.test(subject.platform)
+      ? "movie"
+      : "drama";
+  }
+  // 3 (music), 4 (game) aren't part of this feature.
   throw new Error(`Unsupported Bangumi subject type: ${subject.type}`);
+}
+
+/**
+ * Best-effort region for a live-action (type 6) subject, read from its
+ * `platform` string. Unlike anime — where Bangumi-direct adds catch Japanese
+ * works and "china" would mislabel them (hence the null default) — type-6
+ * platforms reliably encode the country (华语剧 / 日剧 / 韩剧 / 欧美剧 …), and the
+ * user's live-action library is overwhelmingly Chinese drama, so seeding a
+ * region here saves manual work. Substring match (platforms vary), null when
+ * unrecognized or non-type-6 → the editor assigns. Verified live: 华语剧 → china.
+ */
+function regionFromBangumi(subject: BangumiSubject): MediaRow["region"] {
+  if (subject.type !== 6) return null;
+  const p = subject.platform ?? "";
+  if (/华语|国产|大陆|中国/.test(p)) return "china";
+  if (/台/.test(p)) return "taiwan";
+  if (/港/.test(p)) return "hong_kong";
+  if (/日剧|日本/.test(p)) return "japan";
+  if (/韩剧|韩国|韓/.test(p)) return "korea";
+  if (/英剧/.test(p)) return "uk";
+  if (/美剧|欧美/.test(p)) return "usa";
+  return null;
 }
 
 function firstPositive(...values: (number | null | undefined)[]): number | null {
