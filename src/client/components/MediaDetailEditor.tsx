@@ -240,7 +240,7 @@ export function MediaDetailEditor({
       role="presentation"
     >
       <div
-        className="w-full max-w-sm space-y-4 rounded-lg bg-zinc-900 p-4 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
+        className="max-h-[85vh] w-full max-w-sm space-y-4 overflow-y-auto rounded-lg bg-zinc-900 p-4 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
