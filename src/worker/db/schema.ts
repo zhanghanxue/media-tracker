@@ -57,6 +57,12 @@ export interface MediaRow {
   external_source: ExternalSource | null;
   notes: string | null;
 
+  // Series grouping (migration 0002). NULL = ungrouped. series_name is
+  // denormalized onto every member; season_number orders members in a group.
+  series_id: string | null;
+  series_name: string | null;
+  season_number: number | null;
+
   current_episode: number | null;
   total_episodes: number | null;
   current_chapter: number | null;
@@ -81,9 +87,10 @@ export interface MediaVideoPart {
 }
 
 // The column subset every source mapper produces for an INSERT (the rest —
-// notes, platform, consumption_mode, game_progress, runtime_minutes, id, dates —
-// fall to their SQL defaults). Both aniListToMediaRow and bangumiToMediaRow
-// return this exact shape, and insertMedia consumes it.
+// notes, platform, consumption_mode, game_progress, id, dates — fall to their
+// SQL defaults). aniListToMediaRow, bangumiToMediaRow and tmdbToMediaRow all
+// return this exact shape, and insertMedia consumes it. `runtime_minutes` joined
+// the set when TMDB (movies) shipped — anime/manga sources set it to null.
 export type MediaInsert = Pick<
   MediaRow,
   | "type"
@@ -101,4 +108,5 @@ export type MediaInsert = Pick<
   | "total_episodes"
   | "current_chapter"
   | "total_chapters"
+  | "runtime_minutes"
 >;

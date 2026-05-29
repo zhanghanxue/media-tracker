@@ -13,6 +13,17 @@ import type {
 } from "../db/schema";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
+import type { TmdbKind } from "../sources/tmdb";
+
+// TMDB add contract: the browser only sends the id + kind; the Worker (which
+// holds the key) fetches full detail and maps authoritatively. `id` is the
+// TMDB numeric id; `media_type` discriminates movie vs tv (their ids collide).
+export interface TmdbAddRef {
+  id: number;
+  media_type: TmdbKind;
+}
+
+export const TMDB_KINDS = ["movie", "tv"] as const satisfies readonly TmdbKind[];
 
 export const EXTERNAL_SOURCES = [
   "anilist",
@@ -47,7 +58,7 @@ export const MEDIA_STATUSES = [
 export interface CreateMediaRequest {
   external_source: ExternalSource;
   status: MediaStatus;
-  media: AniListMedia | BangumiSubject;
+  media: AniListMedia | BangumiSubject | TmdbAddRef;
 }
 
 export type ValidationResult =
@@ -103,6 +114,10 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
       if (typeof media.type !== "number") {
         errors.push("media.type must be a number");
       }
+    } else if (source === "tmdb") {
+      if (!TMDB_KINDS.includes(media.media_type as TmdbKind)) {
+        errors.push(`media.media_type must be one of: ${TMDB_KINDS.join(", ")}`);
+      }
     }
     // Other (valid-but-unimplemented) sources skip shape checks here; the route
     // returns 501 before any mapping runs.
@@ -117,7 +132,7 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
     value: {
       external_source: source as ExternalSource,
       status: status as MediaStatus,
-      media: media as unknown as AniListMedia | BangumiSubject,
+      media: media as unknown as AniListMedia | BangumiSubject | TmdbAddRef,
     },
   };
 }

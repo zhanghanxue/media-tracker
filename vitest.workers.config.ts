@@ -34,6 +34,9 @@ export default defineWorkersProject(async () => {
               // Bypass CF Access JWT verification in tests — same switch local
               // dev uses. The auth middleware short-circuits when this is "1".
               LOCAL_DEV_BYPASS: "1",
+              // A dummy TMDB token so the tmdb routes are "configured" in tests;
+              // the actual TMDB HTTP calls are intercepted via fetchMock.
+              TMDB_API_KEY: "test-tmdb-token",
             },
           },
         },

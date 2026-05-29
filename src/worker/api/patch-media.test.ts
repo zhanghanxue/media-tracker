@@ -84,6 +84,30 @@ describe("parsePatchMediaRequest — invalid", () => {
     expect(parsePatchMediaRequest({ is_rewatching: true }).ok).toBe(false);
   });
 
+  it("accepts series link fields (id + name + season_number)", () => {
+    const r = parsePatchMediaRequest({
+      series_id: "series:abc",
+      series_name: "进击的巨人",
+      season_number: 2,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.series_id).toBe("series:abc");
+      expect(r.value.series_name).toBe("进击的巨人");
+      expect(r.value.season_number).toBe(2);
+    }
+  });
+
+  it("accepts nulling series fields (unlink)", () => {
+    const r = parsePatchMediaRequest({
+      series_id: null,
+      series_name: null,
+      season_number: null,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.series_id).toBeNull();
+  });
+
   it("collects all errors at once", () => {
     const r = parsePatchMediaRequest({
       status: "banana",
@@ -120,6 +144,9 @@ function row(overrides: Partial<MediaRow>): MediaRow {
     consumption_mode: null,
     game_progress: null,
     runtime_minutes: null,
+    series_id: null,
+    series_name: null,
+    season_number: null,
     date_added: "2026-01-01",
     date_updated: "2026-01-01",
     ...overrides,
@@ -226,6 +253,7 @@ function insert(overrides: Partial<MediaInsert>): MediaInsert {
     total_episodes: null,
     current_chapter: null,
     total_chapters: null,
+    runtime_minutes: null,
     ...overrides,
   };
 }

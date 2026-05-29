@@ -67,6 +67,7 @@ export function bangumiToMediaRow(
     total_episodes: totalEpisodes,
     current_chapter: null,
     total_chapters: totalChapters,
+    runtime_minutes: null, // anime/manga don't track runtime; TMDB-only field.
   };
 }
 

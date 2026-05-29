@@ -239,8 +239,8 @@ Explicitly NOT in v1:
 
 | Out of scope | Notes / future plan |
 |---|---|
-| TMDB integration (movies, drama, Western cartoons) | v2; added after v1 dogfood completes |
-| IGDB integration (games metadata) | v2 |
+| ~~TMDB integration (movies, drama, Western cartoons)~~ | ✅ DONE 2026-05-29 — Worker-side (key-bearing) source; movies → `movie`, TV → `drama` |
+| IGDB integration (games metadata) | v2 — next up |
 | Bangumi integration (Chinese title enrichment + donghua metadata) | v2 enricher |
 | Offline-first / device-local data + sync | Not planned; server-of-record is the architectural choice |
 | Genre / tag filtering | API returns genres for free, but exposing as filters deferred |

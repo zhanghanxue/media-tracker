@@ -30,6 +30,7 @@ function row(externalId: string): AniListMapperResult {
     total_episodes: null,
     current_chapter: null,
     total_chapters: null,
+    runtime_minutes: null,
   };
 }
 

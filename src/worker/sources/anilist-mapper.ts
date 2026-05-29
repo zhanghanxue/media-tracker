@@ -11,11 +11,11 @@
 import type {
   ExternalSource,
   MediaInsert,
-  MediaRegion,
   MediaStatus,
   MediaType,
 } from "../db/schema";
 import type { AniListFormat, AniListMedia } from "./anilist";
+import { countryToRegion } from "./country-region";
 
 const ANIME_FORMATS = new Set<AniListFormat>([
   "TV",
@@ -29,19 +29,6 @@ const ANIME_FORMATS = new Set<AniListFormat>([
 
 const MANGA_FORMATS = new Set<AniListFormat>(["MANGA", "ONE_SHOT"]);
 
-// ISO-3166 alpha-2 → canonical region string. Unknown codes fall through to
-// lowercase so we never lose data (e.g. "TH" → "th" until someone curates).
-const COUNTRY_TO_REGION: Record<string, MediaRegion> = {
-  JP: "japan",
-  CN: "china",
-  KR: "korea",
-  TW: "taiwan",
-  HK: "hong_kong",
-  US: "usa",
-  GB: "uk",
-  TH: "thailand",
-};
-
 // The shared insert shape (schema.ts). Kept as a named alias because callers
 // and tests reference AniListMapperResult specifically.
 export type AniListMapperResult = MediaInsert;
@@ -52,10 +39,7 @@ export function aniListToMediaRow(
 ): AniListMapperResult {
   const type = formatToType(detail.format);
 
-  const region = detail.countryOfOrigin
-    ? (COUNTRY_TO_REGION[detail.countryOfOrigin] ??
-      detail.countryOfOrigin.toLowerCase())
-    : null;
+  const region = countryToRegion(detail.countryOfOrigin);
 
   const totalEpisodes = type === "animation" ? detail.episodes : null;
   // Light novels rarely populate `chapters`; volumes is the better signal.
@@ -83,6 +67,7 @@ export function aniListToMediaRow(
     total_episodes: totalEpisodes,
     current_chapter: null,
     total_chapters: totalChapters,
+    runtime_minutes: null, // AniList doesn't model runtime; TMDB-only field.
   };
 }
 

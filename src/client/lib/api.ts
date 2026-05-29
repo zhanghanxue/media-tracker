@@ -7,6 +7,7 @@ import {
   type AniListMediaType,
 } from "../../worker/sources/anilist";
 import type { BangumiSubject } from "../../worker/sources/bangumi";
+import type { TmdbAddRef } from "../../worker/api/validation";
 import type { SortKey } from "../../worker/api/list-query";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { MediaListResponse, MediaRow } from "./types";
@@ -32,12 +33,11 @@ export function buildMediaQueryString(filters: MediaFilters): string {
   if (filters.sort && filters.sort !== "date_updated") {
     params.set("sort", filters.sort);
   }
-  // Title A–Z is re-sorted client-side (locale/pinyin collation), so fetch the
-  // whole library (server clamps at 200) rather than just the first page —
-  // otherwise we'd only alphabetize one server page.
-  if (filters.sort === "title") {
-    params.set("limit", "200");
-  }
+  // Fetch the whole library (server clamps at 200): client-side title collation
+  // (pinyin) AND series grouping both need every row, not just one server page —
+  // a series' members could otherwise be split across pages. Fine for a
+  // single-user library; revisit if it ever outgrows 200.
+  params.set("limit", "200");
   return params.toString();
 }
 
@@ -94,9 +94,12 @@ export async function searchAniListMedia(
 }
 
 // The browser fetched the source object and POSTs it; the Worker maps + persists.
+// TMDB is the exception: the browser sends only { id, media_type } and the Worker
+// (key holder) fetches full detail before mapping.
 export type AddMediaInput =
   | { external_source: "anilist"; status: MediaStatus; media: AniListMedia }
-  | { external_source: "bangumi"; status: MediaStatus; media: BangumiSubject };
+  | { external_source: "bangumi"; status: MediaStatus; media: BangumiSubject }
+  | { external_source: "tmdb"; status: MediaStatus; media: TmdbAddRef };
 
 export async function addMedia(input: AddMediaInput): Promise<MediaRow> {
   const res = await fetch("/api/media", {

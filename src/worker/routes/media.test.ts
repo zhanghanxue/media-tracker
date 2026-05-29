@@ -11,6 +11,7 @@ import app from "../index";
 import { findById, findByExternalRef, insertMedia } from "../db/media-repository";
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import detailAnimeFixture from "../../../test/fixtures/anilist/detail_anime_101922.json";
+import tmdbMovieDetailFixture from "../../../test/fixtures/tmdb/detail_movie_496243.json";
 
 const COVER_ORIGIN = "https://s4.anilist.co";
 const COVER_PATH =
@@ -159,8 +160,8 @@ describe("POST /api/media — validation & routing errors", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 501 for a valid-but-unimplemented source", async () => {
-    const res = await post({ ...VALID_BODY, external_source: "tmdb" });
+  it("returns 501 for a valid-but-unimplemented source (igdb)", async () => {
+    const res = await post({ ...VALID_BODY, external_source: "igdb" });
     expect(res.status).toBe(501);
   });
 });
@@ -244,6 +245,118 @@ describe("POST /api/media — Bangumi source", () => {
   });
 });
 
+// --- TMDB source (movies / drama; key-bearing → Worker fetches detail) ------
+
+const TMDB_API_ORIGIN = "https://api.themoviedb.org";
+const TMDB_IMG_ORIGIN = "https://image.tmdb.org";
+const TMDB_POSTER_PATH = "/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg";
+
+// The browser POSTs only id + kind; the Worker fetches the rest from TMDB.
+const TMDB_BODY = {
+  external_source: "tmdb",
+  status: "completed",
+  media: { id: 496243, media_type: "movie" },
+};
+
+// Intercept the Worker → TMDB detail call (Authorization header not matched).
+function mockTmdbMovieDetail(): void {
+  fetchMock
+    .get(TMDB_API_ORIGIN)
+    .intercept({
+      method: "GET",
+      path: "/3/movie/496243",
+      query: { append_to_response: "translations" },
+    })
+    .reply(200, JSON.stringify(tmdbMovieDetailFixture), {
+      headers: { "content-type": "application/json" },
+    });
+}
+
+function mockTmdbPoster(): void {
+  fetchMock
+    .get(TMDB_IMG_ORIGIN)
+    .intercept({ method: "GET", path: TMDB_POSTER_PATH })
+    .reply(200, "fake-image-bytes", {
+      headers: { "content-type": "image/jpeg" },
+    });
+}
+
+describe("POST /api/media — TMDB source", () => {
+  it("fetches detail, maps a movie row, and returns 201", async () => {
+    mockTmdbMovieDetail();
+    mockTmdbPoster();
+
+    const res = await post(TMDB_BODY);
+    expect(res.status).toBe(201);
+
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.type).toBe("movie");
+    expect(row.region).toBe("korea"); // origin_country KR
+    expect(row.external_source).toBe("tmdb");
+    expect(row.external_id).toBe("movie:496243"); // kind-prefixed
+    expect(row.title_native).toBe("기생충");
+    expect(row.title_english).toBe("Parasite");
+    expect(row.title_chinese).toBe("寄生虫"); // zh-CN, not the zh-TW variant
+    expect(row.runtime_minutes).toBe(133);
+  });
+
+  it("re-hosts the poster to R2 with a colon-free key", async () => {
+    mockTmdbMovieDetail();
+    mockTmdbPoster();
+
+    const res = await post(TMDB_BODY);
+    const row = (await res.json()) as Record<string, unknown>;
+
+    expect(row.cover_url).toBe(
+      "https://covers.zhanghanxue.com/covers/tmdb/movie_496243.jpg",
+    );
+    const head = await env.COVERS.head("covers/tmdb/movie_496243.jpg");
+    expect(head).not.toBeNull();
+  });
+
+  it("dedups on the kind-prefixed key (re-add costs no TMDB call)", async () => {
+    mockTmdbMovieDetail();
+    mockTmdbPoster();
+
+    const first = await post(TMDB_BODY);
+    expect(first.status).toBe(201);
+
+    // Second add short-circuits at the conflict probe — no detail/poster fetch,
+    // so we register no further interceptors (assertNoPendingInterceptors passes).
+    const second = await post(TMDB_BODY);
+    expect(second.status).toBe(409);
+  });
+
+  it("returns 404 when TMDB has no such id", async () => {
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({
+        method: "GET",
+        path: "/3/movie/999999999",
+        query: { append_to_response: "translations" },
+      })
+      .reply(404, JSON.stringify({ status_code: 34 }), {
+        headers: { "content-type": "application/json" },
+      });
+
+    const res = await post({
+      external_source: "tmdb",
+      status: "planned",
+      media: { id: 999999999, media_type: "movie" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when media_type is invalid", async () => {
+    const res = await post({
+      external_source: "tmdb",
+      status: "planned",
+      media: { id: 1, media_type: "podcast" },
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 // --- GET routes ------------------------------------------------------------
 // These exercise the read path only (no AniList / R2), so no fetchMock
 // interceptors are registered. Data is seeded directly via the repository.
@@ -264,6 +377,7 @@ const BASE_ROW: AniListMapperResult = {
   total_episodes: 26,
   current_chapter: null,
   total_chapters: null,
+  runtime_minutes: null,
 };
 
 async function get(path: string): Promise<Response> {
