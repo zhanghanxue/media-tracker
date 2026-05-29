@@ -21,6 +21,13 @@ export interface CoverKey {
 export interface UploadCoverOptions {
   /** Override the global fetch (used in tests). */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Re-fetch and overwrite even when the R2 object already exists. The default
+   * (false) short-circuits on an existing object — correct for adds, where the
+   * key is content-stable. The "refresh cover" action sets this so a newly
+   * picked origin-language poster actually replaces the cached bytes.
+   */
+  overwrite?: boolean;
 }
 
 const DEFAULT_EXTENSION = "jpg";
@@ -41,10 +48,13 @@ export async function uploadCoverToR2(
   const publicUrl = buildPublicUrl(env, objectKey);
 
   // Idempotency: if the object already exists, skip the fetch+put entirely.
-  // R2's `head()` is a single HEAD request — cheaper than blind put.
-  const existing = await env.COVERS.head(objectKey);
-  if (existing !== null) {
-    return publicUrl;
+  // R2's `head()` is a single HEAD request — cheaper than blind put. Skipped
+  // when `overwrite` is set (the refresh path wants to replace the bytes).
+  if (!options.overwrite) {
+    const existing = await env.COVERS.head(objectKey);
+    if (existing !== null) {
+      return publicUrl;
+    }
   }
 
   let response: Response;

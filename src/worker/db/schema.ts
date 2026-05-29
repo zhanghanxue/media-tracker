@@ -63,6 +63,10 @@ export interface MediaRow {
   series_name: string | null;
   season_number: number | null;
 
+  // Per-series cover override (migration 0003), denormalized onto every member.
+  // NULL = no override → the grouped card falls back to its first member's cover.
+  series_cover_url: string | null;
+
   current_episode: number | null;
   total_episodes: number | null;
   current_chapter: number | null;

@@ -661,3 +661,78 @@ describe("DELETE /api/media/:id", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// --- POST /api/media/:id/refresh-cover (TMDB origin-poster re-pull) ---------
+
+async function refreshCover(id: number | string): Promise<Response> {
+  return app.request(`/api/media/${id}/refresh-cover`, { method: "POST" }, env);
+}
+
+// A TMDB movie row already in the library (seeded directly — no R2 object yet).
+const TMDB_MOVIE_ROW: AniListMapperResult = {
+  ...BASE_ROW,
+  type: "movie",
+  external_source: "tmdb",
+  external_id: "movie:496243",
+  cover_url: "https://covers.zhanghanxue.com/covers/tmdb/movie_496243.jpg",
+};
+
+describe("POST /api/media/:id/refresh-cover", () => {
+  it("re-pulls the TMDB poster, overwrites R2, and cache-busts the URL", async () => {
+    mockTmdbMovieDetail();
+    mockTmdbPoster();
+    const inserted = await insertMedia(env.DB, TMDB_MOVIE_ROW);
+
+    const res = await refreshCover(inserted.id);
+    expect(res.status).toBe(200);
+    const row = (await res.json()) as Record<string, unknown>;
+
+    const cover = row.cover_url as string;
+    expect(cover).toContain(
+      "https://covers.zhanghanxue.com/covers/tmdb/movie_496243.jpg",
+    );
+    expect(cover).toMatch(/[?&]v=\d+$/); // cache-busted so the browser refetches
+    const head = await env.COVERS.head("covers/tmdb/movie_496243.jpg");
+    expect(head).not.toBeNull();
+  });
+
+  it("returns 422 for a non-TMDB item (nothing to refresh)", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW); // anilist
+    const res = await refreshCover(inserted.id);
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 404 for a missing id", async () => {
+    const res = await refreshCover(999999);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 422 when the external_id isn't a parseable TMDB ref", async () => {
+    const inserted = await insertMedia(env.DB, {
+      ...TMDB_MOVIE_ROW,
+      external_id: "garbage",
+    });
+    const res = await refreshCover(inserted.id);
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 404 when TMDB no longer has the id", async () => {
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/movie\/999999999/ })
+      .reply(404, JSON.stringify({ status_code: 34 }), {
+        headers: { "content-type": "application/json" },
+      });
+    const inserted = await insertMedia(env.DB, {
+      ...TMDB_MOVIE_ROW,
+      external_id: "movie:999999999",
+    });
+    const res = await refreshCover(inserted.id);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for a non-numeric id", async () => {
+    const res = await refreshCover("abc");
+    expect(res.status).toBe(400);
+  });
+});

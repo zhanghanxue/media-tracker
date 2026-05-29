@@ -4,9 +4,14 @@ import { useTranslation } from "react-i18next";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { MediaRow } from "../lib/types";
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
+import { useSetSeriesCover } from "../hooks/useSetSeriesCover";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import { mediaProgress, nextIncrementPatch } from "../lib/progress";
-import { compareSeasons, seriesDisplayName } from "../lib/series";
+import {
+  compareSeasons,
+  seriesDisplayCover,
+  seriesDisplayName,
+} from "../lib/series";
 import { MediaDetailEditor } from "./MediaDetailEditor";
 
 const STATUS_STYLES: Record<MediaStatus, string> = {
@@ -25,10 +30,17 @@ function rollupStatus(members: MediaRow[]): MediaStatus {
   return "in_progress";
 }
 
-export function SeriesCard({ members }: { seriesId: string; members: MediaRow[] }) {
+export function SeriesCard({
+  seriesId,
+  members,
+}: {
+  seriesId: string;
+  members: MediaRow[];
+}) {
   const { t, i18n } = useTranslation();
   const lang = uiLangFromI18n(i18n.language);
   const update = useUpdateMedia();
+  const setCover = useSetSeriesCover();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MediaRow | null>(null);
 
@@ -52,7 +64,17 @@ export function SeriesCard({ members }: { seriesId: string; members: MediaRow[] 
       }
     });
   };
-  const cover = sorted.find((m) => m.cover_url)?.cover_url ?? null;
+  // Cover: the pinned override (if any member carries series_cover_url) wins,
+  // else the first member's art. `override` is the explicit pin, used to toggle.
+  const cover = seriesDisplayCover(members);
+  const override = members.find((m) => m.series_cover_url)?.series_cover_url ?? null;
+  // Pick (or unpin) a member's art as the collection cover. Clicking the member
+  // that's already the explicit pin clears it (revert to the first member's art).
+  const pickCover = (m: MediaRow) => {
+    if (!m.cover_url) return;
+    const next = override === m.cover_url ? null : m.cover_url;
+    setCover.mutate({ seriesId, coverUrl: next });
+  };
   const status = rollupStatus(members);
 
   // Episode/chapter rollup across members that track that dimension.
@@ -160,6 +182,21 @@ export function SeriesCard({ members }: { seriesId: string; members: MediaRow[] 
                     >
                       {displayTitle(m, lang)}
                     </button>
+                    {m.cover_url && (
+                      <button
+                        type="button"
+                        onClick={() => pickCover(m)}
+                        aria-label={t("series.setCover")}
+                        title={t("series.setCover")}
+                        className={`shrink-0 text-xs ${
+                          cover === m.cover_url
+                            ? "text-amber-400"
+                            : "text-zinc-600 hover:text-zinc-300 light:text-zinc-300 light:hover:text-zinc-600"
+                        }`}
+                      >
+                        {cover === m.cover_url ? "★" : "☆"}
+                      </button>
+                    )}
                     <span
                       className={`shrink-0 rounded px-1 py-0.5 text-[10px] ${STATUS_STYLES[m.status]}`}
                     >

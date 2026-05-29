@@ -1,0 +1,15 @@
+-- Per-series cover override ("pick collection cover").
+--
+-- By default a grouped SeriesCard shows its first member's poster (usually
+-- season 1). This lets the user pin a specific member's art as the whole
+-- series' cover instead.
+--
+--   series_cover_url  the chosen cover URL, DENORMALIZED onto every member of
+--                     the series (same pattern as series_name) so the list
+--                     query needs no join and a change updates all members at
+--                     once (PATCH /api/series/:id { cover_url }). NULL = no
+--                     override → the card falls back to the first member's cover.
+--
+-- Nullable + additive: existing rows default to NULL (no override), so every
+-- current row and mapper stays valid.
+ALTER TABLE media ADD COLUMN series_cover_url TEXT;
