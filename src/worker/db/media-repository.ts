@@ -29,6 +29,9 @@ const INSERT_COLUMNS = [
   "current_chapter",
   "total_chapters",
   "runtime_minutes",
+  "series_id",
+  "series_name",
+  "season_number",
 ] as const;
 
 const INSERT_SQL = `
@@ -210,6 +213,9 @@ export async function insertMedia(
       row.current_chapter,
       row.total_chapters,
       row.runtime_minutes,
+      row.series_id,
+      row.series_name,
+      row.season_number,
     )
     .first<MediaRow>();
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { useAniListSearch } from "../hooks/useAniListSearch";
@@ -9,15 +10,15 @@ import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
+import { TmdbResultRow } from "./TmdbResultRow";
 import {
-  tmdbCover,
+  fetchTmdbSeasons,
   tmdbDisplayTitle,
   tmdbOriginalTitle,
-  tmdbYear,
   type TmdbKind,
   type TmdbSearchResultRaw,
 } from "../lib/tmdbSearch";
-import type { AniListSearchItem, SearchType } from "../lib/api";
+import { addMedia, type AniListSearchItem, type SearchType } from "../lib/api";
 import type { BangumiSubject } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
 
@@ -70,6 +71,9 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const addMutation = useAddMedia();
   const addByChinese = useAddByChinese();
   const libraryTitles = useLibraryTitleIndex();
+  const queryClient = useQueryClient();
+  // The show whose seasons are being bulk-added (disables its button meanwhile).
+  const [addingAllId, setAddingAllId] = useState<number | null>(null);
 
   // Close on Escape.
   useEffect(() => {
@@ -100,6 +104,46 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       status,
       media: { id: item.id, media_type: tmdbKind },
     });
+  };
+  const handleAddTmdbSeason = (item: TmdbSearchResultRaw, seasonNumber: number) => {
+    addMutation.mutate({
+      external_source: "tmdb",
+      status,
+      media: { id: item.id, media_type: "tv", season_number: seasonNumber },
+    });
+  };
+
+  // The TMDB add currently in flight (show or season), to disable its button.
+  const pendingTmdb =
+    addMutation.isPending && addMutation.variables?.external_source === "tmdb"
+      ? addMutation.variables.media
+      : undefined;
+
+  // "Add" on a TV show splits it into seasons (what the user wants — not one row
+  // with all episodes summed). A single-season show is added as one plain row.
+  const handleAddTmdbShow = async (item: TmdbSearchResultRaw) => {
+    setAddingAllId(item.id);
+    try {
+      const seasons = await fetchTmdbSeasons(item.id);
+      if (seasons.length <= 1) {
+        await addMedia({
+          external_source: "tmdb",
+          status,
+          media: { id: item.id, media_type: "tv" },
+        });
+      } else {
+        for (const s of seasons) {
+          await addMedia({
+            external_source: "tmdb",
+            status,
+            media: { id: item.id, media_type: "tv", season_number: s.season_number },
+          });
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ["media"] });
+    } finally {
+      setAddingAllId(null);
+    }
   };
 
   const search =
@@ -233,6 +277,11 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto p-4">
+          {(addMutation.isError || addByChinese.isError) && (
+            <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 light:text-red-600">
+              {t("add.addFailed")}
+            </p>
+          )}
           {debouncedQuery.trim().length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
               {emptyMessage}
@@ -286,27 +335,33 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                       )}
                       <p className="text-xs text-zinc-500">{metaLine(item)}</p>
                     </div>
-                    <div className="flex shrink-0 items-center">
-                      {item.alreadyAdded ||
-                      titleInLibrary(libraryTitles, [
-                        item.title.native,
-                        item.title.romaji,
-                        item.title.english,
-                      ]) ? (
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {item.alreadyAdded ? (
                         <span className="rounded px-2 py-1 text-xs text-zinc-500">
                           {t("add.alreadyAdded")}
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleAdd(item)}
-                          disabled={pendingAddId === item.id}
-                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                        >
-                          {pendingAddId === item.id
-                            ? t("add.adding")
-                            : t("add.addButton")}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleAdd(item)}
+                            disabled={pendingAddId === item.id}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                          >
+                            {pendingAddId === item.id
+                              ? t("add.adding")
+                              : t("add.addButton")}
+                          </button>
+                          {titleInLibrary(libraryTitles, [
+                            item.title.native,
+                            item.title.romaji,
+                            item.title.english,
+                          ]) && (
+                            <span className="text-[10px] text-amber-400 light:text-amber-600">
+                              {t("add.maybeInLibrary")}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </li>
@@ -320,64 +375,35 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
               </p>
             ) : (
               <ul className="space-y-2">
-                {tmdbSearch.data!.map((item) => {
-                  const cover = tmdbCover(item);
-                  const display = tmdbDisplayTitle(item);
-                  const original = tmdbOriginalTitle(item);
-                  const year = tmdbYear(item);
-                  const inLibrary = titleInLibrary(libraryTitles, [
-                    display,
-                    original,
-                  ]);
-                  return (
-                    <li
-                      key={item.id}
-                      className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100"
-                    >
-                      <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-800 light:bg-zinc-100">
-                        {cover && (
-                          <img
-                            src={cover}
-                            alt=""
-                            loading="lazy"
-                            className="h-full w-full object-cover"
-                          />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{display}</p>
-                        {original && original !== display && (
-                          <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
-                            {original}
-                          </p>
-                        )}
-                        <p className="text-xs text-zinc-500">
-                          {[t(tmdbKind === "movie" ? "add.movie" : "add.tv"), year]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center">
-                        {inLibrary ? (
-                          <span className="rounded px-2 py-1 text-xs text-zinc-500">
-                            {t("add.alreadyAdded")}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleAddTmdb(item)}
-                            disabled={pendingAddId === item.id}
-                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                          >
-                            {pendingAddId === item.id
-                              ? t("add.adding")
-                              : t("add.addButton")}
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
+                {tmdbSearch.data!.map((item) => (
+                  <TmdbResultRow
+                    key={item.id}
+                    item={item}
+                    kind={tmdbKind}
+                    maybeInLibrary={titleInLibrary(libraryTitles, [
+                      tmdbDisplayTitle(item),
+                      tmdbOriginalTitle(item),
+                    ])}
+                    pendingShow={
+                      tmdbKind === "tv"
+                        ? addingAllId === item.id
+                        : pendingTmdb?.id === item.id &&
+                          pendingTmdb.season_number === undefined
+                    }
+                    pendingSeason={
+                      pendingTmdb?.id === item.id &&
+                      pendingTmdb.season_number != null
+                        ? pendingTmdb.season_number
+                        : null
+                    }
+                    onAddShow={() =>
+                      tmdbKind === "tv"
+                        ? handleAddTmdbShow(item)
+                        : handleAddTmdb(item)
+                    }
+                    onAddSeason={(n) => handleAddTmdbSeason(item, n)}
+                  />
+                ))}
               </ul>
             )
           ) : bgmSearch.data!.length === 0 ? (
@@ -413,22 +439,21 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                         </p>
                       )}
                     </div>
-                    <div className="flex shrink-0 items-center">
-                      {titleInLibrary(libraryTitles, [s.name, s.name_cn]) ? (
-                        <span className="rounded px-2 py-1 text-xs text-zinc-500">
-                          {t("add.alreadyAdded")}
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAddBangumi(s)}
+                        disabled={pendingBangumiId === s.id}
+                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                      >
+                        {pendingBangumiId === s.id
+                          ? t("add.adding")
+                          : t("add.addButton")}
+                      </button>
+                      {titleInLibrary(libraryTitles, [s.name, s.name_cn]) && (
+                        <span className="text-[10px] text-amber-400 light:text-amber-600">
+                          {t("add.maybeInLibrary")}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleAddBangumi(s)}
-                          disabled={pendingBangumiId === s.id}
-                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                        >
-                          {pendingBangumiId === s.id
-                            ? t("add.adding")
-                            : t("add.addButton")}
-                        </button>
                       )}
                     </div>
                   </li>

@@ -56,6 +56,20 @@ export interface TmdbProductionCountry {
   name: string;
 }
 
+// A poster from the /images endpoint, tagged by language (iso_639_1 null =
+// textless art). We prefer the poster whose language matches the work's origin
+// so the cover shows the native-title key art, not the English/international one.
+export interface TmdbImage {
+  file_path: string;
+  iso_639_1: string | null;
+  vote_average?: number;
+  vote_count?: number;
+}
+
+export interface TmdbImages {
+  posters?: TmdbImage[];
+}
+
 // The unified detail shape (movie + tv fields both optional; `kind` tells the
 // mapper which to read). Only the fields the mapper consumes are typed.
 export interface TmdbDetail {
@@ -75,6 +89,7 @@ export interface TmdbDetail {
   number_of_seasons?: number | null;
   episode_run_time?: number[];
   first_air_date?: string;
+  seasons?: TmdbSeasonSummary[];
 
   // shared
   original_language?: string;
@@ -82,6 +97,30 @@ export interface TmdbDetail {
   poster_path?: string | null;
   origin_country?: string[];
   translations?: { translations: TmdbTranslationItem[] };
+  images?: TmdbImages;
+}
+
+// A season as it appears in a show detail's `seasons[]`. season_number 0 is the
+// "specials" bucket; some entries are upcoming (episode_count 0 / no air_date).
+export interface TmdbSeasonSummary {
+  season_number: number;
+  name?: string;
+  episode_count?: number;
+  air_date?: string | null;
+  poster_path?: string | null;
+}
+
+// The dedicated season endpoint (/tv/{id}/season/{n}?append_to_response=translations):
+// carries the season name localized across languages + the episode list.
+export interface TmdbSeasonDetail {
+  id: number;
+  season_number: number;
+  name?: string;
+  poster_path?: string | null;
+  air_date?: string | null;
+  episodes?: unknown[];
+  translations?: { translations: TmdbTranslationItem[] };
+  images?: TmdbImages;
 }
 
 export interface TmdbClientOptions {
@@ -93,7 +132,17 @@ export interface TmdbClientOptions {
   retries?: number;
   /** Initial backoff in ms, doubles per retry. Defaults to 500. */
   backoffMs?: number;
+  /** Localize top-level fields (e.g. season names) — e.g. "zh-CN". Detail/season
+   * translations are always appended regardless, so titles stay multilingual. */
+  language?: string;
+  /** Also fetch posters across languages (append images + include_image_language)
+   * so the mapper can pick the origin-language cover. Off by default (the seasons
+   * picker doesn't need the heavier payload). */
+  images?: boolean;
 }
+
+// Poster languages we ask TMDB for, covering the library's origins + textless.
+const IMAGE_LANGUAGES = "zh,ja,ko,en,null";
 
 export class TmdbError extends Error {
   constructor(
@@ -138,11 +187,31 @@ export async function getTmdbDetail(
 ): Promise<TmdbDetail | null> {
   // Default language (en-US) gives a sensible English top-level title; the
   // `translations` block carries every localized title (we mine zh + en + keep
-  // original_* for native).
-  const params = new URLSearchParams({ append_to_response: "translations" });
+  // original_* for native). An explicit `language` localizes season names etc.
+  const params = new URLSearchParams({
+    append_to_response: options.images ? "translations,images" : "translations",
+  });
+  if (options.images) params.set("include_image_language", IMAGE_LANGUAGES);
+  if (options.language) params.set("language", options.language);
   return tmdbRequest<TmdbDetail>(`/${kind}/${id}?${params.toString()}`, options, {
     notFoundIsNull: true,
   });
+}
+
+export async function getTmdbSeason(
+  showId: number,
+  seasonNumber: number,
+  options: TmdbClientOptions,
+): Promise<TmdbSeasonDetail | null> {
+  const params = new URLSearchParams({
+    append_to_response: options.images ? "translations,images" : "translations",
+  });
+  if (options.images) params.set("include_image_language", IMAGE_LANGUAGES);
+  return tmdbRequest<TmdbSeasonDetail>(
+    `/tv/${showId}/season/${seasonNumber}?${params.toString()}`,
+    options,
+    { notFoundIsNull: true },
+  );
 }
 
 async function tmdbRequest<T>(

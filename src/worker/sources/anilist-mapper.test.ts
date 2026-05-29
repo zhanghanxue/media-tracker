@@ -168,3 +168,31 @@ describe("aniListToMediaRow — passthrough fields", () => {
     expect(aniListToMediaRow(animeDetail, "in_progress").is_rewatching).toBe(0);
   });
 });
+
+describe("aniListToMediaRow — null format fallback (NOT_YET_RELEASED)", () => {
+  const base: AniListMedia = {
+    id: 171630,
+    type: "ANIME",
+    format: null,
+    episodes: 7,
+    chapters: null,
+    volumes: null,
+    season: null,
+    seasonYear: null,
+    countryOfOrigin: "JP",
+    title: { romaji: "THE ONE PIECE", english: "THE ONE PIECE", native: "THE ONE PIECE" },
+    coverImage: { extraLarge: null },
+  };
+
+  it("classifies a null-format ANIME via `type` → animation", () => {
+    expect(aniListToMediaRow(base, "planned").type).toBe("animation");
+  });
+
+  it("classifies a null-format MANGA via `type` → manga", () => {
+    expect(aniListToMediaRow({ ...base, type: "MANGA" }, "planned").type).toBe("manga");
+  });
+
+  it("throws only when BOTH format and type are missing", () => {
+    expect(() => aniListToMediaRow({ ...base, type: null }, "planned")).toThrow();
+  });
+});

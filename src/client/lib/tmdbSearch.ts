@@ -50,3 +50,19 @@ export function tmdbYear(item: TmdbSearchResultRaw): string | null {
   const date = item.release_date ?? item.first_air_date;
   return date ? date.slice(0, 4) : null;
 }
+
+export interface TmdbSeason {
+  season_number: number;
+  name: string | null;
+  episode_count: number | null;
+  air_date: string | null;
+  poster_path: string | null;
+}
+
+/** The real seasons (>= 1) of a TMDB tv show, for the Add-modal season picker. */
+export async function fetchTmdbSeasons(showId: number): Promise<TmdbSeason[]> {
+  const res = await fetch(`/api/tmdb/tv/${showId}/seasons`);
+  if (!res.ok) throw new Error(`TMDB seasons failed (HTTP ${res.status})`);
+  const data = (await res.json()) as { seasons: TmdbSeason[] };
+  return data.seasons;
+}

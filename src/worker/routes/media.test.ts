@@ -262,11 +262,7 @@ const TMDB_BODY = {
 function mockTmdbMovieDetail(): void {
   fetchMock
     .get(TMDB_API_ORIGIN)
-    .intercept({
-      method: "GET",
-      path: "/3/movie/496243",
-      query: { append_to_response: "translations" },
-    })
+    .intercept({ method: "GET", path: /^\/3\/movie\/496243/ })
     .reply(200, JSON.stringify(tmdbMovieDetailFixture), {
       headers: { "content-type": "application/json" },
     });
@@ -330,11 +326,7 @@ describe("POST /api/media — TMDB source", () => {
   it("returns 404 when TMDB has no such id", async () => {
     fetchMock
       .get(TMDB_API_ORIGIN)
-      .intercept({
-        method: "GET",
-        path: "/3/movie/999999999",
-        query: { append_to_response: "translations" },
-      })
+      .intercept({ method: "GET", path: /^\/3\/movie\/999999999/ })
       .reply(404, JSON.stringify({ status_code: 34 }), {
         headers: { "content-type": "application/json" },
       });
@@ -354,6 +346,64 @@ describe("POST /api/media — TMDB source", () => {
       media: { id: 1, media_type: "podcast" },
     });
     expect(res.status).toBe(400);
+  });
+
+  it("adds a single season pre-linked into the show's series", async () => {
+    const showResp = {
+      id: 211089,
+      original_name: "唐朝诡事录",
+      original_language: "zh",
+      origin_country: ["CN"],
+      poster_path: "/show.jpg",
+      translations: {
+        translations: [
+          { iso_639_1: "en", iso_3166_1: "US", data: { name: "Strange Tales of Tang Dynasty" } },
+          { iso_639_1: "zh", iso_3166_1: "CN", data: { name: "唐朝诡事录" } },
+        ],
+      },
+      seasons: [
+        { season_number: 1, name: "第 1 季", episode_count: 36, poster_path: "/s1.jpg" },
+        { season_number: 2, name: "西行", episode_count: 40, poster_path: "/s2.jpg" },
+      ],
+    };
+    const seasonResp = {
+      id: 999,
+      season_number: 2,
+      name: "To The West",
+      poster_path: "/s2.jpg",
+      translations: {
+        translations: [
+          { iso_639_1: "en", iso_3166_1: "US", data: { name: "To The West" } },
+          { iso_639_1: "zh", iso_3166_1: "CN", data: { name: "西行" } },
+        ],
+      },
+    };
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/tv\/211089\?/ })
+      .reply(200, JSON.stringify(showResp), { headers: { "content-type": "application/json" } });
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/tv\/211089\/season\/2/ })
+      .reply(200, JSON.stringify(seasonResp), { headers: { "content-type": "application/json" } });
+    fetchMock
+      .get(TMDB_IMG_ORIGIN)
+      .intercept({ method: "GET", path: "/t/p/w500/s2.jpg" })
+      .reply(200, "img", { headers: { "content-type": "image/jpeg" } });
+
+    const res = await post({
+      external_source: "tmdb",
+      status: "in_progress",
+      media: { id: 211089, media_type: "tv", season_number: 2 },
+    });
+    expect(res.status).toBe(201);
+    const row = (await res.json()) as Record<string, unknown>;
+    expect(row.type).toBe("drama");
+    expect(row.external_id).toBe("tv:211089:s2");
+    expect(row.series_id).toBe("tmdb:tv:211089");
+    expect(row.season_number).toBe(2);
+    expect(row.total_episodes).toBe(40);
+    expect(row.title_chinese).toBe("唐朝诡事录 西行");
   });
 });
 
@@ -378,6 +428,9 @@ const BASE_ROW: AniListMapperResult = {
   current_chapter: null,
   total_chapters: null,
   runtime_minutes: null,
+  series_id: null,
+  series_name: null,
+  season_number: null,
 };
 
 async function get(path: string): Promise<Response> {

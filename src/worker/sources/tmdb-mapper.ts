@@ -17,7 +17,31 @@
 
 import type { ExternalSource, MediaInsert, MediaStatus } from "../db/schema";
 import { countryToRegion } from "./country-region";
-import { tmdbPosterUrl, type TmdbDetail, type TmdbKind } from "./tmdb";
+import {
+  tmdbPosterUrl,
+  type TmdbDetail,
+  type TmdbImage,
+  type TmdbKind,
+  type TmdbSeasonDetail,
+  type TmdbSeasonSummary,
+} from "./tmdb";
+
+// Pick the poster whose language matches the work's origin (so the cover shows
+// the native-title key art — e.g. the Chinese poster for a Chinese drama, not
+// the English one). Highest-rated wins; falls back to TMDB's default poster.
+function pickPosterPath(
+  posters: TmdbImage[] | undefined,
+  originalLanguage: string | null,
+  fallback: string | null,
+): string | null {
+  if (originalLanguage && posters && posters.length > 0) {
+    const matching = posters
+      .filter((p) => p.iso_639_1 === originalLanguage)
+      .sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0));
+    if (matching[0]) return matching[0].file_path;
+  }
+  return fallback;
+}
 
 export type TmdbMapperResult = MediaInsert;
 
@@ -56,7 +80,13 @@ export function tmdbToMediaRow(
     title_chinese: titleChinese,
     status,
     is_rewatching: 0,
-    cover_url: tmdbPosterUrl(detail.poster_path),
+    cover_url: tmdbPosterUrl(
+      pickPosterPath(
+        detail.images?.posters,
+        detail.original_language ?? null,
+        detail.poster_path ?? null,
+      ),
+    ),
     external_id: `${kind}:${detail.id}`,
     external_source: "tmdb" satisfies ExternalSource,
     current_episode: null,
@@ -64,7 +94,101 @@ export function tmdbToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: runtimeMinutes,
+    series_id: null,
+    series_name: null,
+    season_number: null,
   };
+}
+
+// Map ONE season of a TMDB tv show to a row, PRE-LINKED into the show's series.
+// Titles are composed as "{show title} {season name}" per language so the
+// grouped card's auto-derived name (common prefix of members) resolves to the
+// show title in each language. series_name stays null (auto-derive); the season's
+// own number drives ordering. `summary` is the matching entry from the show's
+// seasons[] (episode_count + poster); `season` is the dedicated season fetch
+// (localized name translations).
+export function tmdbSeasonToMediaRow(
+  show: TmdbDetail,
+  summary: TmdbSeasonSummary,
+  season: TmdbSeasonDetail | null,
+  status: MediaStatus,
+): TmdbMapperResult {
+  const n = summary.season_number;
+  const showNative = show.original_name ?? null;
+  const showEnglish = pickTranslation(show, "tv", "en", null);
+  const showChinese = pickTranslation(show, "tv", "zh", "CN");
+
+  // Season name per language (from the season endpoint's translations), falling
+  // back to the show-detail season summary name.
+  const seasonEnglish = pickSeasonName(season, "en", null) ?? summary.name ?? null;
+  // Fall back to the summary name too (else a failed season fetch would drop the
+  // season label from the Chinese title and collapse every season to the show name).
+  const seasonChinese = pickSeasonName(season, "zh", "CN") ?? summary.name ?? null;
+  // Native season name = the show's original language, else the default name.
+  const seasonNative =
+    pickSeasonName(season, show.original_language ?? "", null) ??
+    season?.name ??
+    summary.name ??
+    null;
+
+  const region = countryToRegion(
+    show.origin_country?.[0] ??
+      show.production_countries?.[0]?.iso_3166_1 ??
+      null,
+  );
+
+  return {
+    type: "drama",
+    region,
+    title_native: compose(showNative, seasonNative),
+    title_romaji: null,
+    title_english: compose(showEnglish, seasonEnglish),
+    title_chinese: compose(showChinese, seasonChinese),
+    status,
+    is_rewatching: 0,
+    // Prefer the origin-language SEASON poster; fall back to the season summary
+    // poster, then the season/show default.
+    cover_url: tmdbPosterUrl(
+      pickPosterPath(
+        season?.images?.posters,
+        show.original_language ?? null,
+        summary.poster_path ?? season?.poster_path ?? show.poster_path ?? null,
+      ),
+    ),
+    external_id: `tv:${show.id}:s${n}`,
+    external_source: "tmdb" satisfies ExternalSource,
+    current_episode: null,
+    total_episodes: summary.episode_count ?? season?.episodes?.length ?? null,
+    current_chapter: null,
+    total_chapters: null,
+    runtime_minutes: null,
+    series_id: `tmdb:tv:${show.id}`,
+    series_name: null, // auto-derived per language from members' titles
+    season_number: n,
+  };
+}
+
+// "{show} {season}" with blanks handled; if only one is present, use it alone.
+function compose(show: string | null, season: string | null): string | null {
+  const s = blankToNull(show);
+  const se = blankToNull(season);
+  if (s && se) return `${s} ${se}`;
+  return s ?? se;
+}
+
+function pickSeasonName(
+  season: TmdbSeasonDetail | null,
+  lang: string,
+  preferRegion: string | null,
+): string | null {
+  if (!season || !lang) return null;
+  const all = season.translations?.translations ?? [];
+  const matches = all.filter((t) => t.iso_639_1 === lang);
+  if (matches.length === 0) return null;
+  const chosen =
+    (preferRegion && matches.find((t) => t.iso_3166_1 === preferRegion)) ||
+    matches[0]!;
+  return blankToNull(chosen.data?.name ?? null);
 }
 
 // Find the localized title for `lang`, preferring a specific region (e.g. "CN"

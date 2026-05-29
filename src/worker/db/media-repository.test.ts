@@ -35,6 +35,9 @@ const ANIME_ROW: AniListMapperResult = {
   current_chapter: null,
   total_chapters: null,
   runtime_minutes: null,
+  series_id: null,
+  series_name: null,
+  season_number: null,
 };
 
 // Each test starts from an empty table so row counts / lookups are deterministic.

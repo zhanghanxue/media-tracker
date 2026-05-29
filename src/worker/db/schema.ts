@@ -109,4 +109,9 @@ export type MediaInsert = Pick<
   | "current_chapter"
   | "total_chapters"
   | "runtime_minutes"
+  // Series grouping: only TMDB season adds populate these at insert time; every
+  // other mapper sets them null (a row starts ungrouped and is linked later).
+  | "series_id"
+  | "series_name"
+  | "season_number"
 >;
