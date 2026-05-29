@@ -1,6 +1,0 @@
-  id=470667 type=2 name=THE ONE PIECE name_cn=航海王
-  id=1867 type=2 name=ONE PIECE 倒せ!海賊ギャンザック name_cn=航海王：打倒！海贼强萨克！
-  id=369191 type=6 name=ONE PIECE: INTO THE GRAND LINE name_cn=航海王 第二季
-  id=577186 type=6 name=ONE PIECE: THE BATTLE OF ALABASTA name_cn=航海王 第三季
-  id=1869 type=2 name=ONE PIECE the movie name_cn=航海王：黄金岛大冒险
-  id=90789 type=2 name=ONE PIECE 守れ! 最後の大舞台 name_cn=航海王：坚守最后的大舞台

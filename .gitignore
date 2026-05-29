@@ -18,3 +18,7 @@ Screenshot*.png
 
 # Personal media list (private dogfood data, not a project deliverable).
 娱乐列表.md
+
+# Scratch files from live API probes (instrument-don't-guess), never committed.
+_*.txt
+_*.json
