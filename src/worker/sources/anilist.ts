@@ -85,6 +85,34 @@ const DETAIL_QUERY = `
   }
 `;
 
+// Only the relation fields the auto-grouping needs: the edge's relationType
+// (SEQUEL / PREQUEL / …) and the neighbour's id + format (to keep linking to
+// season-like TV entries, not recap movies / OVAs / spin-offs).
+const RELATIONS_QUERY = `
+  query ($id: Int!) {
+    Media(id: $id) {
+      relations {
+        edges {
+          relationType
+          node { id type format }
+        }
+      }
+    }
+  }
+`;
+
+// A single relation edge from a Media's `relations` connection. relationType is
+// AniList's RelationType enum (SEQUEL | PREQUEL | SIDE_STORY | ALTERNATIVE | …);
+// we keep it a string since we only switch on a couple of values.
+export interface AniListRelationEdge {
+  relationType: string;
+  node: {
+    id: number;
+    type: AniListMediaType | null;
+    format: AniListFormat | null;
+  };
+}
+
 export interface AniListClientOptions {
   /** Override fetch (used in tests). Defaults to global fetch. */
   fetch?: typeof globalThis.fetch;
@@ -128,6 +156,22 @@ export async function getAniListDetail(
     options,
   );
   return response.Media;
+}
+
+/**
+ * Fetch a media's relation edges (SEQUEL / PREQUEL / …). Runs in the browser
+ * like the other AniList calls. Returns [] when the id has no relations (or the
+ * Media is null). Used by the series auto-grouping: when adding an anime whose
+ * sequel/prequel TV entry is already in the library, link it into that series.
+ */
+export async function getAniListRelations(
+  id: number,
+  options: AniListClientOptions = {},
+): Promise<AniListRelationEdge[]> {
+  const response = await graphqlRequest<{
+    Media: { relations?: { edges?: AniListRelationEdge[] } } | null;
+  }>(RELATIONS_QUERY, { id }, options);
+  return response.Media?.relations?.edges ?? [];
 }
 
 async function graphqlRequest<T>(
