@@ -222,6 +222,23 @@ export async function setCoverUrl(
 }
 
 /**
+ * Set a single row's `total_episodes` (the "update ongoing episodes" refresh:
+ * a currently-airing show's latest count). Returns the updated row, or null if
+ * no row has that id. Does NOT bump date_updated — refreshing the count across
+ * many ongoing shows at once shouldn't flood the top of a date-sorted list.
+ */
+export async function setTotalEpisodes(
+  db: D1Database,
+  id: number,
+  total: number,
+): Promise<MediaRow | null> {
+  return db
+    .prepare("UPDATE media SET total_episodes = ? WHERE id = ? RETURNING *")
+    .bind(total, id)
+    .first<MediaRow>();
+}
+
+/**
  * Insert a mapped row and return the persisted record (with DB-assigned `id`,
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.

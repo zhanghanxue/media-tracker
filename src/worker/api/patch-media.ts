@@ -187,6 +187,29 @@ export function applyAutoComplete(
 }
 
 /**
+ * Auto-transition a "planned" item to "in_progress" the first time progress is
+ * recorded — so tapping +1 (or setting an episode/chapter) on a planned item
+ * moves it to in-progress without a manual status change. Like applyAutoComplete:
+ * skipped when the caller set `status` explicitly (or applyAutoComplete already
+ * set it — completing trumps starting), and one-way (only planned → in_progress,
+ * never the reverse). Triggers on a positive current_episode/current_chapter.
+ */
+export function applyAutoStart(
+  existing: MediaRow,
+  patch: MediaPatch,
+): MediaPatch {
+  if (patch.status !== undefined) return patch; // explicit / already auto-completed
+  if (existing.status !== "planned") return patch;
+
+  const ep = patch.current_episode;
+  const ch = patch.current_chapter;
+  const started =
+    (typeof ep === "number" && ep > 0) || (typeof ch === "number" && ch > 0);
+
+  return started ? { ...patch, status: "in_progress" } : patch;
+}
+
+/**
  * The inverse of applyAutoComplete: when the caller marks an item "completed",
  * fill the progress count up to its known total (so you don't have to set the
  * episode/chapter by hand). Fills whichever dimension has a known total

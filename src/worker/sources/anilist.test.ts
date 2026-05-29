@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AniListError,
   getAniListDetail,
+  getAniListLatestEpisode,
   getAniListRelations,
   searchAniList,
 } from "./anilist";
@@ -170,6 +171,35 @@ describe("getAniListRelations", () => {
       .mockResolvedValue(jsonResponse({ data: { Media: null } }));
 
     expect(await getAniListRelations(1, { fetch: fetchMock })).toEqual([]);
+  });
+});
+
+describe("getAniListLatestEpisode", () => {
+  it("returns episodes for a finished show", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ data: { Media: { episodes: 26, status: "FINISHED", nextAiringEpisode: null } } }),
+      );
+    expect(await getAniListLatestEpisode(101922, { fetch: fetchMock })).toBe(26);
+  });
+
+  it("returns nextAiringEpisode - 1 for an ongoing show (One Piece)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ data: { Media: { episodes: null, status: "RELEASING", nextAiringEpisode: { episode: 1164 } } } }),
+      );
+    expect(await getAniListLatestEpisode(21, { fetch: fetchMock })).toBe(1163);
+  });
+
+  it("returns null when neither count is known", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ data: { Media: { episodes: null, status: "NOT_YET_RELEASED", nextAiringEpisode: null } } }),
+      );
+    expect(await getAniListLatestEpisode(1, { fetch: fetchMock })).toBeNull();
   });
 });
 

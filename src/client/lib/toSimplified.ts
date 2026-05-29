@@ -15,16 +15,25 @@
 type Convert = (text: string) => string;
 
 let converterPromise: Promise<Convert> | null = null;
+// The resolved converter, cached for synchronous use once the chunk has loaded.
+let converter: Convert | null = null;
 
 // `from: "t"` (OpenCC-standard Traditional) → `to: "cn"` (Mainland Simplified).
 // Char-level conversion — faithful to the title, no regional vocab rewriting.
 async function getConverter(): Promise<Convert> {
   if (!converterPromise) {
-    converterPromise = import("opencc-js").then((OpenCC) =>
-      OpenCC.Converter({ from: "t", to: "cn" }),
-    );
+    converterPromise = import("opencc-js").then((OpenCC) => {
+      const c = OpenCC.Converter({ from: "t", to: "cn" });
+      converter = c;
+      return c;
+    });
   }
   return converterPromise;
+}
+
+/** Kick off (and await) the one-time OpenCC chunk load. */
+export async function ensureConverterLoaded(): Promise<void> {
+  await getConverter();
 }
 
 /**
@@ -36,4 +45,15 @@ export async function toSimplified(text: string): Promise<string> {
   if (!text.trim()) return text;
   const convert = await getConverter();
   return convert(text);
+}
+
+/**
+ * Synchronous Traditional → Simplified for hot paths (the library-membership
+ * hint, called per search-result render). Returns the converted text if the
+ * OpenCC chunk is already loaded, else the input UNCHANGED — a graceful
+ * degradation: callers that need it loaded should await ensureConverterLoaded()
+ * first (the title index does, so by search time the converter is ready).
+ */
+export function toSimplifiedSync(text: string): string {
+  return converter ? converter(text) : text;
 }

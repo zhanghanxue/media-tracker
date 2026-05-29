@@ -132,6 +132,12 @@
     "refreshingCover": "正在刷新封面…",
     "refreshCoverFailed": "封面刷新失败。"
   },
+  "refresh": {
+    "button": "↻ 更新集数",
+    "running": "更新集数中…",
+    "done": "已更新 {{updated}}/{{checked}}",
+    "error": "更新集数失败"
+  },
   "enrich": {
     "button": "补全标题",
     "running": "补全中 {{done}}/{{total}}…",

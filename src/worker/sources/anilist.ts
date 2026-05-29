@@ -174,6 +174,44 @@ export async function getAniListRelations(
   return response.Media?.relations?.edges ?? [];
 }
 
+// Just the fields needed to compute the latest aired episode count.
+const LATEST_EPISODE_QUERY = `
+  query ($id: Int!) {
+    Media(id: $id) {
+      episodes
+      status
+      nextAiringEpisode { episode }
+    }
+  }
+`;
+
+/**
+ * The latest aired episode count for an anime, for the "update ongoing episodes"
+ * refresh. A finished show reports its full `episodes`; a currently-airing one
+ * has `episodes: null` but a `nextAiringEpisode.episode` (the NEXT to air), so
+ * the latest aired is that minus one (verified: One Piece → next 1164 → 1163).
+ * Returns null when neither is known. Runs in the browser like the other calls.
+ */
+export async function getAniListLatestEpisode(
+  id: number,
+  options: AniListClientOptions = {},
+): Promise<number | null> {
+  const response = await graphqlRequest<{
+    Media: {
+      episodes: number | null;
+      status: string | null;
+      nextAiringEpisode: { episode: number } | null;
+    } | null;
+  }>(LATEST_EPISODE_QUERY, { id }, options);
+  const m = response.Media;
+  if (!m) return null;
+  if (m.episodes != null) return m.episodes;
+  if (m.nextAiringEpisode && m.nextAiringEpisode.episode > 0) {
+    return m.nextAiringEpisode.episode - 1;
+  }
+  return null;
+}
+
 async function graphqlRequest<T>(
   query: string,
   variables: Record<string, unknown>,
