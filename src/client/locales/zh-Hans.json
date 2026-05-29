@@ -148,6 +148,13 @@
     "playing": "在玩",
     "watching": "观看",
     "platform": "平台",
+    "videoParts": "视频链接",
+    "videoPartsLoading": "加载链接中…",
+    "videoPartsEmpty": "暂无链接。",
+    "videoPartUrl": "粘贴视频链接…",
+    "videoPartTitle": "标签（可选）",
+    "videoPartAdd": "添加",
+    "videoPartRemove": "移除链接",
     "refreshCover": "↻ 刷新封面（原产地海报）",
     "refreshingCover": "正在刷新封面…",
     "refreshCoverFailed": "封面刷新失败。"

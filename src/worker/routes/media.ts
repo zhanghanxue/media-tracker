@@ -23,11 +23,14 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
 import {
+  addVideoPart,
   deleteMedia,
+  deleteVideoPart,
   findByExternalRef,
   findById,
   insertMedia,
   listMedia,
+  listVideoParts,
   setCoverUrl,
   setTotalEpisodes,
   updateMedia,
@@ -459,6 +462,72 @@ mediaRoutes.post("/:id/refresh-episodes", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
   return c.json(updated, 200);
+});
+
+// --- Video parts (watching-mode URL lists) ---------------------------------
+// GET    /api/media/:id/parts          → { parts: [...] } (ordered)
+// POST   /api/media/:id/parts { url, title? } → 201 the new part
+// DELETE /api/media/:id/parts/:partId   → 204
+
+mediaRoutes.get("/:id/parts", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+  const parts = await listVideoParts(c.env.DB, Number(idParam));
+  return c.json({ parts });
+});
+
+mediaRoutes.post("/:id/parts", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+  const id = Number(idParam);
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+  const obj =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+  const url = typeof obj.url === "string" ? obj.url.trim() : "";
+  if (url === "") {
+    return c.json({ error: "url must be a non-empty string" }, 400);
+  }
+  const title =
+    typeof obj.title === "string" && obj.title.trim() !== ""
+      ? obj.title.trim()
+      : null;
+
+  // Parent must exist (FK would reject anyway, but a clean 404 is friendlier).
+  if ((await findById(c.env.DB, id)) === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+
+  const part = await addVideoPart(c.env.DB, id, url, title);
+  return c.json(part, 201);
+});
+
+mediaRoutes.delete("/:id/parts/:partId", async (c) => {
+  const idParam = c.req.param("id");
+  const partParam = c.req.param("partId");
+  if (!/^[1-9][0-9]*$/.test(idParam) || !/^[1-9][0-9]*$/.test(partParam)) {
+    return c.json({ error: "ids must be positive integers" }, 400);
+  }
+  const removed = await deleteVideoPart(
+    c.env.DB,
+    Number(idParam),
+    Number(partParam),
+  );
+  if (!removed) {
+    return c.json({ error: "no such video part" }, 404);
+  }
+  return c.body(null, 204);
 });
 
 // DELETE /api/media/:id — remove an entry (e.g. added by mistake). 204 on
