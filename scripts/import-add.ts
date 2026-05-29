@@ -71,7 +71,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!existsSync(args.csv)) {
     console.error(`review file not found: ${args.csv}`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   let rows = autoRows(parseCsv(readFileSync(args.csv, "utf8")));
@@ -97,7 +98,8 @@ async function main() {
   const secret = env.CF_ACCESS_CLIENT_SECRET;
   if (!id || !secret) {
     console.error("\n--commit needs CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET (Zero Trust → Service Auth).");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const headers = {
     "Content-Type": "application/json",
@@ -109,13 +111,35 @@ async function main() {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "manual", // don't follow the Access login redirect (would look like 200)
     });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error(
+        `Access redirect (HTTP ${res.status}) — the service token isn't accepted. Add it to the media-tracker app's Access policy (Action: Service Auth, Include: Service Token).`,
+      );
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      throw new Error(
+        `non-JSON response (HTTP ${res.status}) from ${path} — likely the Access login page; check the service token + policy.`,
+      );
+    }
     const json = await res.json().catch(() => null);
     if (!res.ok && res.status !== 409) {
-      throw new Error(`${method} ${path} → HTTP ${res.status}`);
+      throw new Error(`${method} ${path} → HTTP ${res.status} ${JSON.stringify(json)}`);
     }
     return { status: res.status, json };
   };
+
+  // Fail fast with a clear diagnosis before attempting any writes.
+  try {
+    const health = await request("GET", "/api/health");
+    console.error(`auth OK (as ${health.json?.user ?? "service-token"})`);
+  } catch (e) {
+    console.error(`\nauth preflight failed: ${(e as Error).message}`);
+    process.exitCode = 1;
+    return;
+  }
   const deps: AddDeps = {
     post: (path, body) => request("POST", path, body),
     patch: (path, body) => request("PATCH", path, body),

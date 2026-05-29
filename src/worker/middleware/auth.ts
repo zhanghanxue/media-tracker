@@ -18,6 +18,11 @@ const JWKS = createRemoteJWKSet(
 
 interface AccessJWTPayload {
   email?: string;
+  // Service tokens (non-interactive clients like the bulk-import script) carry
+  // no email — they identify by `common_name` (the token's name). The edge
+  // Access policy is what authorizes them to reach us; the in-Worker check just
+  // needs a valid signed JWT for this app's audience, then an identity to record.
+  common_name?: string;
 }
 
 export type AuthEnv = {
@@ -45,9 +50,10 @@ export const cfAccessAuth: MiddlewareHandler<{
       issuer: `https://${ACCESS_TEAM_DOMAIN}`,
       audience: ACCESS_AUD_TAG,
     });
-    const email = (payload as AccessJWTPayload).email;
-    if (!email) return c.json({ error: "unauthorized" }, 401);
-    c.set("user", { email });
+    const p = payload as AccessJWTPayload;
+    const identity = p.email ?? p.common_name;
+    if (!identity) return c.json({ error: "unauthorized" }, 401);
+    c.set("user", { email: identity });
   } catch {
     return c.json({ error: "unauthorized" }, 401);
   }
