@@ -1,17 +1,31 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { addMedia, type AddMediaInput } from "../lib/api";
+import { lookupChineseTitle, needsChineseTitle, saveChineseTitle } from "../lib/enrich";
 
 // Adds a media item, then invalidates both the library list (so the new card
 // appears) and the AniList search results (so its row re-renders as "already
-// added").
+// added"). For a fresh AniList add it also auto-fills the Chinese title from
+// Bangumi (best-effort, in the background) so new items match the enricher's
+// behavior without a manual backfill.
 export function useAddMedia() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: AddMediaInput) => addMedia(input),
-    onSuccess: () => {
+    onSuccess: async (row) => {
       void queryClient.invalidateQueries({ queryKey: ["media"] });
       void queryClient.invalidateQueries({ queryKey: ["anilist-search"] });
+
+      if (!needsChineseTitle(row)) return;
+      try {
+        const cn = await lookupChineseTitle(row);
+        if (cn) {
+          await saveChineseTitle(row.id, cn);
+          void queryClient.invalidateQueries({ queryKey: ["media"] });
+        }
+      } catch {
+        // Enrichment is a nicety — never fail an add over it.
+      }
     },
   });
 }

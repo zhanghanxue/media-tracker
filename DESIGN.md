@@ -39,6 +39,7 @@ All four metadata APIs are needed long-term (you have 1000+ entries spanning eve
 
 **Fetch-location decision (learned in Phase 11 dogfood, 2026-05-29):** *where* each API call runs is a per-source decision, not "always proxy through the Worker":
 - **AniList → browser-direct.** AniList blocks Cloudflare Worker egress IPs (HTTP 403 "API temporarily disabled" to Workers; 200 to normal IPs) but sends permissive CORS (`Access-Control-Allow-Origin: *`). So the browser calls AniList directly and POSTs the resulting media object to the Worker, which maps + persists it. The Worker never calls AniList. (This corrected the original "AniList has no CORS, proxy via the Worker" assumption — wrong on both counts.)
+- **Bangumi → browser-direct (shipped 2026-05-29).** Both search endpoints and the subject-detail endpoint send `Access-Control-Allow-Origin: *` and need no auth for reads; the v0 `POST /v0/search/subjects` preflight is also allowed (verified). So search + Chinese-title enrichment run in the browser, same as AniList. Note the two search endpoints are **complementary**: v0 ranks well + indexes romaji (great for Latin/romaji queries) but returns 0 for CJK keywords; the legacy endpoint handles kanji/Chinese but is flaky — query v0 by romaji/English first, fall back to legacy by native.
 - **Secret-bearing APIs (IGDB = Twitch OAuth) → Worker-side, mandatory.** A client secret must never reach the browser, so those calls stay server-side — and must be watched for the same Worker-egress-block class of problem.
 - **Cover images (§10):** the Worker still tries to re-host to R2, but if the image CDN also blocks Workers, `uploadCoverToR2` gracefully falls back to the upstream URL, so a row always has a usable `cover_url`.
 
@@ -91,9 +92,11 @@ To support displaying titles in the user's preferred UI language regardless of t
 | `title_english` | English title (translated for non-English origins) |
 | `title_chinese` | Chinese title (translated for non-Chinese origins; same as `title_native` for C-drama/donghua) |
 
-**Data-side reality:** AniList returns native + romaji + english but not Chinese. Bangumi will be the source for Chinese translations of Japanese works. Items may start with `title_chinese = NULL` and rely on fallback — manually fill the ones you care about.
+**Data-side reality:** AniList returns native + romaji + english but not Chinese. **Bangumi is the source for Chinese titles (shipped 2026-05-29):** the "Fill Chinese titles" backfill + add-time auto-fill populate `title_chinese` from Bangumi (matched via the AniList native/romaji title), with a manual Bangumi search picker in the editor for the long tail. Items can still start `title_chinese = NULL` and rely on fallback until enriched.
 
-**Known v2 trigger:** Simplified vs Traditional Chinese mismatch in search. Fix via OpenCC normalization at write-time if it becomes friction.
+**Sorting note (shipped 2026-05-29):** "Title A–Z" sorts **client-side** with locale collation — PINYIN order for Chinese, dictionary order for English — because SQLite can only code-point-order CJK, which gets pinyin backwards (死 < 火 by code point, but 火影 < 死神 by pinyin). The display-language picks the locale + the COALESCE fallback used for the sort key.
+
+**~~Known v2 trigger~~ → DONE (2026-05-29):** Simplified vs Traditional Chinese mismatch. Bangumi's `name_cn` is sometimes Traditional (滅 vs 灭), which silently breaks Simplified search. Fixed exactly as predicted: **OpenCC `t`→`cn` normalization at write-time** (browser, lazy-loaded), so stored `title_chinese` is always Simplified.
 
 ## 9. Library search — LIKE-based, multi-column
 
@@ -124,7 +127,7 @@ Worker fetches the upstream image at item-add, writes it to R2, stores R2 URL in
 Covers 3 of 6 types (`animation` where region=japan, `manga`, `light_novel`) and is the most-frequently-updated content type for weekly tracking.
 
 - **Why first:** active-tracking rhythm (you'll feel the value daily); clean GraphQL API is a good architecture validator before tackling messier integrations (IGDB OAuth, Bangumi mixed-language docs); if your library skews heavily to anime/manga, you get the biggest migration chunk done in week 1.
-- **Subsequent order (TBD by usage feedback after v1):** TMDB → IGDB → Bangumi (Bangumi last as enricher, not primary).
+- **Subsequent order (revised by usage feedback):** **Bangumi shipped first** (2026-05-29) — dogfooding showed ~40% of the real library is Chinese-named anime/manga, so Chinese-title support became the top need, not the last. It outgrew "enricher" into a full integration (search + add-by-Chinese + enrichment). **TMDB → IGDB** are next (unlock the games/movies ~60% majority). The original "Bangumi last as enricher" guess was wrong — real usage reordered it.
 
 ## 12. Game tracking — Polymorphic on consumption mode + platform discriminator
 
@@ -274,9 +277,10 @@ CREATE INDEX idx_media_video_parts_media_id ON media_video_parts(media_id);
 | Trigger | v2 response |
 |---|---|
 | Library >50k items, or want prefix-search / ranked relevance | Migrate LIKE to SQLite FTS5 virtual table |
-| Simplified / Traditional Chinese search mismatch | OpenCC normalization at write-time |
+| ~~Simplified / Traditional Chinese search mismatch~~ | ✅ DONE 2026-05-29 — OpenCC `t`→`cn` at write-time (browser) |
 | Want offline access on the road | Add IndexedDB cache + background sync |
-| TMDB / IGDB / Bangumi added | Sequential, one per week after AniList ships |
+| Pinyin (vs code-point) sort for Chinese titles | ✅ DONE 2026-05-29 — client-side `localeCompare('zh')` |
+| ~~Bangumi added~~ | ✅ DONE 2026-05-29 — full integration (search + add-by-Chinese + enricher). **TMDB / IGDB** still pending |
 
 ---
 

@@ -2,15 +2,21 @@
 // in the node project. The route fetches the existing row, runs the validated
 // patch through applyAutoComplete, then hands the result to the repository.
 //
-// Patchable fields are the mutable subset of MediaRow. Deliberately EXCLUDED:
+// Patchable fields are the mutable subset of MediaRow.
+//   - title_chinese / title_english / title_romaji / region ARE editable: the
+//     enrichers write them (Chinese from Bangumi; a Latin title from Bangumi's
+//     别名 aliases for Bangumi-direct rows), and they're the manual-correction
+//     escape hatch when a match (or the default region "china") is wrong.
+// Deliberately EXCLUDED:
 //   - video_url: there is no such column — watching-mode video links live in
 //     the media_video_parts child table (DESIGN/CLAUDE). PLAN.md's Phase 9 list
 //     names it, but that predates the child-table decision; managing parts is a
 //     separate endpoint, not part of this PATCH.
-//   - type / external_id / cover_url / region / titles: not user-editable here.
+//   - type / external_id / cover_url / title_native: not user-editable here.
 
 import type {
   MediaConsumptionMode,
+  MediaInsert,
   MediaRow,
   MediaStatus,
 } from "../db/schema";
@@ -26,6 +32,10 @@ export interface MediaPatch {
   consumption_mode?: MediaConsumptionMode | null;
   notes?: string | null;
   is_rewatching?: 0 | 1;
+  title_chinese?: string | null;
+  title_english?: string | null;
+  title_romaji?: string | null;
+  region?: string | null;
 }
 
 export type PatchResult =
@@ -39,7 +49,14 @@ const NULLABLE_INT_FIELDS = [
   "total_chapters",
 ] as const;
 
-const NULLABLE_STRING_FIELDS = ["game_progress", "notes"] as const;
+const NULLABLE_STRING_FIELDS = [
+  "game_progress",
+  "notes",
+  "title_chinese",
+  "title_english",
+  "title_romaji",
+  "region",
+] as const;
 
 const CONSUMPTION_MODES: MediaConsumptionMode[] = ["playing", "watching"];
 
@@ -198,4 +215,19 @@ export function applyCompletionFill(
   }
 
   return result;
+}
+
+/**
+ * The create-time twin of applyCompletionFill: when an item is ADDED with
+ * status "completed", it's been fully consumed, so seed its progress to the
+ * known total (the source mappers leave current_* null). Fills only the
+ * dimension that has a total; leaves current_* null when the total is unknown.
+ */
+export function applyCompletionFillOnCreate(row: MediaInsert): MediaInsert {
+  if (row.status !== "completed") return row;
+  return {
+    ...row,
+    current_episode: row.current_episode ?? row.total_episodes,
+    current_chapter: row.current_chapter ?? row.total_chapters,
+  };
 }

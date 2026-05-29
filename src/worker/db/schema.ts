@@ -79,3 +79,26 @@ export interface MediaVideoPart {
   title: string | null;
   url: string;
 }
+
+// The column subset every source mapper produces for an INSERT (the rest —
+// notes, platform, consumption_mode, game_progress, runtime_minutes, id, dates —
+// fall to their SQL defaults). Both aniListToMediaRow and bangumiToMediaRow
+// return this exact shape, and insertMedia consumes it.
+export type MediaInsert = Pick<
+  MediaRow,
+  | "type"
+  | "region"
+  | "title_native"
+  | "title_romaji"
+  | "title_english"
+  | "title_chinese"
+  | "status"
+  | "is_rewatching"
+  | "cover_url"
+  | "external_id"
+  | "external_source"
+  | "current_episode"
+  | "total_episodes"
+  | "current_chapter"
+  | "total_chapters"
+>;

@@ -6,14 +6,19 @@ import {
   type AniListMedia,
   type AniListMediaType,
 } from "../../worker/sources/anilist";
+import type { BangumiSubject } from "../../worker/sources/bangumi";
+import type { SortKey } from "../../worker/api/list-query";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { MediaListResponse, MediaRow } from "./types";
+
+export type { SortKey };
 
 export interface MediaFilters {
   types: string[];
   regions: string[];
   statuses: string[];
   q: string;
+  sort: SortKey;
 }
 
 export function buildMediaQueryString(filters: MediaFilters): string {
@@ -23,6 +28,16 @@ export function buildMediaQueryString(filters: MediaFilters): string {
   for (const s of filters.statuses) params.append("status", s);
   const q = filters.q.trim();
   if (q) params.set("q", q);
+  // Default (date_updated) is the server default — omit it to keep URLs clean.
+  if (filters.sort && filters.sort !== "date_updated") {
+    params.set("sort", filters.sort);
+  }
+  // Title A–Z is re-sorted client-side (locale/pinyin collation), so fetch the
+  // whole library (server clamps at 200) rather than just the first page —
+  // otherwise we'd only alphabetize one server page.
+  if (filters.sort === "title") {
+    params.set("limit", "200");
+  }
   return params.toString();
 }
 
@@ -78,12 +93,10 @@ export async function searchAniListMedia(
   };
 }
 
-export interface AddMediaInput {
-  external_source: "anilist";
-  status: MediaStatus;
-  // The AniList media object the browser already fetched (search result).
-  media: AniListMedia;
-}
+// The browser fetched the source object and POSTs it; the Worker maps + persists.
+export type AddMediaInput =
+  | { external_source: "anilist"; status: MediaStatus; media: AniListMedia }
+  | { external_source: "bangumi"; status: MediaStatus; media: BangumiSubject };
 
 export async function addMedia(input: AddMediaInput): Promise<MediaRow> {
   const res = await fetch("/api/media", {

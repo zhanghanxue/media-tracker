@@ -2,10 +2,20 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAniListSearch } from "../hooks/useAniListSearch";
+import { useBangumiSearch } from "../hooks/useBangumiSearch";
 import { useAddMedia } from "../hooks/useAddMedia";
+import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
+import { bangumiCover } from "../lib/bangumiSearch";
 import type { AniListSearchItem, SearchType } from "../lib/api";
+import type { BangumiSubject } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
+
+// Where to search. AniList = English/Japanese (canonical). Bangumi = search by
+// Chinese (or any) name; the add then resolves to AniList when possible, else
+// adds Bangumi-direct (for donghua AniList lacks).
+type Source = "anilist" | "bangumi";
 
 // Statuses offered at add-time (paused is an edit-time state, omitted here).
 const ADD_STATUSES: MediaStatus[] = [
@@ -26,13 +36,26 @@ function metaLine(item: AniListSearchItem): string {
 
 export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  const [source, setSource] = useState<Source>("anilist");
   const [searchType, setSearchType] = useState<SearchType>("ANIME");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<MediaStatus>("planned");
   const debouncedQuery = useDebouncedValue(input, 300);
 
-  const search = useAniListSearch(debouncedQuery, searchType);
+  // Only the active source's query is non-empty, so only it fetches.
+  const aniSearch = useAniListSearch(
+    source === "anilist" ? debouncedQuery : "",
+    searchType,
+  );
+  const bgmType = searchType === "MANGA" ? 1 : 2;
+  const bgmSearch = useBangumiSearch(
+    source === "bangumi" ? debouncedQuery : "",
+    bgmType,
+  );
+
   const addMutation = useAddMedia();
+  const addByChinese = useAddByChinese();
+  const libraryTitles = useLibraryTitleIndex();
 
   // Close on Escape.
   useEffect(() => {
@@ -43,17 +66,32 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const pendingId = addMutation.isPending
+  const pendingAniListId = addMutation.isPending
     ? addMutation.variables?.media.id
+    : undefined;
+  const pendingBangumiId = addByChinese.isPending
+    ? addByChinese.variables?.subject.id
     : undefined;
 
   const handleAdd = (item: AniListSearchItem) => {
-    addMutation.mutate({
-      external_source: "anilist",
-      status,
-      media: item,
-    });
+    addMutation.mutate({ external_source: "anilist", status, media: item });
   };
+  const handleAddBangumi = (subject: BangumiSubject) => {
+    addByChinese.mutate({ subject, status });
+  };
+
+  const search = source === "anilist" ? aniSearch : bgmSearch;
+  const placeholder =
+    source === "anilist"
+      ? t("add.searchPlaceholder")
+      : t("add.searchPlaceholderBangumi");
+
+  const tabClass = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-sm ${
+      active
+        ? "bg-blue-600 text-white"
+        : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-600 light:hover:bg-zinc-200"
+    }`;
 
   return (
     <div
@@ -83,17 +121,31 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
 
         {/* Controls */}
         <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
+          {/* Source: AniList (EN/JP) vs Bangumi (search by Chinese) */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSource("anilist")}
+              className={tabClass(source === "anilist")}
+            >
+              {t("add.sourceAniList")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSource("bangumi")}
+              className={tabClass(source === "bangumi")}
+            >
+              {t("add.sourceBangumi")}
+            </button>
+          </div>
+
           <div className="flex gap-2">
             {(["ANIME", "MANGA"] as const).map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setSearchType(type)}
-                className={`rounded-md px-3 py-1.5 text-sm ${
-                  searchType === type
-                    ? "bg-blue-600 text-white"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-600 light:hover:bg-zinc-200"
-                }`}
+                className={tabClass(searchType === type)}
               >
                 {t(type === "ANIME" ? "add.anime" : "add.manga")}
               </button>
@@ -105,7 +157,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             autoFocus
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={t("add.searchPlaceholder")}
+            placeholder={placeholder}
             className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none light:border-zinc-300 light:bg-white light:text-zinc-900 light:placeholder:text-zinc-400"
           />
 
@@ -129,7 +181,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto p-4">
           {debouncedQuery.trim().length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
-              {t("add.empty")}
+              {source === "anilist" ? t("add.empty") : t("add.emptyBangumi")}
             </p>
           ) : search.isPending ? (
             <p className="py-8 text-center text-sm text-zinc-500">
@@ -139,66 +191,128 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             <p className="py-8 text-center text-sm text-red-400 light:text-red-600">
               {t("add.error")}
             </p>
-          ) : search.data.results.length === 0 ? (
+          ) : source === "anilist" ? (
+            aniSearch.data!.results.length === 0 ? (
+              <p className="py-8 text-center text-sm text-zinc-500">
+                {t("add.noResults")}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {aniSearch.data!.results.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100"
+                  >
+                    <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-800 light:bg-zinc-100">
+                      {item.coverImage.extraLarge && (
+                        <img
+                          src={item.coverImage.extraLarge}
+                          alt=""
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {item.title.romaji ??
+                          item.title.english ??
+                          item.title.native}
+                      </p>
+                      {item.title.english &&
+                        item.title.english !== item.title.romaji && (
+                          <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
+                            {item.title.english}
+                          </p>
+                        )}
+                      {item.title.native && (
+                        <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
+                          {item.title.native}
+                        </p>
+                      )}
+                      <p className="text-xs text-zinc-500">{metaLine(item)}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center">
+                      {item.alreadyAdded ||
+                      titleInLibrary(libraryTitles, [
+                        item.title.native,
+                        item.title.romaji,
+                        item.title.english,
+                      ]) ? (
+                        <span className="rounded px-2 py-1 text-xs text-zinc-500">
+                          {t("add.alreadyAdded")}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleAdd(item)}
+                          disabled={pendingAniListId === item.id}
+                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                        >
+                          {pendingAniListId === item.id
+                            ? t("add.adding")
+                            : t("add.addButton")}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : bgmSearch.data!.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
               {t("add.noResults")}
             </p>
           ) : (
             <ul className="space-y-2">
-              {search.data.results.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100"
-                >
-                  <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-800 light:bg-zinc-100">
-                    {item.coverImage.extraLarge && (
-                      <img
-                        src={item.coverImage.extraLarge}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
-                      {item.title.romaji ??
-                        item.title.english ??
-                        item.title.native}
-                    </p>
-                    {item.title.english &&
-                      item.title.english !== item.title.romaji && (
+              {bgmSearch.data!.map((s) => {
+                const cover = bangumiCover(s);
+                return (
+                  <li
+                    key={s.id}
+                    className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100"
+                  >
+                    <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-800 light:bg-zinc-100">
+                      {cover && (
+                        <img
+                          src={cover}
+                          alt=""
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {s.name_cn || s.name}
+                      </p>
+                      {s.name_cn && s.name && s.name !== s.name_cn && (
                         <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
-                          {item.title.english}
+                          {s.name}
                         </p>
                       )}
-                    {item.title.native && (
-                      <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
-                        {item.title.native}
-                      </p>
-                    )}
-                    <p className="text-xs text-zinc-500">{metaLine(item)}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center">
-                    {item.alreadyAdded ? (
-                      <span className="rounded px-2 py-1 text-xs text-zinc-500">
-                        {t("add.alreadyAdded")}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleAdd(item)}
-                        disabled={pendingId === item.id}
-                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                      >
-                        {pendingId === item.id
-                          ? t("add.adding")
-                          : t("add.addButton")}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    </div>
+                    <div className="flex shrink-0 items-center">
+                      {titleInLibrary(libraryTitles, [s.name, s.name_cn]) ? (
+                        <span className="rounded px-2 py-1 text-xs text-zinc-500">
+                          {t("add.alreadyAdded")}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleAddBangumi(s)}
+                          disabled={pendingBangumiId === s.id}
+                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                        >
+                          {pendingBangumiId === s.id
+                            ? t("add.adding")
+                            : t("add.addButton")}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

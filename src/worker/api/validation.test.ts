@@ -78,16 +78,72 @@ describe("parseCreateMediaRequest — rejects invalid input", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("collects all errors at once", () => {
+  it("collects all errors at once (doesn't short-circuit)", () => {
+    // Valid source so the AniList shape checks run; everything else is broken.
     const result = parseCreateMediaRequest({
-      external_source: "mal",
+      external_source: "anilist",
       status: "banana",
       media: {},
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // bad source + bad status + 3 media-shape errors (id, title, coverImage)
+      // bad status + 3 AniList media-shape errors (id, title, coverImage)
       expect(result.errors.length).toBeGreaterThanOrEqual(4);
+    }
+  });
+});
+
+// A representative Bangumi subject (what the browser POSTs for a direct add).
+const BGM_MEDIA = {
+  id: 245665,
+  type: 2,
+  name: "鬼滅の刃",
+  name_cn: "鬼灭之刃",
+  platform: "TV",
+  eps: 26,
+  total_episodes: 26,
+  images: { large: "https://lain.bgm.tv/x.jpg" },
+};
+
+const VALID_BGM = {
+  external_source: "bangumi",
+  status: "planned",
+  media: BGM_MEDIA,
+};
+
+describe("parseCreateMediaRequest — Bangumi source", () => {
+  it("accepts a valid Bangumi subject (name + type, not the AniList shape)", () => {
+    const result = parseCreateMediaRequest(VALID_BGM);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.external_source).toBe("bangumi");
+      expect(result.value.media.id).toBe(245665);
+    }
+  });
+
+  it("does NOT require the AniList title/coverImage objects for a Bangumi body", () => {
+    // Bangumi media legitimately has no `title`/`coverImage` keys.
+    const result = parseCreateMediaRequest(VALID_BGM);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a Bangumi subject missing the name", () => {
+    const { name: _omit, ...noName } = BGM_MEDIA;
+    const result = parseCreateMediaRequest({ ...VALID_BGM, media: noName });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.startsWith("media.name"))).toBe(true);
+    }
+  });
+
+  it("rejects a Bangumi subject with a non-numeric type", () => {
+    const result = parseCreateMediaRequest({
+      ...VALID_BGM,
+      media: { ...BGM_MEDIA, type: "anime" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.startsWith("media.type"))).toBe(true);
     }
   });
 });

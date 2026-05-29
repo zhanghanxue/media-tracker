@@ -19,18 +19,22 @@ async function patchMedia(id: number, patch: MediaPatch): Promise<MediaRow> {
 }
 
 // Replace the row with the given id across every cached ["media", …] list.
+// Guard against non-list caches under the same prefix (e.g. the
+// ["media","titles-index"] Set): only touch query data shaped like a list page.
 function mapRow(
   queryClient: ReturnType<typeof useQueryClient>,
   id: number,
   transform: (row: MediaRow) => MediaRow,
 ): void {
-  queryClient.setQueriesData<MediaListResponse>(
-    { queryKey: ["media"] },
-    (old) =>
-      old
-        ? { ...old, items: old.items.map((it) => (it.id === id ? transform(it) : it)) }
-        : old,
-  );
+  queryClient.setQueriesData<MediaListResponse>({ queryKey: ["media"] }, (old) => {
+    if (!old || !Array.isArray((old as Partial<MediaListResponse>).items)) {
+      return old;
+    }
+    return {
+      ...old,
+      items: old.items.map((it) => (it.id === id ? transform(it) : it)),
+    };
+  });
 }
 
 // Optimistic progress/status update. onMutate paints the change immediately

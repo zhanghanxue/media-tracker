@@ -10,7 +10,15 @@
 import type { MediaStatus, MediaType } from "../db/schema";
 import { MEDIA_STATUSES, MEDIA_TYPES } from "./validation";
 
-export const SORT_KEYS = ["date_updated", "date_added", "title"] as const;
+// `title` sorts English-first; `title_zh` sorts Chinese-first — the client
+// picks which when the UI language is English vs Chinese (same "Title A–Z"
+// control), so ordering matches the titles actually displayed.
+export const SORT_KEYS = [
+  "date_updated",
+  "date_added",
+  "title",
+  "title_zh",
+] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 
 export const DEFAULT_SORT: SortKey = "date_updated";

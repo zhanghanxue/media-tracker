@@ -1,12 +1,12 @@
-// POST /api/media — add a media item the browser fetched from AniList.
+// POST /api/media — add a media item the browser fetched from a source API.
 //
-// The browser does the AniList call (AniList blocks Cloudflare Worker egress
-// IPs but allows CORS) and POSTs the resulting media object. The Worker maps it
-// authoritatively, re-hosts the cover to R2 (best-effort), and inserts. It does
-// NOT call AniList itself.
+// The browser does the source call (AniList blocks Cloudflare Worker egress IPs
+// but allows CORS; Bangumi we keep browser-side for the same reasons) and POSTs
+// the resulting media object. The Worker maps it authoritatively, re-hosts the
+// cover to R2 (best-effort), and inserts. It does NOT call those APIs itself.
 //
 //   1. validate body { external_source, status, media } → 400
-//   2. reject non-AniList sources                        → 501
+//   2. reject unimplemented sources (tmdb/igdb)          → 501
 //   3. conflict probe (source, media.id)                 → 409 + existing row
 //   4. map (400 if unclassifiable) → upload cover → insert → 201
 //
@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
 import {
+  deleteMedia,
   findByExternalRef,
   findById,
   insertMedia,
@@ -25,11 +26,15 @@ import {
   updateMedia,
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
+import { bangumiToMediaRow } from "../sources/bangumi-mapper";
+import type { AniListMedia } from "../sources/anilist";
+import type { BangumiSubject } from "../sources/bangumi";
 import { parseCreateMediaRequest } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
 import {
   applyAutoComplete,
   applyCompletionFill,
+  applyCompletionFillOnCreate,
   parsePatchMediaRequest,
 } from "../api/patch-media";
 import { uploadCoverToR2 } from "../storage/covers";
@@ -53,9 +58,10 @@ mediaRoutes.post("/", async (c) => {
   }
   const { external_source, status, media } = parsed.value;
 
-  // v1 only implements AniList. Other valid sources are accepted by validation
-  // but not yet wired — 501 distinguishes "known but unbuilt" from "bad input".
-  if (external_source !== "anilist") {
+  // v1.x implements AniList (English/Japanese) and Bangumi (Chinese donghua /
+  // manhua AniList lacks). TMDB / IGDB are accepted by validation but unwired —
+  // 501 distinguishes "known but unbuilt" from "bad input".
+  if (external_source !== "anilist" && external_source !== "bangumi") {
     return c.json(
       { error: `source '${external_source}' is not implemented yet` },
       501,
@@ -72,14 +78,23 @@ mediaRoutes.post("/", async (c) => {
 
   let row;
   try {
-    row = aniListToMediaRow(media, status);
+    // Validation guarantees `media` matches `external_source`'s shape.
+    row =
+      external_source === "anilist"
+        ? aniListToMediaRow(media as AniListMedia, status)
+        : bangumiToMediaRow(media as BangumiSubject, status);
   } catch {
-    // Mapper throws on a missing/unknown `format` it can't classify.
+    // Mappers throw on an item they can't classify (unknown AniList format /
+    // unsupported Bangumi subject type).
     return c.json(
-      { error: "could not classify this media (missing or unknown format)" },
+      { error: "could not classify this media (unknown type/format)" },
       400,
     );
   }
+
+  // Adding something already finished → seed progress to its total (mirrors the
+  // PATCH-time auto-fill, so a "completed" add doesn't need a manual progress fix).
+  row = applyCompletionFillOnCreate(row);
 
   // Re-host the cover to R2. On any upstream failure uploadCoverToR2 returns
   // the original URL (graceful degradation), so the row always has a usable
@@ -168,4 +183,19 @@ mediaRoutes.patch("/:id", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
   return c.json(updated, 200);
+});
+
+// DELETE /api/media/:id — remove an entry (e.g. added by mistake). 204 on
+// success, 404 if there's no such row.
+mediaRoutes.delete("/:id", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+
+  const deleted = await deleteMedia(c.env.DB, Number(idParam));
+  if (!deleted) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  return c.body(null, 204);
 });

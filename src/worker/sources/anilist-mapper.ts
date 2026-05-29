@@ -10,8 +10,8 @@
 
 import type {
   ExternalSource,
+  MediaInsert,
   MediaRegion,
-  MediaRow,
   MediaStatus,
   MediaType,
 } from "../db/schema";
@@ -42,24 +42,9 @@ const COUNTRY_TO_REGION: Record<string, MediaRegion> = {
   TH: "thailand",
 };
 
-export type AniListMapperResult = Pick<
-  MediaRow,
-  | "type"
-  | "region"
-  | "title_native"
-  | "title_romaji"
-  | "title_english"
-  | "title_chinese"
-  | "status"
-  | "is_rewatching"
-  | "cover_url"
-  | "external_id"
-  | "external_source"
-  | "current_episode"
-  | "total_episodes"
-  | "current_chapter"
-  | "total_chapters"
->;
+// The shared insert shape (schema.ts). Kept as a named alias because callers
+// and tests reference AniListMapperResult specifically.
+export type AniListMapperResult = MediaInsert;
 
 export function aniListToMediaRow(
   detail: AniListMedia,
