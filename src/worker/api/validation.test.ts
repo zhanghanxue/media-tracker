@@ -147,3 +147,54 @@ describe("parseCreateMediaRequest — Bangumi source", () => {
     }
   });
 });
+
+describe("parseCreateMediaRequest — IGDB source", () => {
+  const VALID_IGDB = {
+    external_source: "igdb",
+    status: "in_progress",
+    media: { id: 1942, consumption_mode: "playing", platform: "pc" },
+  };
+
+  it("accepts a valid IGDB ref (id + consumption_mode + platform)", () => {
+    const result = parseCreateMediaRequest(VALID_IGDB);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.external_source).toBe("igdb");
+      expect(result.value.media.id).toBe(1942);
+    }
+  });
+
+  it("accepts a null platform", () => {
+    const result = parseCreateMediaRequest({
+      ...VALID_IGDB,
+      media: { id: 1, consumption_mode: "watching", platform: null },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a missing / bad consumption_mode", () => {
+    const result = parseCreateMediaRequest({
+      ...VALID_IGDB,
+      media: { id: 1, consumption_mode: "banana", platform: null },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.errors.some((e) => e.startsWith("media.consumption_mode")),
+      ).toBe(true);
+    }
+  });
+
+  it("rejects an unknown platform bucket", () => {
+    const result = parseCreateMediaRequest({
+      ...VALID_IGDB,
+      media: { id: 1, consumption_mode: "playing", platform: "switch" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.startsWith("media.platform"))).toBe(
+        true,
+      );
+    }
+  });
+});

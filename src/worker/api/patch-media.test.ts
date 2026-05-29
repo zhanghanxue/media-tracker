@@ -80,6 +80,21 @@ describe("parsePatchMediaRequest — invalid", () => {
     );
   });
 
+  it("accepts a valid platform and null", () => {
+    expect(parsePatchMediaRequest({ platform: "pc" })).toEqual({
+      ok: true,
+      value: { platform: "pc" },
+    });
+    expect(parsePatchMediaRequest({ platform: null })).toEqual({
+      ok: true,
+      value: { platform: null },
+    });
+  });
+
+  it("rejects an unknown platform bucket", () => {
+    expect(parsePatchMediaRequest({ platform: "switch" }).ok).toBe(false);
+  });
+
   it("rejects is_rewatching values other than 0/1", () => {
     expect(parsePatchMediaRequest({ is_rewatching: 2 }).ok).toBe(false);
     expect(parsePatchMediaRequest({ is_rewatching: true }).ok).toBe(false);
@@ -295,6 +310,8 @@ function insert(overrides: Partial<MediaInsert>): MediaInsert {
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    platform: null,
+    consumption_mode: null,
     series_id: null,
     series_name: null,
     season_number: null,

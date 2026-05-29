@@ -4,6 +4,7 @@ import type { AppEnv } from "./env";
 import { mediaRoutes } from "./routes/media";
 import { anilistRoutes } from "./routes/anilist";
 import { tmdbRoutes } from "./routes/tmdb";
+import { igdbRoutes } from "./routes/igdb";
 import { seriesRoutes } from "./routes/series";
 
 const app = new Hono<{ Bindings: AppEnv; Variables: AuthVariables }>();
@@ -26,6 +27,8 @@ app.route("/api/media", mediaRoutes);
 app.route("/api/anilist", anilistRoutes);
 // TMDB search proxy (key-bearing → Worker-side, browser never sees the token).
 app.route("/api/tmdb", tmdbRoutes);
+// IGDB search proxy (Twitch-OAuth-bearing → Worker-side, same rule as TMDB).
+app.route("/api/igdb", igdbRoutes);
 // Series rename (the one series-level op that spans rows; link/unlink is on /media).
 app.route("/api/series", seriesRoutes);
 

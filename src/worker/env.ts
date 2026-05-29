@@ -16,4 +16,9 @@ export type AppEnv = AuthEnv & {
   // Unlike AniList/Bangumi, TMDB is key-bearing so the Worker — not the browser —
   // calls it. May be undefined locally if the dev hasn't set it; the route 503s.
   TMDB_API_KEY?: string;
+  // IGDB auth via Twitch OAuth (client_credentials). Both are Wrangler secrets
+  // (prod) / .dev.vars (local); the Worker mints a token and calls IGDB itself.
+  // Undefined when unconfigured → the igdb routes 503.
+  TWITCH_CLIENT_ID?: string;
+  TWITCH_CLIENT_SECRET?: string;
 };

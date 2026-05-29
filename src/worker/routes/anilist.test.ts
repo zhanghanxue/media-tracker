@@ -31,6 +31,8 @@ function row(externalId: string): AniListMapperResult {
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    platform: null,
+    consumption_mode: null,
     series_id: null,
     series_name: null,
     season_number: null,
