@@ -31,7 +31,12 @@ export function igdbYear(game: IgdbGame): number | null {
 export function igdbChineseAlias(game: IgdbGame): string | null {
   const candidates = (game.alternative_names ?? [])
     .map((a) => (a.name ?? "").trim())
-    .filter((s) => (s.match(/[㐀-鿿]/g) ?? []).length >= 2); // ≥2 CJK ideographs
+    // ≥2 Han ideographs and NO kana — kana means it's the Japanese title, not
+    // Chinese (饿殍：明末千里行 ✓ vs 飢えた子羊 ✗).
+    .filter(
+      (s) =>
+        (s.match(/[㐀-鿿]/g) ?? []).length >= 2 && !/[぀-ヿ]/.test(s),
+    );
   if (candidates.length === 0) return null;
   // Prefer the cleanest title — the shortest tends to be the bare name
   // (逸剑风云决) over a descriptive variant (逸剑风云决 (中日英韩文版) - …).

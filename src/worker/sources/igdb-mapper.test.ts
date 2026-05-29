@@ -60,6 +60,44 @@ describe("igdbToMediaRow", () => {
   });
 });
 
+describe("igdbToMediaRow — Chinese title", () => {
+  const base = {
+    status: "planned" as const,
+    consumptionMode: "playing" as const,
+    platform: null,
+  };
+  const game: IgdbGame = {
+    id: 1,
+    name: "The Hungry Lamb",
+    alternative_names: [
+      { name: "饿殍：明末千里行" }, // simplified
+      { name: "餓殍：明末千里行" }, // traditional
+      { name: "飢えた子羊" }, // Japanese (has kana)
+      { name: "The Hungry Lamb.exe" },
+    ],
+  };
+
+  it("uses the browser-supplied (Simplified) title when present", () => {
+    const row = igdbToMediaRow(game, { ...base, titleChinese: "饿殍：明末千里行" });
+    expect(row.title_chinese).toBe("饿殍：明末千里行");
+  });
+
+  it("falls back to a Han-only alternative name (never the kana/Japanese one)", () => {
+    const row = igdbToMediaRow(game, base);
+    expect(row.title_chinese).not.toBeNull();
+    expect(row.title_chinese).not.toBe("飢えた子羊");
+    expect(/[぀-ヿ]/.test(row.title_chinese!)).toBe(false);
+  });
+
+  it("is null when there's no CJK alternative name", () => {
+    const row = igdbToMediaRow(
+      { id: 2, name: "Hades", alternative_names: [{ name: "Hades.exe" }] },
+      base,
+    );
+    expect(row.title_chinese).toBeNull();
+  });
+});
+
 describe("igdbToMediaRow — region from developer country", () => {
   const opts = {
     status: "planned" as const,

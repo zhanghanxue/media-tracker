@@ -58,6 +58,23 @@ export interface IgdbMapOptions {
   status: MediaStatus;
   consumptionMode: MediaConsumptionMode;
   platform: MediaPlatform | null;
+  // The browser-supplied (OpenCC-normalized) Chinese title; when absent the
+  // mapper derives one from IGDB's alternative_names (un-normalized).
+  titleChinese?: string | null;
+}
+
+// A Chinese title from IGDB's alternative_names: ≥2 Han ideographs and NO kana
+// (kana ⇒ the Japanese title). Server-side fallback for when the browser didn't
+// pass one — un-normalized, so it may be Traditional; the browser path prefers
+// Simplified via OpenCC.
+function pickChineseTitle(game: IgdbGame): string | null {
+  const candidates = (game.alternative_names ?? [])
+    .map((a) => (a.name ?? "").trim())
+    .filter(
+      (s) => (s.match(/[㐀-鿿]/g) ?? []).length >= 2 && !/[぀-ヿ]/.test(s),
+    );
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => a.length - b.length)[0]!;
 }
 
 export function igdbToMediaRow(
@@ -71,7 +88,10 @@ export function igdbToMediaRow(
     title_native: null,
     title_romaji: null,
     title_english: name ? name : null,
-    title_chinese: null,
+    // Browser-supplied (Simplified) Chinese title wins; else derive from IGDB's
+    // alternative_names. A Chinese game now keeps its Chinese title + stays
+    // searchable in Chinese, instead of landing English-only.
+    title_chinese: opts.titleChinese ?? pickChineseTitle(game),
     status: opts.status,
     is_rewatching: 0,
     cover_url: igdbCoverUrl(game.cover?.image_id),
