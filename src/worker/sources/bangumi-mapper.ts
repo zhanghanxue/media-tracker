@@ -40,10 +40,11 @@ export function bangumiToMediaRow(
 ): BangumiMapperResult {
   const type = bangumiToType(subject);
 
-  // Episodic (anime + live-action drama) tracks episodes; books track chapters;
-  // films track neither. Bangumi puts the book count in `eps`, falling back to
-  // `volumes`; we store it in total_chapters (no separate volume column).
-  const tracksEpisodes = type === "animation" || type === "drama";
+  // Episodic (anime + live-action drama + variety) tracks episodes; books track
+  // chapters; films track neither. Bangumi puts the book count in `eps`, falling
+  // back to `volumes`; we store it in total_chapters (no separate volume column).
+  const tracksEpisodes =
+    type === "animation" || type === "drama" || type === "variety";
   const tracksChapters = type === "manga" || type === "light_novel";
   const totalEpisodes = tracksEpisodes
     ? firstPositive(subject.total_episodes, subject.eps)
@@ -119,11 +120,13 @@ function bangumiToType(subject: BangumiSubject): MediaType {
       : "manga";
   }
   if (subject.type === 6) {
-    // Live-action (三次元). A film is flagged via platform (电影 / 剧场版); every
-    // other platform (电视剧 / 华语剧 / 日剧 / 综艺 / …) is episodic → drama.
-    return subject.platform && /电影|剧场版/.test(subject.platform)
-      ? "movie"
-      : "drama";
+    // Live-action (三次元), discriminated by platform:
+    //   综艺 / 真人秀 / 脱口秀 → variety; 电影 / 剧场版 → movie; else (电视剧 /
+    //   华语剧 / 日剧 / …) episodic → drama.
+    const p = subject.platform ?? "";
+    if (/综艺|真人秀|脱口秀/.test(p)) return "variety";
+    if (/电影|剧场版/.test(p)) return "movie";
+    return "drama";
   }
   // 3 (music), 4 (game) aren't part of this feature.
   throw new Error(`Unsupported Bangumi subject type: ${subject.type}`);

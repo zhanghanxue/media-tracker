@@ -7,7 +7,8 @@ export type MediaType =
   | "light_novel"
   | "drama"
   | "movie"
-  | "game";
+  | "game"
+  | "variety"; // reality / variety shows (综艺) — episodic, like drama
 
 export type MediaStatus =
   | "planned"

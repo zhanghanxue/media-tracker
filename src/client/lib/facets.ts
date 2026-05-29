@@ -11,6 +11,7 @@ export const TYPE_FACETS: readonly MediaType[] = [
   "drama",
   "movie",
   "game",
+  "variety",
 ];
 
 export const STATUS_FACETS: readonly MediaStatus[] = [

@@ -108,6 +108,16 @@ describe("bangumiToMediaRow — live-action (type 6)", () => {
     expect(bangumiToMediaRow(live(), "planned").total_episodes).toBeNull(); // eps 0 → unknown
   });
 
+  it("maps a 综艺 platform to a variety show (episodic)", () => {
+    const row = bangumiToMediaRow(
+      live({ platform: "综艺", name: "奔跑吧", total_episodes: 12 }),
+      "in_progress",
+    );
+    expect(row.type).toBe("variety");
+    expect(row.total_episodes).toBe(12); // variety tracks episodes like drama
+    expect(row.total_chapters).toBeNull();
+  });
+
   it("maps a 电影 platform to a movie that tracks neither episodes nor chapters", () => {
     const row = bangumiToMediaRow(
       live({ platform: "电影", name: "流浪地球", name_cn: "" }),

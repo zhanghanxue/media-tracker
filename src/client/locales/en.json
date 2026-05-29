@@ -31,7 +31,8 @@
     "light_novel": "Light Novel",
     "drama": "Drama",
     "movie": "Movie",
-    "game": "Game"
+    "game": "Game",
+    "variety": "Variety"
   },
   "status": {
     "planned": "Planned",
