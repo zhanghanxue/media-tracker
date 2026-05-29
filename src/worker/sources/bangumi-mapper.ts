@@ -232,7 +232,7 @@ export function normalizeTitle(s: string): string {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[\s　]/g, "")
-    .replace(/[-–—ー－・:：;；,，.。!！?？'"`「」『』()（）[\]【】~～_/\\]/g, "");
+    .replace(/[-–—ー－・·‧･:：;；,，.。!！?？'"`「」『』()（）[\]【】~～_/\\]/g, "");
 }
 
 function cleanCn(subject: BangumiSubject): string | null {

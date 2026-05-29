@@ -22,3 +22,6 @@ Screenshot*.png
 # Scratch files from live API probes (instrument-don't-guess), never committed.
 _*.txt
 _*.json
+
+# Phase 12 import outputs — derived from the private list, not deliverables.
+review*.csv
