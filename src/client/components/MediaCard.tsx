@@ -28,12 +28,18 @@ function progressLabel(t: TFunction, p: Progress): string {
         return t("progress.episodes", { current: p.current, total: p.total });
       if (p.current != null)
         return t("progress.episodesCurrentOnly", { current: p.current });
+      // Unstarted but we know the length — show the total as a clue (e.g. a
+      // planned 26-ep show reads "0 / 26 ep" instead of a bare "— ep").
+      if (p.total != null)
+        return t("progress.episodesTotalOnly", { total: p.total });
       return t("progress.episodesNone");
     case "chapters":
       if (p.current != null && p.total != null)
         return t("progress.chapters", { current: p.current, total: p.total });
       if (p.current != null)
         return t("progress.chaptersCurrentOnly", { current: p.current });
+      if (p.total != null)
+        return t("progress.chaptersTotalOnly", { total: p.total });
       return t("progress.chaptersNone");
     case "text":
       return p.value;

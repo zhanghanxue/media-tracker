@@ -53,9 +53,11 @@
   "progress": {
     "episodes": "第 {{current}} / {{total}} 集",
     "episodesCurrentOnly": "第 {{current}} 集",
+    "episodesTotalOnly": "0 / {{total}} 集",
     "episodesNone": "— 集",
     "chapters": "第 {{current}} / {{total}} 话",
     "chaptersCurrentOnly": "第 {{current}} 话",
+    "chaptersTotalOnly": "0 / {{total}} 话",
     "chaptersNone": "— 话",
     "none": "—"
   },
