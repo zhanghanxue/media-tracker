@@ -59,3 +59,48 @@ describe("igdbToMediaRow", () => {
     expect(row.title_english).toBe("Tetris");
   });
 });
+
+describe("igdbToMediaRow — region from developer country", () => {
+  const opts = {
+    status: "planned" as const,
+    consumptionMode: "playing" as const,
+    platform: null,
+  };
+
+  it("derives region from the developer's ISO-numeric country (392 → japan)", () => {
+    const row = igdbToMediaRow(
+      {
+        id: 1,
+        name: "Elden Ring",
+        involved_companies: [
+          { publisher: true, company: { id: 1, country: 840 } }, // Bandai US
+          { developer: true, company: { id: 2, country: 392 } }, // FromSoftware JP
+        ],
+      },
+      opts,
+    );
+    expect(row.region).toBe("japan"); // developer wins over publisher
+  });
+
+  it("falls back to the publisher's country when no developer has one", () => {
+    const row = igdbToMediaRow(
+      {
+        id: 2,
+        name: "X",
+        involved_companies: [{ publisher: true, company: { id: 3, country: 156 } }],
+      },
+      opts,
+    );
+    expect(row.region).toBe("china");
+  });
+
+  it("is null when IGDB has no usable country", () => {
+    expect(igdbToMediaRow({ id: 3, name: "Y" }, opts).region).toBeNull();
+    expect(
+      igdbToMediaRow(
+        { id: 4, name: "Z", involved_companies: [{ developer: true, company: { id: 9, country: null } }] },
+        opts,
+      ).region,
+    ).toBeNull();
+  });
+});

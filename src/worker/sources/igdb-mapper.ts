@@ -13,11 +13,46 @@ import type {
   MediaConsumptionMode,
   MediaInsert,
   MediaPlatform,
+  MediaRegion,
   MediaStatus,
 } from "../db/schema";
 import { igdbCoverUrl, type IgdbGame } from "./igdb";
 
 export type IgdbMapperResult = MediaInsert;
+
+// ISO 3166-1 numeric country codes → our region buckets (IGDB stores
+// company.country this way). Only the regions we surface; anything else → null.
+const COUNTRY_NUM_TO_REGION: Record<number, MediaRegion> = {
+  392: "japan",
+  156: "china",
+  410: "korea",
+  158: "taiwan",
+  344: "hong_kong",
+  840: "usa",
+  826: "uk",
+  764: "thailand",
+};
+
+// A game's region = the developer's country (best origin signal), falling back
+// to the publisher's, then any involved company with a known country. Null when
+// IGDB has no usable country — the editor can set one.
+function igdbRegion(game: IgdbGame): MediaRegion | null {
+  const companies = game.involved_companies ?? [];
+  const pick = (filter: (c: (typeof companies)[number]) => boolean) => {
+    for (const c of companies) {
+      const code = c.company?.country;
+      if (filter(c) && typeof code === "number" && COUNTRY_NUM_TO_REGION[code]) {
+        return COUNTRY_NUM_TO_REGION[code];
+      }
+    }
+    return null;
+  };
+  return (
+    pick((c) => c.developer === true) ??
+    pick((c) => c.publisher === true) ??
+    pick(() => true)
+  );
+}
 
 export interface IgdbMapOptions {
   status: MediaStatus;
@@ -32,7 +67,7 @@ export function igdbToMediaRow(
   const name = game.name?.trim();
   return {
     type: "game",
-    region: null, // games carry no region in our model; editor can set one
+    region: igdbRegion(game), // developer's country (best-effort); editor can fix
     title_native: null,
     title_romaji: null,
     title_english: name ? name : null,
