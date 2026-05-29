@@ -29,14 +29,24 @@ export interface IgdbPlatform {
   abbreviation?: string;
 }
 
+// A company involved with a game (developer / publisher / …). `country` is an
+// ISO 3166-1 *numeric* code (e.g. 392 = Japan) — used to derive a game's region.
+export interface IgdbInvolvedCompany {
+  developer?: boolean;
+  publisher?: boolean;
+  company?: { id: number; country?: number | null } | null;
+}
+
 // The subset of IGDB's game shape we consume. `cover.image_id` builds the cover
-// URL; `first_release_date` is a Unix timestamp (seconds).
+// URL; `first_release_date` is a Unix timestamp (seconds). `involved_companies`
+// is fetched on detail only (the mapper reads the developer's country → region).
 export interface IgdbGame {
   id: number;
   name: string;
   cover?: { id: number; image_id?: string } | null;
   first_release_date?: number | null;
   platforms?: IgdbPlatform[];
+  involved_companies?: IgdbInvolvedCompany[];
   summary?: string;
 }
 
@@ -135,7 +145,12 @@ export async function getIgdbDetail(
   id: number,
   options: IgdbClientOptions,
 ): Promise<IgdbGame | null> {
-  const body = `fields ${GAME_FIELDS},summary; where id = ${id};`;
+  // Detail also pulls the involved companies' developer flag + country, so the
+  // mapper can derive a region (the developer's country) for the game.
+  const body =
+    `fields ${GAME_FIELDS},summary,` +
+    `involved_companies.developer,involved_companies.publisher,involved_companies.company.country;` +
+    ` where id = ${id};`;
   const results = await igdbRequest(body, options);
   return results[0] ?? null;
 }
