@@ -67,6 +67,7 @@ export const MEDIA_TYPES = [
   "drama",
   "movie",
   "game",
+  "variety",
 ] as const satisfies readonly MediaType[];
 
 export const MEDIA_STATUSES = [

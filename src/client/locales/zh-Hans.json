@@ -31,7 +31,8 @@
     "light_novel": "轻小说",
     "drama": "剧集",
     "movie": "电影",
-    "game": "游戏"
+    "game": "游戏",
+    "variety": "综艺"
   },
   "status": {
     "planned": "计划中",
