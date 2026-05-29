@@ -15,3 +15,6 @@ learning/
 
 # Screenshots dropped into the project for review during development.
 Screenshot*.png
+
+# Personal media list (private dogfood data, not a project deliverable).
+娱乐列表.md

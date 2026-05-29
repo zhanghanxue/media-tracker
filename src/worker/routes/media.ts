@@ -1,17 +1,23 @@
-// POST /api/media — add a media item the browser fetched from a source API.
+// POST /api/media — add a media item from a source API.
 //
-// The browser does the source call (AniList blocks Cloudflare Worker egress IPs
-// but allows CORS; Bangumi we keep browser-side for the same reasons) and POSTs
-// the resulting media object. The Worker maps it authoritatively, re-hosts the
-// cover to R2 (best-effort), and inserts. It does NOT call those APIs itself.
+// AniList/Bangumi: the BROWSER does the source call (AniList blocks Cloudflare
+// Worker egress IPs but allows CORS; Bangumi we keep browser-side too) and POSTs
+// the resulting media object, which the Worker maps authoritatively.
+//
+// TMDB: key-bearing, so the WORKER calls it — the browser POSTs only { id,
+// media_type } and the Worker fetches full detail before mapping.
+//
+// In all cases the Worker re-hosts the cover to R2 (best-effort) and inserts.
 //
 //   1. validate body { external_source, status, media } → 400
-//   2. reject unimplemented sources (tmdb/igdb)          → 501
-//   3. conflict probe (source, media.id)                 → 409 + existing row
-//   4. map (400 if unclassifiable) → upload cover → insert → 201
+//   2. reject unimplemented sources (igdb)               → 501
+//   3. conflict probe (source, externalId)               → 409 + existing row
+//   4. [tmdb only] fetch detail (503 unconfigured / 502 upstream / 404 missing)
+//   5. map (400 if unclassifiable) → upload cover → insert → 201
 //
-// The cover CDN fetch is the only external boundary the Worker still makes;
-// the integration test mocks it with `fetchMock`. D1 and R2 are real bindings.
+// External boundaries the Worker makes: the cover CDN fetch (always) and the
+// TMDB detail fetch (tmdb adds only); integration tests mock both via fetchMock.
+// D1 and R2 are real bindings.
 
 import { Hono } from "hono";
 
@@ -27,9 +33,11 @@ import {
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
+import { tmdbToMediaRow } from "../sources/tmdb-mapper";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
-import { parseCreateMediaRequest } from "../api/validation";
+import { getTmdbDetail, type TmdbDetail } from "../sources/tmdb";
+import { parseCreateMediaRequest, type TmdbAddRef } from "../api/validation";
 import { parseListQuery } from "../api/list-query";
 import {
   applyAutoComplete,
@@ -58,22 +66,49 @@ mediaRoutes.post("/", async (c) => {
   }
   const { external_source, status, media } = parsed.value;
 
-  // v1.x implements AniList (English/Japanese) and Bangumi (Chinese donghua /
-  // manhua AniList lacks). TMDB / IGDB are accepted by validation but unwired —
+  // v1.x implements AniList (EN/JP), Bangumi (Chinese donghua/manhua AniList
+  // lacks) and TMDB (movies/drama). IGDB is accepted by validation but unwired —
   // 501 distinguishes "known but unbuilt" from "bad input".
-  if (external_source !== "anilist" && external_source !== "bangumi") {
+  if (external_source === "igdb") {
     return c.json(
       { error: `source '${external_source}' is not implemented yet` },
       501,
     );
   }
 
-  const externalId = String(media.id);
+  // The conflict key. TMDB movie ids and tv ids collide, so the key is kind-
+  // prefixed ("movie:603"); the other sources use the bare id.
+  const externalId =
+    external_source === "tmdb"
+      ? `${(media as TmdbAddRef).media_type}:${(media as TmdbAddRef).id}`
+      : String(media.id);
 
-  // Conflict probe: don't duplicate an item we already track.
+  // Conflict probe: don't duplicate an item we already track. For TMDB this runs
+  // BEFORE the (slower, key-bearing) detail fetch — a re-add costs no TMDB call.
   const existing = await findByExternalRef(c.env.DB, external_source, externalId);
   if (existing !== null) {
     return c.json(existing, 409);
+  }
+
+  // TMDB is Worker-side: fetch full detail here (the browser only sent id+kind).
+  // Kept outside the mapping try/catch so an upstream failure surfaces as 502/503
+  // rather than a misleading "couldn't classify" 400.
+  let tmdbDetail: TmdbDetail | null = null;
+  if (external_source === "tmdb") {
+    if (!c.env.TMDB_API_KEY) {
+      return c.json({ error: "TMDB integration is not configured" }, 503);
+    }
+    try {
+      const ref = media as TmdbAddRef;
+      tmdbDetail = await getTmdbDetail(ref.id, ref.media_type, {
+        apiKey: c.env.TMDB_API_KEY,
+      });
+    } catch {
+      return c.json({ error: "TMDB request failed" }, 502);
+    }
+    if (tmdbDetail === null) {
+      return c.json({ error: "media not found on TMDB" }, 404);
+    }
   }
 
   let row;
@@ -82,7 +117,9 @@ mediaRoutes.post("/", async (c) => {
     row =
       external_source === "anilist"
         ? aniListToMediaRow(media as AniListMedia, status)
-        : bangumiToMediaRow(media as BangumiSubject, status);
+        : external_source === "bangumi"
+          ? bangumiToMediaRow(media as BangumiSubject, status)
+          : tmdbToMediaRow(tmdbDetail!, (media as TmdbAddRef).media_type, status);
   } catch {
     // Mappers throw on an item they can't classify (unknown AniList format /
     // unsupported Bangumi subject type).

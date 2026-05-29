@@ -12,4 +12,8 @@ export type AppEnv = AuthEnv & {
   DB: D1Database;
   COVERS: R2Bucket;
   COVERS_PUBLIC_URL_BASE: string;
+  // TMDB v4 "API Read Access Token". A Wrangler secret (prod) / .dev.vars (local).
+  // Unlike AniList/Bangumi, TMDB is key-bearing so the Worker — not the browser —
+  // calls it. May be undefined locally if the dev hasn't set it; the route 503s.
+  TMDB_API_KEY?: string;
 };

@@ -1,0 +1,25 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "id": 496243,
+      "title": "寄生虫",
+      "original_title": "기생충",
+      "original_language": "ko",
+      "overview": "穷困潦倒的金家四口。",
+      "poster_path": "/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg",
+      "release_date": "2019-05-30"
+    },
+    {
+      "id": 61337,
+      "title": "寄生兽",
+      "original_title": "寄生獣",
+      "original_language": "ja",
+      "overview": "另一部同名作品。",
+      "poster_path": "/abc.jpg",
+      "release_date": "2014-11-29"
+    }
+  ],
+  "total_results": 2,
+  "total_pages": 1
+}

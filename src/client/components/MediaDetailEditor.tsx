@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
+import { useSeriesIndex } from "../hooks/useSeriesIndex";
+import { useRenameSeries } from "../hooks/useRenameSeries";
 import { BangumiTitlePicker } from "./BangumiTitlePicker";
 import { AniListTitlePicker } from "./AniListTitlePicker";
 import { mediaProgress } from "../lib/progress";
 import { REGION_FACETS } from "../lib/facets";
+import { newSeriesId } from "../lib/series";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import type { MediaPatch } from "../../worker/api/patch-media";
 import type { MediaStatus } from "../../worker/db/schema";
@@ -30,6 +34,7 @@ export function MediaDetailEditor({
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const update = useUpdateMedia();
   const del = useDeleteMedia();
   const lang = uiLangFromI18n(i18n.language);
@@ -88,6 +93,57 @@ export function MediaDetailEditor({
   const [region, setRegion] = useState(media.region ?? "");
   const [showPicker, setShowPicker] = useState(false);
   const [showAniListPicker, setShowAniListPicker] = useState(false);
+
+  // Series grouping. These apply IMMEDIATELY (their own mutations), separate from
+  // the Save button which handles status/progress/titles. series_id is just a
+  // grouping tag — linking/moving/unlinking never touches the entry's own data.
+  const [seriesId, setSeriesId] = useState(media.series_id);
+  const [seriesName, setSeriesName] = useState(media.series_name ?? "");
+  const [showSeriesPicker, setShowSeriesPicker] = useState(false);
+  const [seriesQuery, setSeriesQuery] = useState("");
+  const seriesIndex = useSeriesIndex();
+  const renameSeries = useRenameSeries();
+
+  const applySeries = (id: string | null, name: string | null) => {
+    setSeriesId(id);
+    setSeriesName(name ?? "");
+    update.mutate(
+      {
+        id: media.id,
+        patch: {
+          series_id: id,
+          series_name: name,
+          ...(id === null ? { season_number: null } : {}),
+        },
+      },
+      {
+        // A series change is structural (regroups the list, adds a new series to
+        // the picker), so — unlike a +1 — invalidate so both the grouped library
+        // and the series index refetch instead of needing a manual page refresh.
+        onSuccess: () =>
+          void queryClient.invalidateQueries({ queryKey: ["media"] }),
+      },
+    );
+    setShowSeriesPicker(false);
+    setSeriesQuery("");
+  };
+  const createSeries = () => {
+    // override = the typed name, or null to auto-name from members per-language.
+    applySeries(newSeriesId(), seriesQuery.trim() || null);
+  };
+  const commitRename = () => {
+    const n = seriesName.trim();
+    const current = media.series_name ?? "";
+    if (seriesId && n !== current) {
+      // Empty → clear the override (revert to the auto-derived per-language name).
+      renameSeries.mutate({ seriesId, name: n === "" ? null : n });
+    }
+  };
+  const seriesQ = seriesQuery.trim().toLowerCase();
+  const seriesMatches = seriesIndex.filter(
+    (s) => s.id !== seriesId && s.name.toLowerCase().includes(seriesQ),
+  );
+  const seriesExactMatch = seriesIndex.some((s) => s.name.toLowerCase() === seriesQ);
   // Seed the picker with a Latin title (best for Bangumi's v0 search).
   const pickerQuery =
     media.title_english ?? media.title_romaji ?? media.title_native ?? "";
@@ -328,6 +384,105 @@ export function MediaDetailEditor({
             ))}
           </select>
         </label>
+
+        {/* Series grouping — applies immediately (not via Save). */}
+        <div className="text-sm">
+          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+            {t("series.section")}
+          </span>
+
+          {seriesId ? (
+            <div className="space-y-2 rounded-md border border-zinc-700 bg-zinc-800/30 p-2 light:border-zinc-300 light:bg-zinc-50">
+              <input
+                type="text"
+                value={seriesName}
+                onChange={(e) => setSeriesName(e.target.value)}
+                onBlur={commitRename}
+                placeholder={t("series.namePlaceholder")}
+                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+              />
+              <p className="text-[11px] text-zinc-500">{t("series.note")}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSeriesPicker((v) => !v)}
+                  className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-700"
+                >
+                  {t("series.relink")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applySeries(null, null)}
+                  className="rounded-md px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 light:text-red-600"
+                >
+                  {t("series.unlink")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            !showSeriesPicker && (
+              <button
+                type="button"
+                onClick={() => setShowSeriesPicker(true)}
+                className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+              >
+                {t("series.link")}
+              </button>
+            )
+          )}
+
+          {showSeriesPicker && (
+            <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-950/40 p-2 light:border-zinc-300 light:bg-white">
+              <input
+                type="search"
+                autoFocus
+                value={seriesQuery}
+                onChange={(e) => setSeriesQuery(e.target.value)}
+                placeholder={t("series.searchPlaceholder")}
+                className="mb-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm light:border-zinc-300 light:bg-white"
+              />
+              <ul className="max-h-40 space-y-1 overflow-y-auto">
+                {seriesMatches.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => applySeries(s.id, s.override)}
+                      className="flex w-full items-center justify-between rounded p-1.5 text-left text-sm hover:bg-zinc-800 light:hover:bg-zinc-100"
+                    >
+                      <span className="truncate">{s.name}</span>
+                      <span className="shrink-0 text-xs text-zinc-500">
+                        {t("series.seasons", { count: s.count })}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {!seriesExactMatch && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={createSeries}
+                      className="w-full rounded p-1.5 text-left text-sm text-blue-400 hover:bg-zinc-800 light:text-blue-600 light:hover:bg-zinc-100"
+                    >
+                      {seriesQuery.trim()
+                        ? t("series.create", { name: seriesQuery.trim() })
+                        : t("series.createAuto")}
+                    </button>
+                  </li>
+                )}
+              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSeriesPicker(false);
+                  setSeriesQuery("");
+                }}
+                className="mt-1 text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                {t("picker.close")}
+              </button>
+            </div>
+          )}
+        </div>
 
         <label className="block text-sm">
           <span className="mb-1 block text-zinc-400 light:text-zinc-500">

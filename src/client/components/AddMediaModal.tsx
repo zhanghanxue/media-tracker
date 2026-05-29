@@ -3,19 +3,28 @@ import { useTranslation } from "react-i18next";
 
 import { useAniListSearch } from "../hooks/useAniListSearch";
 import { useBangumiSearch } from "../hooks/useBangumiSearch";
+import { useTmdbSearch } from "../hooks/useTmdbSearch";
 import { useAddMedia } from "../hooks/useAddMedia";
 import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
+import {
+  tmdbCover,
+  tmdbDisplayTitle,
+  tmdbOriginalTitle,
+  tmdbYear,
+  type TmdbKind,
+  type TmdbSearchResultRaw,
+} from "../lib/tmdbSearch";
 import type { AniListSearchItem, SearchType } from "../lib/api";
 import type { BangumiSubject } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
 
-// Where to search. AniList = English/Japanese (canonical). Bangumi = search by
-// Chinese (or any) name; the add then resolves to AniList when possible, else
-// adds Bangumi-direct (for donghua AniList lacks).
-type Source = "anilist" | "bangumi";
+// Where to search. AniList = English/Japanese (canonical, anime/manga). Bangumi =
+// search by Chinese name (donghua/manhua AniList lacks). TMDB = movies/drama,
+// searched by any name; the Worker holds the key and fetches detail on add.
+type Source = "anilist" | "bangumi" | "tmdb";
 
 // Statuses offered at add-time (paused is an edit-time state, omitted here).
 const ADD_STATUSES: MediaStatus[] = [
@@ -38,6 +47,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [source, setSource] = useState<Source>("anilist");
   const [searchType, setSearchType] = useState<SearchType>("ANIME");
+  const [tmdbKind, setTmdbKind] = useState<TmdbKind>("movie");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<MediaStatus>("planned");
   const debouncedQuery = useDebouncedValue(input, 300);
@@ -51,6 +61,10 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const bgmSearch = useBangumiSearch(
     source === "bangumi" ? debouncedQuery : "",
     bgmType,
+  );
+  const tmdbSearch = useTmdbSearch(
+    source === "tmdb" ? debouncedQuery : "",
+    tmdbKind,
   );
 
   const addMutation = useAddMedia();
@@ -66,7 +80,8 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const pendingAniListId = addMutation.isPending
+  // AniList + TMDB both go through addMutation; only one source renders at a time.
+  const pendingAddId = addMutation.isPending
     ? addMutation.variables?.media.id
     : undefined;
   const pendingBangumiId = addByChinese.isPending
@@ -79,12 +94,28 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const handleAddBangumi = (subject: BangumiSubject) => {
     addByChinese.mutate({ subject, status });
   };
+  const handleAddTmdb = (item: TmdbSearchResultRaw) => {
+    addMutation.mutate({
+      external_source: "tmdb",
+      status,
+      media: { id: item.id, media_type: tmdbKind },
+    });
+  };
 
-  const search = source === "anilist" ? aniSearch : bgmSearch;
+  const search =
+    source === "anilist" ? aniSearch : source === "tmdb" ? tmdbSearch : bgmSearch;
   const placeholder =
     source === "anilist"
       ? t("add.searchPlaceholder")
-      : t("add.searchPlaceholderBangumi");
+      : source === "tmdb"
+        ? t("add.searchPlaceholderTmdb")
+        : t("add.searchPlaceholderBangumi");
+  const emptyMessage =
+    source === "anilist"
+      ? t("add.empty")
+      : source === "tmdb"
+        ? t("add.emptyTmdb")
+        : t("add.emptyBangumi");
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm ${
@@ -121,8 +152,8 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
 
         {/* Controls */}
         <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
-          {/* Source: AniList (EN/JP) vs Bangumi (search by Chinese) */}
-          <div className="flex gap-2">
+          {/* Source: AniList (EN/JP) · Bangumi (中文) · TMDB (影视) */}
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setSource("anilist")}
@@ -137,20 +168,43 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             >
               {t("add.sourceBangumi")}
             </button>
+            <button
+              type="button"
+              onClick={() => setSource("tmdb")}
+              className={tabClass(source === "tmdb")}
+            >
+              {t("add.sourceTmdb")}
+            </button>
           </div>
 
-          <div className="flex gap-2">
-            {(["ANIME", "MANGA"] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setSearchType(type)}
-                className={tabClass(searchType === type)}
-              >
-                {t(type === "ANIME" ? "add.anime" : "add.manga")}
-              </button>
-            ))}
-          </div>
+          {/* Sub-type toggle: Anime/Manga for AniList+Bangumi, Movie/TV for TMDB */}
+          {source === "tmdb" ? (
+            <div className="flex gap-2">
+              {(["movie", "tv"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setTmdbKind(kind)}
+                  className={tabClass(tmdbKind === kind)}
+                >
+                  {t(kind === "movie" ? "add.movie" : "add.tv")}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              {(["ANIME", "MANGA"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setSearchType(type)}
+                  className={tabClass(searchType === type)}
+                >
+                  {t(type === "ANIME" ? "add.anime" : "add.manga")}
+                </button>
+              ))}
+            </div>
+          )}
 
           <input
             type="search"
@@ -181,7 +235,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto p-4">
           {debouncedQuery.trim().length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
-              {source === "anilist" ? t("add.empty") : t("add.emptyBangumi")}
+              {emptyMessage}
             </p>
           ) : search.isPending ? (
             <p className="py-8 text-center text-sm text-zinc-500">
@@ -246,10 +300,10 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                         <button
                           type="button"
                           onClick={() => handleAdd(item)}
-                          disabled={pendingAniListId === item.id}
+                          disabled={pendingAddId === item.id}
                           className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
                         >
-                          {pendingAniListId === item.id
+                          {pendingAddId === item.id
                             ? t("add.adding")
                             : t("add.addButton")}
                         </button>
@@ -257,6 +311,73 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </li>
                 ))}
+              </ul>
+            )
+          ) : source === "tmdb" ? (
+            tmdbSearch.data!.length === 0 ? (
+              <p className="py-8 text-center text-sm text-zinc-500">
+                {t("add.noResults")}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {tmdbSearch.data!.map((item) => {
+                  const cover = tmdbCover(item);
+                  const display = tmdbDisplayTitle(item);
+                  const original = tmdbOriginalTitle(item);
+                  const year = tmdbYear(item);
+                  const inLibrary = titleInLibrary(libraryTitles, [
+                    display,
+                    original,
+                  ]);
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex gap-3 rounded-md p-2 hover:bg-zinc-800 light:hover:bg-zinc-100"
+                    >
+                      <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-zinc-800 light:bg-zinc-100">
+                        {cover && (
+                          <img
+                            src={cover}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{display}</p>
+                        {original && original !== display && (
+                          <p className="truncate text-xs text-zinc-400 light:text-zinc-500">
+                            {original}
+                          </p>
+                        )}
+                        <p className="text-xs text-zinc-500">
+                          {[t(tmdbKind === "movie" ? "add.movie" : "add.tv"), year]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center">
+                        {inLibrary ? (
+                          <span className="rounded px-2 py-1 text-xs text-zinc-500">
+                            {t("add.alreadyAdded")}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAddTmdb(item)}
+                            disabled={pendingAddId === item.id}
+                            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                          >
+                            {pendingAddId === item.id
+                              ? t("add.adding")
+                              : t("add.addButton")}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )
           ) : bgmSearch.data!.length === 0 ? (

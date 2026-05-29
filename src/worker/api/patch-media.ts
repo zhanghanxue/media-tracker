@@ -36,6 +36,11 @@ export interface MediaPatch {
   title_english?: string | null;
   title_romaji?: string | null;
   region?: string | null;
+  // Series grouping: link (set id+name), move (change id+name), unlink (null).
+  // Renaming a whole series goes through PATCH /api/series/:id, not here.
+  series_id?: string | null;
+  series_name?: string | null;
+  season_number?: number | null;
 }
 
 export type PatchResult =
@@ -47,6 +52,7 @@ const NULLABLE_INT_FIELDS = [
   "total_episodes",
   "current_chapter",
   "total_chapters",
+  "season_number",
 ] as const;
 
 const NULLABLE_STRING_FIELDS = [
@@ -56,6 +62,8 @@ const NULLABLE_STRING_FIELDS = [
   "title_english",
   "title_romaji",
   "region",
+  "series_id",
+  "series_name",
 ] as const;
 
 const CONSUMPTION_MODES: MediaConsumptionMode[] = ["playing", "watching"];

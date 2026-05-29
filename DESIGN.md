@@ -40,7 +40,7 @@ All four metadata APIs are needed long-term (you have 1000+ entries spanning eve
 **Fetch-location decision (learned in Phase 11 dogfood, 2026-05-29):** *where* each API call runs is a per-source decision, not "always proxy through the Worker":
 - **AniList → browser-direct.** AniList blocks Cloudflare Worker egress IPs (HTTP 403 "API temporarily disabled" to Workers; 200 to normal IPs) but sends permissive CORS (`Access-Control-Allow-Origin: *`). So the browser calls AniList directly and POSTs the resulting media object to the Worker, which maps + persists it. The Worker never calls AniList. (This corrected the original "AniList has no CORS, proxy via the Worker" assumption — wrong on both counts.)
 - **Bangumi → browser-direct (shipped 2026-05-29).** Both search endpoints and the subject-detail endpoint send `Access-Control-Allow-Origin: *` and need no auth for reads; the v0 `POST /v0/search/subjects` preflight is also allowed (verified). So search + Chinese-title enrichment run in the browser, same as AniList. Note the two search endpoints are **complementary**: v0 ranks well + indexes romaji (great for Latin/romaji queries) but returns 0 for CJK keywords; the legacy endpoint handles kanji/Chinese but is flaky — query v0 by romaji/English first, fall back to legacy by native.
-- **Secret-bearing APIs (IGDB = Twitch OAuth) → Worker-side, mandatory.** A client secret must never reach the browser, so those calls stay server-side — and must be watched for the same Worker-egress-block class of problem.
+- **Secret-bearing APIs (TMDB = API key; IGDB = Twitch OAuth) → Worker-side, mandatory.** A key/secret must never reach the browser, so those calls stay server-side — and must be watched for the same Worker-egress-block class of problem. **TMDB shipped this way 2026-05-29:** the browser hits `/api/tmdb/search` (Worker proxies with the `TMDB_API_KEY` bearer secret), and on add it POSTs only `{ id, media_type }` — the Worker fetches full detail (with `append_to_response=translations` to pull EN/中文/native titles in one call) and maps authoritatively. This is the first source that *inverts* the AniList/Bangumi browser-direct pattern. Movie & TV ids share a numeric space, so the conflict key is kind-prefixed (`movie:496243`).
 - **Cover images (§10):** the Worker still tries to re-host to R2, but if the image CDN also blocks Workers, `uploadCoverToR2` gracefully falls back to the upstream URL, so a row always has a usable `cover_url`.
 
 ## 4. Schema shape — Single `media` table + type discriminator + nullable per-type columns
@@ -280,7 +280,8 @@ CREATE INDEX idx_media_video_parts_media_id ON media_video_parts(media_id);
 | ~~Simplified / Traditional Chinese search mismatch~~ | ✅ DONE 2026-05-29 — OpenCC `t`→`cn` at write-time (browser) |
 | Want offline access on the road | Add IndexedDB cache + background sync |
 | Pinyin (vs code-point) sort for Chinese titles | ✅ DONE 2026-05-29 — client-side `localeCompare('zh')` |
-| ~~Bangumi added~~ | ✅ DONE 2026-05-29 — full integration (search + add-by-Chinese + enricher). **TMDB / IGDB** still pending |
+| ~~Bangumi added~~ | ✅ DONE 2026-05-29 — full integration (search + add-by-Chinese + enricher) |
+| ~~TMDB added~~ | ✅ DONE 2026-05-29 — movies + TV/drama. First Worker-side (key-bearing) source; titles via `translations`, region via `origin_country`, kind-prefixed conflict key. **IGDB** still pending |
 
 ---
 

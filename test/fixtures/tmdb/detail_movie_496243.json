@@ -1,0 +1,31 @@
+{
+  "id": 496243,
+  "title": "寄生虫",
+  "original_title": "기생충",
+  "original_language": "ko",
+  "overview": "穷困潦倒的金家四口与富有的朴家因一场家教面试而产生交集。",
+  "poster_path": "/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg",
+  "runtime": 133,
+  "release_date": "2019-05-30",
+  "origin_country": ["KR"],
+  "production_countries": [{ "iso_3166_1": "KR", "name": "South Korea" }],
+  "translations": {
+    "translations": [
+      {
+        "iso_639_1": "en",
+        "iso_3166_1": "US",
+        "data": { "title": "Parasite", "overview": "All unemployed, Ki-taek's family takes peculiar interest in the wealthy Park family." }
+      },
+      {
+        "iso_639_1": "zh",
+        "iso_3166_1": "CN",
+        "data": { "title": "寄生虫", "overview": "穷困潦倒的金家四口。" }
+      },
+      {
+        "iso_639_1": "zh",
+        "iso_3166_1": "TW",
+        "data": { "title": "寄生上流", "overview": "繁體中文簡介。" }
+      }
+    ]
+  }
+}

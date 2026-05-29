@@ -1,0 +1,27 @@
+{
+  "id": 93405,
+  "name": "鱿鱼游戏",
+  "original_name": "오징어 게임",
+  "original_language": "ko",
+  "overview": "数百名走投无路的人受邀参加一场儿童游戏，赢家可获得巨额奖金。",
+  "poster_path": "/dDlEmu3EZ0Pgg93K2SVNLCjCSvE.jpg",
+  "number_of_episodes": 9,
+  "number_of_seasons": 1,
+  "episode_run_time": [],
+  "first_air_date": "2021-09-17",
+  "origin_country": ["KR"],
+  "translations": {
+    "translations": [
+      {
+        "iso_639_1": "en",
+        "iso_3166_1": "US",
+        "data": { "name": "Squid Game", "overview": "Hundreds of cash-strapped players accept a strange invitation to compete in children's games." }
+      },
+      {
+        "iso_639_1": "zh",
+        "iso_3166_1": "CN",
+        "data": { "name": "鱿鱼游戏", "overview": "简体中文简介。" }
+      }
+    ]
+  }
+}

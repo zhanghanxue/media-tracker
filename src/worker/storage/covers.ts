@@ -73,7 +73,11 @@ export async function uploadCoverToR2(
 
 function buildObjectKey(key: CoverKey, sourceUrl: string): string {
   const ext = inferExtension(sourceUrl);
-  return `covers/${key.externalSource}/${key.externalId}.${ext}`;
+  // Sanitize the id into a URL/key-safe segment. AniList/Bangumi ids are bare
+  // integers (unchanged); TMDB's kind-prefixed "movie:496243" becomes
+  // "movie_496243" so the public cover URL has no stray colon in its path.
+  const safeId = key.externalId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `covers/${key.externalSource}/${safeId}.${ext}`;
 }
 
 function inferExtension(url: string): string {

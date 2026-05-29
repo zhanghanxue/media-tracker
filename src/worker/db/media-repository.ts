@@ -28,6 +28,7 @@ const INSERT_COLUMNS = [
   "total_episodes",
   "current_chapter",
   "total_chapters",
+  "runtime_minutes",
 ] as const;
 
 const INSERT_SQL = `
@@ -163,6 +164,25 @@ export async function deleteMedia(
 }
 
 /**
+ * Set `series_name` on every member sharing `seriesId`. `name` may be null to
+ * CLEAR the manual override (reverting the group to its auto-derived,
+ * per-language name). Returns the number of rows updated (0 if no such series).
+ * Does NOT bump `date_updated` — a rename is metadata and shouldn't reorder a
+ * date-sorted list.
+ */
+export async function renameSeries(
+  db: D1Database,
+  seriesId: string,
+  name: string | null,
+): Promise<number> {
+  const result = await db
+    .prepare("UPDATE media SET series_name = ? WHERE series_id = ?")
+    .bind(name, seriesId)
+    .run();
+  return result.meta.changes;
+}
+
+/**
  * Insert a mapped row and return the persisted record (with DB-assigned `id`,
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.
@@ -189,6 +209,7 @@ export async function insertMedia(
       row.total_episodes,
       row.current_chapter,
       row.total_chapters,
+      row.runtime_minutes,
     )
     .first<MediaRow>();
 
