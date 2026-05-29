@@ -38,6 +38,10 @@ export interface IgdbAddRef {
   id: number;
   consumption_mode: MediaConsumptionMode;
   platform: MediaPlatform | null;
+  // Optional Chinese title the browser mined from IGDB's alternative_names and
+  // normalized to Simplified (OpenCC is browser-only). The mapper uses it, or
+  // falls back to deriving one server-side.
+  title_chinese?: string | null;
 }
 
 export const CONSUMPTION_MODES = [
@@ -168,6 +172,14 @@ export function parseCreateMediaRequest(body: unknown): ValidationResult {
             `media.platform must be null or one of: ${MEDIA_PLATFORMS.join(", ")}`,
           );
         }
+      }
+      // title_chinese is optional; when present must be a string or null.
+      if (
+        "title_chinese" in media &&
+        media.title_chinese !== null &&
+        typeof media.title_chinese !== "string"
+      ) {
+        errors.push("media.title_chinese must be a string or null");
       }
     }
   }

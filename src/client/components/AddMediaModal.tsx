@@ -11,7 +11,8 @@ import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
-import type { IgdbGame } from "../lib/igdbSearch";
+import { igdbChineseAlias, type IgdbGame } from "../lib/igdbSearch";
+import { toSimplified } from "../lib/toSimplified";
 import { autoLinkAniListSeries } from "../lib/seriesAutoLink";
 import { TmdbResultRow } from "./TmdbResultRow";
 import { IgdbResultRow } from "./IgdbResultRow";
@@ -139,11 +140,25 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       media: { id: item.id, media_type: tmdbKind },
     });
   };
-  const handleAddIgdb = (game: IgdbGame, platform: MediaPlatform | null) => {
+  const handleAddIgdb = async (
+    game: IgdbGame,
+    platform: MediaPlatform | null,
+  ) => {
+    // Mine a Chinese title from IGDB's alternative_names and normalize it to
+    // Simplified (OpenCC is browser-only) so a Chinese game keeps its 中文 title.
+    const alias = igdbChineseAlias(game);
+    let titleChinese: string | null = null;
+    if (alias) {
+      try {
+        titleChinese = await toSimplified(alias);
+      } catch {
+        titleChinese = alias; // OpenCC chunk failed to load → store as-is
+      }
+    }
     addMutation.mutate({
       external_source: "igdb",
       status,
-      media: { id: game.id, consumption_mode: gameMode, platform },
+      media: { id: game.id, consumption_mode: gameMode, platform, title_chinese: titleChinese },
     });
   };
   const handleAddTmdbSeason = (item: TmdbSearchResultRaw, seasonNumber: number) => {
@@ -521,7 +536,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
                     game={game}
                     maybeInLibrary={titleInLibrary(libraryTitles, [game.name])}
                     pending={pendingIgdbId === game.id}
-                    onAdd={(platform) => handleAddIgdb(game, platform)}
+                    onAdd={(platform) => void handleAddIgdb(game, platform)}
                   />
                 ))}
               </ul>

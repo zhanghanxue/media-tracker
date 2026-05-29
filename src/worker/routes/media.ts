@@ -175,6 +175,7 @@ mediaRoutes.post("/", async (c) => {
         status,
         consumptionMode: ref.consumption_mode,
         platform: ref.platform,
+        titleChinese: ref.title_chinese ?? null,
       });
     } else if ((media as TmdbAddRef).season_number !== undefined) {
       row = tmdbSeasonToMediaRow(
