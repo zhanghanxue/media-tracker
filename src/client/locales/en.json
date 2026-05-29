@@ -124,7 +124,10 @@
     "titleChinese": "Chinese title",
     "titleChinesePlaceholder": "e.g. 鬼灭之刃",
     "region": "Region",
-    "regionNone": "—"
+    "regionNone": "—",
+    "refreshCover": "↻ Refresh cover (origin poster)",
+    "refreshingCover": "Refreshing cover…",
+    "refreshCoverFailed": "Couldn't refresh the cover."
   },
   "enrich": {
     "button": "Enrich titles",
@@ -144,6 +147,7 @@
     "collapse": "▲ Collapse",
     "moveUp": "Move up",
     "moveDown": "Move down",
+    "setCover": "Use as collection cover",
     "link": "Link to a series…",
     "relink": "Move to another series…",
     "unlink": "Unlink (back to standalone)",

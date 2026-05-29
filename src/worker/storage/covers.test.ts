@@ -121,6 +121,28 @@ describe("uploadCoverToR2 — idempotency", () => {
   });
 });
 
+describe("uploadCoverToR2 — overwrite (cover refresh)", () => {
+  it("re-fetches and re-puts even when the object already exists", async () => {
+    const r2 = makeR2();
+    // Object already in R2 — the default path would short-circuit here.
+    r2.head.mockResolvedValue({ key: "covers/tmdb/movie_603.jpg" });
+    const fetchMock = vi.fn().mockResolvedValue(makeImageResponse());
+
+    const url = await uploadCoverToR2(
+      makeEnv(r2),
+      "https://image.tmdb.org/t/p/w500/new.jpg",
+      { externalSource: "tmdb", externalId: "movie:603" },
+      { fetch: fetchMock, overwrite: true },
+    );
+
+    // With overwrite we skip the head() short-circuit and replace the bytes.
+    expect(r2.head).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(r2.put).toHaveBeenCalledTimes(1);
+    expect(url).toBe(`${PUBLIC_BASE}/covers/tmdb/movie_603.jpg`);
+  });
+});
+
 describe("uploadCoverToR2 — graceful fallback on upstream failure", () => {
   it("returns the upstream URL when fetch resolves with a 404", async () => {
     const r2 = makeR2();

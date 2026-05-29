@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
+import { useRefreshCover } from "../hooks/useRefreshCover";
 import { useSeriesIndex } from "../hooks/useSeriesIndex";
 import { useRenameSeries } from "../hooks/useRenameSeries";
 import { BangumiTitlePicker } from "./BangumiTitlePicker";
@@ -37,6 +38,7 @@ export function MediaDetailEditor({
   const queryClient = useQueryClient();
   const update = useUpdateMedia();
   const del = useDeleteMedia();
+  const refreshCover = useRefreshCover();
   const lang = uiLangFromI18n(i18n.language);
   const headerTitle = displayTitle(media, lang);
 
@@ -233,6 +235,25 @@ export function MediaDetailEditor({
                 ? t("editor.sourceBangumi", { id: media.external_id })
                 : t("editor.sourceManual")}
           </p>
+          {/* TMDB only: re-pull the origin-language poster (the selection that
+              runs on new adds) and overwrite the cached cover for this row. */}
+          {media.external_source === "tmdb" && (
+            <button
+              type="button"
+              onClick={() => refreshCover.mutate(media.id)}
+              disabled={refreshCover.isPending}
+              className="mt-1 text-xs text-blue-400 hover:underline disabled:opacity-50 light:text-blue-600"
+            >
+              {refreshCover.isPending
+                ? t("editor.refreshingCover")
+                : t("editor.refreshCover")}
+            </button>
+          )}
+          {refreshCover.isError && (
+            <p className="mt-1 text-xs text-red-400 light:text-red-600">
+              {t("editor.refreshCoverFailed")}
+            </p>
+          )}
         </div>
 
         <label className="block text-sm">

@@ -29,6 +29,7 @@ import {
   findById,
   insertMedia,
   listMedia,
+  setCoverUrl,
   updateMedia,
 } from "../db/media-repository";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
@@ -254,6 +255,101 @@ mediaRoutes.patch("/:id", async (c) => {
   const updated = await updateMedia(c.env.DB, id, finalPatch);
   if (updated === null) {
     // Row vanished between read and write (single-user app: effectively never).
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  return c.json(updated, 200);
+});
+
+// POST /api/media/:id/refresh-cover — re-pull the origin-language poster for a
+// TMDB item and overwrite its cached R2 cover. The origin-poster selection
+// (tmdb-mapper) only runs on NEW adds, so existing rows keep whatever cover they
+// had when added; this brings them up to date on demand. TMDB-only: AniList /
+// Bangumi expose a single cover with no language variants (and the Worker can't
+// re-fetch AniList anyway — it's browser-direct), so there's nothing to refresh.
+mediaRoutes.post("/:id/refresh-cover", async (c) => {
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+
+  const id = Number(idParam);
+  const existing = await findById(c.env.DB, id);
+  if (existing === null) {
+    return c.json({ error: `no media with id ${idParam}` }, 404);
+  }
+  if (existing.external_source !== "tmdb") {
+    return c.json(
+      { error: "cover refresh is only supported for TMDB items" },
+      422,
+    );
+  }
+  if (!c.env.TMDB_API_KEY) {
+    return c.json({ error: "TMDB integration is not configured" }, 503);
+  }
+
+  // external_id is "movie:ID", "tv:ID" or "tv:ID:sN" (kind-prefixed; seasons
+  // suffixed). Anything else is a malformed legacy row we can't refresh.
+  const match = /^(movie|tv):(\d+)(?::s(\d+))?$/.exec(existing.external_id ?? "");
+  if (!match) {
+    return c.json({ error: "this item has no refreshable TMDB id" }, 422);
+  }
+  const kind = match[1] as "movie" | "tv";
+  const tmdbId = Number(match[2]);
+  const seasonNumber = match[3] !== undefined ? Number(match[3]) : undefined;
+
+  // Re-fetch detail (+ season) with poster images, then re-run the SAME mapper
+  // the add flow uses so the origin-language selection is identical — we only
+  // care about its cover_url here.
+  let newCoverUrl: string | null;
+  try {
+    const detail = await getTmdbDetail(tmdbId, kind, {
+      apiKey: c.env.TMDB_API_KEY,
+      images: true,
+    });
+    if (detail === null) {
+      return c.json({ error: "media not found on TMDB" }, 404);
+    }
+    if (seasonNumber !== undefined) {
+      const summary = detail.seasons?.find(
+        (s) => s.season_number === seasonNumber,
+      );
+      if (!summary) {
+        return c.json({ error: "no such season on TMDB" }, 404);
+      }
+      const season = await getTmdbSeason(tmdbId, seasonNumber, {
+        apiKey: c.env.TMDB_API_KEY,
+        images: true,
+      });
+      newCoverUrl = tmdbSeasonToMediaRow(
+        detail,
+        summary,
+        season,
+        existing.status,
+      ).cover_url;
+    } else {
+      newCoverUrl = tmdbToMediaRow(detail, kind, existing.status).cover_url;
+    }
+  } catch {
+    return c.json({ error: "TMDB request failed" }, 502);
+  }
+
+  if (!newCoverUrl) {
+    return c.json({ error: "TMDB has no poster for this item" }, 422);
+  }
+
+  // Overwrite the R2 object (same key), then cache-bust the stored URL with a
+  // version query so the browser/CDN fetch the new bytes instead of the cached
+  // ones (overwriting R2 alone doesn't change the URL).
+  const rehosted = await uploadCoverToR2(
+    c.env,
+    newCoverUrl,
+    { externalSource: "tmdb", externalId: existing.external_id! },
+    { overwrite: true },
+  );
+  const busted = `${rehosted}${rehosted.includes("?") ? "&" : "?"}v=${Date.now()}`;
+
+  const updated = await setCoverUrl(c.env.DB, id, busted);
+  if (updated === null) {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
   return c.json(updated, 200);

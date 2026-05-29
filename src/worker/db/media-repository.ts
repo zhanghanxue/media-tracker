@@ -186,6 +186,42 @@ export async function renameSeries(
 }
 
 /**
+ * Set `series_cover_url` on every member sharing `seriesId` (the "pick
+ * collection cover" override). `url` may be null to CLEAR the override (the
+ * grouped card reverts to its first member's cover). Returns the number of rows
+ * updated (0 if no such series). Like renameSeries, does NOT bump date_updated —
+ * picking a cover is metadata and shouldn't reorder a date-sorted list.
+ */
+export async function setSeriesCover(
+  db: D1Database,
+  seriesId: string,
+  url: string | null,
+): Promise<number> {
+  const result = await db
+    .prepare("UPDATE media SET series_cover_url = ? WHERE series_id = ?")
+    .bind(url, seriesId)
+    .run();
+  return result.meta.changes;
+}
+
+/**
+ * Overwrite a single row's `cover_url` (the "refresh cover" action re-pulls the
+ * origin-language poster and re-hosts it). Returns the updated row, or null if
+ * no row has that id. Does NOT bump date_updated — a cover refresh is metadata,
+ * not a progress event, so it shouldn't jump the item up a date-sorted list.
+ */
+export async function setCoverUrl(
+  db: D1Database,
+  id: number,
+  url: string | null,
+): Promise<MediaRow | null> {
+  return db
+    .prepare("UPDATE media SET cover_url = ? WHERE id = ? RETURNING *")
+    .bind(url, id)
+    .first<MediaRow>();
+}
+
+/**
  * Insert a mapped row and return the persisted record (with DB-assigned `id`,
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.

@@ -23,6 +23,31 @@ export async function renameSeriesApi(
   if (!res.ok) throw new Error(`Rename failed (HTTP ${res.status})`);
 }
 
+/**
+ * Pin a collection cover for a whole series via PATCH /api/series/:id. `coverUrl`
+ * null clears the override (revert to the first member's cover).
+ */
+export async function setSeriesCoverApi(
+  seriesId: string,
+  coverUrl: string | null,
+): Promise<void> {
+  const res = await fetch(`/api/series/${encodeURIComponent(seriesId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cover_url: coverUrl }),
+  });
+  if (!res.ok) throw new Error(`Set cover failed (HTTP ${res.status})`);
+}
+
+/** The cover to SHOW for a series: the pinned override (if any member carries
+ *  series_cover_url) wins; otherwise the first member's own cover, in order. */
+export function seriesDisplayCover(members: MediaRow[]): string | null {
+  const override = members.find((m) => m.series_cover_url)?.series_cover_url;
+  if (override) return override;
+  const ordered = [...members].sort(compareSeasons);
+  return ordered.find((m) => m.cover_url)?.cover_url ?? null;
+}
+
 export interface SeriesSummary {
   id: string;
   name: string; // display label (override or per-language derived)

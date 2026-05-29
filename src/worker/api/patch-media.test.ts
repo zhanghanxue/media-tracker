@@ -147,6 +147,7 @@ function row(overrides: Partial<MediaRow>): MediaRow {
     series_id: null,
     series_name: null,
     season_number: null,
+    series_cover_url: null,
     date_added: "2026-01-01",
     date_updated: "2026-01-01",
     ...overrides,
