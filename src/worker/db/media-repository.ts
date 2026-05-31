@@ -355,6 +355,44 @@ export async function selectLibraryIdentities(
   return { keys, titles };
 }
 
+// --- Feature A: "What's New" scanner dismissals (migration 0010) -------------
+// A dismissed new-season / sequel suggestion, keyed by the (source, external_id)
+// the scan surfaces it under, so a dismissed item never reappears on re-scan.
+
+export interface DismissedSuggestion {
+  source: string;
+  external_id: string;
+}
+
+/** Every dismissal as `${source}:${external_id}` keys, for a direct membership
+ *  test against scan candidates. One small unbounded-by-library query. */
+export async function listDismissedSuggestionKeys(
+  db: D1Database,
+): Promise<string[]> {
+  const result = await db
+    .prepare("SELECT source, external_id FROM dismissed_suggestions")
+    .all<DismissedSuggestion>();
+  return result.results.map((r) => `${r.source}:${r.external_id}`);
+}
+
+/** Record a dismissal. Idempotent: re-dismissing the same (source, external_id)
+ *  is a no-op (the PK conflict is ignored), so a double-click can't error. */
+export async function insertDismissedSuggestion(
+  db: D1Database,
+  source: string,
+  externalId: string,
+  kind: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO dismissed_suggestions (source, external_id, kind)
+       VALUES (?, ?, ?)
+       ON CONFLICT(source, external_id) DO NOTHING`,
+    )
+    .bind(source, externalId, kind)
+    .run();
+}
+
 /**
  * Apply a validated partial update and return the updated row (or null if no
  * row has that id). `date_updated` is always bumped. Column names come only

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { AddMediaModal } from "./components/AddMediaModal";
 import { RecommendModal } from "./components/RecommendModal";
+import { WhatsNewModal } from "./components/WhatsNewModal";
 import { EnrichChineseButton } from "./components/EnrichChineseButton";
 import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
 import { LanguageToggle } from "./components/LanguageToggle";
@@ -42,6 +43,7 @@ export function App() {
   const [filters, setFilters] = useState<MediaFilters>(EMPTY_FILTERS);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRecommendModal, setShowRecommendModal] = useState(false);
+  const [showWhatsNewModal, setShowWhatsNewModal] = useState(false);
 
   // Genre facet options, scoped to the selected types (so picking type=game
   // shows only game genres, anime only anime genres). Only fetched once at least
@@ -92,6 +94,13 @@ export function App() {
             >
               {t("recommend.button")}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowWhatsNewModal(true)}
+              className="hidden rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 sm:block light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+            >
+              {t("whatsNew.button")}
+            </button>
             <RefreshEpisodesButton />
             <EnrichChineseButton />
             <ThemeToggle />
@@ -138,6 +147,10 @@ export function App() {
 
       {showRecommendModal && (
         <RecommendModal onClose={() => setShowRecommendModal(false)} />
+      )}
+
+      {showWhatsNewModal && (
+        <WhatsNewModal onClose={() => setShowWhatsNewModal(false)} />
       )}
     </div>
   );

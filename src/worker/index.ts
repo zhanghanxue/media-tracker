@@ -7,6 +7,7 @@ import { tmdbRoutes } from "./routes/tmdb";
 import { igdbRoutes } from "./routes/igdb";
 import { collectionsRoutes } from "./routes/collections";
 import { recommendRoutes } from "./routes/recommend";
+import { suggestionsRoutes } from "./routes/suggestions";
 
 const app = new Hono<{ Bindings: AppEnv; Variables: AuthVariables }>();
 
@@ -36,5 +37,8 @@ app.route("/api/collections", collectionsRoutes);
 // Feature B (v2): source-native recommendations per type. movie/drama/variety →
 // TMDB, game → IGDB (anime recs run in the browser, like the AniList add flow).
 app.route("/api/recommendations", recommendRoutes);
+// Feature A (v2): "What's New" scanner dismissals (the scan runs browser-side;
+// the Worker only persists which suggestions were dismissed).
+app.route("/api/suggestions", suggestionsRoutes);
 
 export default app;
