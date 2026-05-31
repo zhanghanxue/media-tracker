@@ -47,6 +47,40 @@ describe("aniListToMediaRow — type discrimination", () => {
   });
 });
 
+describe("aniListToMediaRow — release_date", () => {
+  it("uses the full startDate when present", () => {
+    const detail: AniListMedia = {
+      ...animeDetail,
+      startDate: { year: 2019, month: 4, day: 6 },
+    };
+    expect(aniListToMediaRow(detail, "planned").release_date).toBe("2019-04-06");
+  });
+
+  it("pads a year-only startDate to Jan 1", () => {
+    const detail: AniListMedia = {
+      ...animeDetail,
+      startDate: { year: 2019, month: null, day: null },
+    };
+    expect(aniListToMediaRow(detail, "planned").release_date).toBe("2019-01-01");
+  });
+
+  it("falls back to seasonYear when startDate is absent", () => {
+    // The fixture has seasonYear 2019 and no startDate.
+    expect(aniListToMediaRow(animeDetail, "planned").release_date).toBe(
+      "2019-01-01",
+    );
+  });
+
+  it("is null when neither startDate nor seasonYear is known", () => {
+    const detail: AniListMedia = {
+      ...animeDetail,
+      startDate: null,
+      seasonYear: null,
+    };
+    expect(aniListToMediaRow(detail, "planned").release_date).toBeNull();
+  });
+});
+
 describe("aniListToMediaRow — region from countryOfOrigin", () => {
   it("maps JP to japan", () => {
     expect(aniListToMediaRow(animeDetail, "planned").region).toBe("japan");

@@ -9,12 +9,30 @@
     "label": "排序",
     "date_updated": "最近更新",
     "date_added": "最近添加",
-    "title": "标题 A–Z"
+    "release_date": "发行时间（最早）",
+    "release_date_desc": "发行时间（最新）",
+    "title": "标题 A–Z",
+    "title_desc": "标题 Z–A",
+    "rating_desc": "评分（高→低）",
+    "rating_asc": "评分（低→高）"
+  },
+  "recommend": {
+    "button": "✨ 推荐",
+    "title": "推荐",
+    "intro": "基于你已追踪的内容给出建议 —— 先选一个类型。",
+    "pickType": "选择一个类型以获取推荐。",
+    "loading": "正在寻找推荐…",
+    "error": "无法加载推荐。",
+    "retry": "重试",
+    "empty": "暂无推荐 —— 先添加几部该类型的已完成作品。",
+    "because": "因为你有《{{title}}》",
+    "added": "已添加 ✓"
   },
   "filters": {
     "heading": "筛选",
     "type": "类型",
     "region": "地区",
+    "genre": "题材",
     "status": "状态",
     "clear": "清除全部",
     "toggle": "筛选"
@@ -23,7 +41,17 @@
     "loading": "加载中…",
     "empty": "没有符合筛选条件的内容。",
     "error": "无法加载你的收藏。",
-    "count": "{{total}} 项中的 {{shown}} 项"
+    "count": "{{total}} 项中的 {{shown}} 项",
+    "loadMore": "加载更多"
+  },
+  "bulk": {
+    "select": "选择",
+    "exit": "完成选择",
+    "selected_other": "已选 {{count}} 项",
+    "addToCollection": "加入合集…",
+    "setStatus": "设置状态",
+    "clear": "清除",
+    "done": "完成"
   },
   "type": {
     "animation": "动画",
@@ -49,7 +77,8 @@
     "hong_kong": "香港",
     "usa": "美国",
     "uk": "英国",
-    "thailand": "泰国"
+    "thailand": "泰国",
+    "__unset__": "未知 / 未设置"
   },
   "platform": {
     "pc": "PC",
@@ -142,6 +171,7 @@
     "sourceManual": "手动添加",
     "titleChinese": "中文标题",
     "titleChinesePlaceholder": "例如：鬼灭之刃",
+    "type": "类型",
     "region": "地区",
     "regionNone": "—",
     "consumptionMode": "模式",
@@ -155,9 +185,15 @@
     "videoPartTitle": "标签（可选）",
     "videoPartAdd": "添加",
     "videoPartRemove": "移除链接",
+    "videoLinksShow": "+ 添加视频链接（可选）",
+    "videoLinksHide": "隐藏视频链接",
     "refreshCover": "↻ 刷新封面（原产地海报）",
     "refreshingCover": "正在刷新封面…",
-    "refreshCoverFailed": "封面刷新失败。"
+    "refreshCoverFailed": "封面刷新失败。",
+    "igdbLink": "IGDB 游戏关联",
+    "linkedAniList": "✓ 已关联 AniList · #{{id}}",
+    "linkedIgdb": "✓ 已关联 IGDB · #{{id}}",
+    "unlinkRef": "取消关联"
   },
   "refresh": {
     "button": "↻ 更新集数",
@@ -174,27 +210,45 @@
     "skippedHeading": "无法匹配以下条目",
     "skippedWhy": "在 Bangumi/AniList 上没有可靠匹配（例如缺少拉丁别名）。请逐条打开，在编辑器中手动填写标题。"
   },
-  "series": {
-    "section": "系列",
-    "seasons_other": "{{count}} 季",
-    "expand_other": "▼ 展开 {{count}} 条",
-    "collapse": "▲ 收起",
-    "moveUp": "上移",
-    "moveDown": "下移",
-    "setCover": "设为系列封面",
-    "link": "关联到系列…",
-    "relink": "改关联到其他系列…",
-    "unlink": "取消关联（变回独立条目）",
-    "create": "＋ 新建系列「{{name}}」",
-    "createAuto": "＋ 新建系列（自动命名）",
-    "namePlaceholder": "自定义名称（留空＝自动）",
-    "searchPlaceholder": "搜索，或留空以自动命名新建…",
-    "note": "仅改分组 — 不影响条目本身。留空＝自动命名，按语言本地化。",
-    "empty": "输入名称以新建系列。"
+  "collection": {
+    "home": "主页",
+    "untitled": "（未命名）",
+    "open": "打开 ›",
+    "edit": "编辑合集",
+    "section": "合集",
+    "subCount_other": "{{count}} 个子合集",
+    "itemCount_other": "{{count}} 个条目",
+    "name": "名称",
+    "namePlaceholder": "合集名称（留空＝自动）",
+    "nameHint": "留空则根据内容自动命名。",
+    "moveUnder": "移到另一合集下（嵌套）",
+    "rootLevel": "— 顶层（不嵌套）—",
+    "parentSearchPlaceholder": "搜索合集…",
+    "bulkLegend": "应用到内部全部 {{count}} 个条目",
+    "genres": "题材（用逗号分隔）",
+    "genresPlaceholder": "例如：悬疑, 惊悚",
+    "cover": "封面",
+    "coverAuto": "自动",
+    "newSub": "新建子合集",
+    "newSubPlaceholder": "名称（留空＝自动）",
+    "newHere": "新建合集",
+    "newRootPlaceholder": "新合集名称（如 漫威）…",
+    "createBtn": "新建",
+    "delete": "删除",
+    "confirmDelete": "删除此合集？其内容会上移到父合集。",
+    "note": "仅改归属 — 不影响条目本身。",
+    "link": "加入合集…",
+    "relink": "移到其他合集…",
+    "unlink": "移出合集",
+    "searchPlaceholder": "搜索，或输入新名称以新建…",
+    "searchHint": "输入以搜索合集，或输入新名称来新建一个。",
+    "create": "新建合集「{{name}}」",
+    "createBlank": "新建合集（自动命名）"
   },
   "picker": {
     "button": "在 Bangumi 搜索",
     "buttonAniList": "在 AniList 搜索",
+    "buttonIgdb": "在 IGDB 搜索",
     "close": "关闭",
     "searchPlaceholder": "搜索 Bangumi（英 / 日 / 中）…",
     "searchPlaceholderAniList": "搜索 AniList（英 / 罗马音 / 日）…",

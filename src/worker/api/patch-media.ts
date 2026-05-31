@@ -7,12 +7,21 @@
 //     enrichers write them (Chinese from Bangumi; a Latin title from Bangumi's
 //     别名 aliases for Bangumi-direct rows), and they're the manual-correction
 //     escape hatch when a match (or the default region "china") is wrong.
+//   - type IS editable: TMDB files every `tv` show under "drama", so reality /
+//     variety shows land mistyped; the editor lets the user re-classify them.
 // Deliberately EXCLUDED:
 //   - video_url: there is no such column — watching-mode video links live in
 //     the media_video_parts child table (DESIGN/CLAUDE). PLAN.md's Phase 9 list
 //     names it, but that predates the child-table decision; managing parts is a
 //     separate endpoint, not part of this PATCH.
-//   - type / external_id / cover_url / title_native: not user-editable here.
+//   - external_id / external_source / cover_url / title_native: the row's PRIMARY
+//     source identity is NOT user-editable here — re-keying a row's source of
+//     record is deliberately out of scope (it would orphan covers and break the
+//     conflict probe). Instead, the cross-reference ids (anilist_id / tmdb_id /
+//     igdb_id / bangumi_id) ARE editable: they link a row to its equivalent on
+//     ANOTHER source without disturbing its primary source (PRD-v2 Issue A —
+//     persisting a Bangumi anime's AniList link — and Feature C — a Bangumi
+//     game's IGDB link). They're plain nullable strings.
 
 import type {
   MediaConsumptionMode,
@@ -20,11 +29,13 @@ import type {
   MediaPlatform,
   MediaRow,
   MediaStatus,
+  MediaType,
 } from "../db/schema";
-import { MEDIA_PLATFORMS, MEDIA_STATUSES } from "./validation";
+import { MEDIA_PLATFORMS, MEDIA_STATUSES, MEDIA_TYPES } from "./validation";
 
 export interface MediaPatch {
   status?: MediaStatus;
+  type?: MediaType;
   current_episode?: number | null;
   total_episodes?: number | null;
   current_chapter?: number | null;
@@ -38,11 +49,23 @@ export interface MediaPatch {
   title_english?: string | null;
   title_romaji?: string | null;
   region?: string | null;
-  // Series grouping: link (set id+name), move (change id+name), unlink (null).
-  // Renaming a whole series goes through PATCH /api/series/:id, not here.
-  series_id?: string | null;
-  series_name?: string | null;
-  season_number?: number | null;
+  // Padded ISO `YYYY-MM-DD` air/release date (set by the backfill script or a
+  // manual edit). Format-checked below; stored as-is.
+  release_date?: string | null;
+  // Sentinel-delimited genre string (set by the backfill script). Stored as-is.
+  genres?: string | null;
+  // Collection placement: link (set collection_id), move (change it), unlink
+  // (null). sort_order positions the item among its collection's siblings.
+  // A collection's own name/cover/parent are edited via PATCH /api/collections/:id.
+  collection_id?: string | null;
+  sort_order?: number | null;
+  // Cross-reference ids to other sources (migration 0008). Editable: linking a
+  // row to its equivalent elsewhere (Issue A / Feature C) without re-keying its
+  // primary source. Plain nullable strings, validated like the other strings.
+  anilist_id?: string | null;
+  tmdb_id?: string | null;
+  igdb_id?: string | null;
+  bangumi_id?: string | null;
 }
 
 export type PatchResult =
@@ -54,7 +77,7 @@ const NULLABLE_INT_FIELDS = [
   "total_episodes",
   "current_chapter",
   "total_chapters",
-  "season_number",
+  "sort_order",
 ] as const;
 
 const NULLABLE_STRING_FIELDS = [
@@ -64,20 +87,32 @@ const NULLABLE_STRING_FIELDS = [
   "title_english",
   "title_romaji",
   "region",
-  "series_id",
-  "series_name",
+  "genres",
+  "collection_id",
+  // Cross-reference ids (migration 0008) — validated as nullable strings; added
+  // to ALLOWED_FIELDS automatically since that set spreads this list.
+  "anilist_id",
+  "tmdb_id",
+  "igdb_id",
+  "bangumi_id",
 ] as const;
 
 const CONSUMPTION_MODES: MediaConsumptionMode[] = ["playing", "watching"];
 
 const ALLOWED_FIELDS = new Set<string>([
   "status",
+  "type",
   ...NULLABLE_INT_FIELDS,
   ...NULLABLE_STRING_FIELDS,
   "consumption_mode",
   "platform",
   "is_rewatching",
+  "release_date",
 ]);
+
+// A padded ISO date, e.g. "2026-04-17" (the only shape the mappers / backfill
+// produce). Light guard so a malformed date can't poison the sort column.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,6 +136,15 @@ export function parsePatchMediaRequest(body: unknown): PatchResult {
       errors.push(`status must be one of: ${MEDIA_STATUSES.join(", ")}`);
     } else {
       patch.status = v as MediaStatus;
+    }
+  }
+
+  if ("type" in body) {
+    const v = body.type;
+    if (!MEDIA_TYPES.includes(v as MediaType)) {
+      errors.push(`type must be one of: ${MEDIA_TYPES.join(", ")}`);
+    } else {
+      patch.type = v as MediaType;
     }
   }
 
@@ -152,6 +196,15 @@ export function parsePatchMediaRequest(body: unknown): PatchResult {
       patch.is_rewatching = v;
     } else {
       errors.push("is_rewatching must be 0 or 1");
+    }
+  }
+
+  if ("release_date" in body) {
+    const v = body.release_date;
+    if (v === null || (typeof v === "string" && ISO_DATE_RE.test(v))) {
+      patch.release_date = v;
+    } else {
+      errors.push("release_date must be an ISO date (YYYY-MM-DD) or null");
     }
   }
 

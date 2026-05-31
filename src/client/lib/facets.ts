@@ -22,8 +22,15 @@ export const STATUS_FACETS: readonly MediaStatus[] = [
   "paused",
 ];
 
-// Curated region set (the open-ended column accepts more, but these are the
-// checkboxes we surface). Matches the AniList mapper's curated COUNTRY_TO_REGION.
+// Sentinel region facet for rows with no region set (mirrors REGION_UNSET in
+// worker/api/list-query.ts) — the "fix these by hand" bucket. The server maps it
+// to `region IS NULL OR region = ''`. FILTER-ONLY: it's a query concept, not a
+// real region, so it lives in REGION_FILTER_FACETS (the sidebar) but NOT in
+// REGION_FACETS (the editor dropdowns, which set a real region value).
+export const REGION_UNSET = "__unset__";
+
+// Curated region set the EDITORS offer (real regions only). The open-ended
+// column accepts more; matches the AniList mapper's curated COUNTRY_TO_REGION.
 export const REGION_FACETS: readonly string[] = [
   "japan",
   "china",
@@ -33,4 +40,10 @@ export const REGION_FACETS: readonly string[] = [
   "usa",
   "uk",
   "thailand",
+];
+
+// What the FILTER sidebar shows: the real regions plus the "unset" sentinel.
+export const REGION_FILTER_FACETS: readonly string[] = [
+  ...REGION_FACETS,
+  REGION_UNSET,
 ];

@@ -8,7 +8,12 @@ import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import app from "../index";
-import { findById, findByExternalRef, insertMedia } from "../db/media-repository";
+import {
+  findById,
+  findByExternalRef,
+  insertCollection,
+  insertMedia,
+} from "../db/media-repository";
 import { resetIgdbTokenCache } from "../sources/igdb";
 import type { AniListMapperResult } from "../sources/anilist-mapper";
 import detailAnimeFixture from "../../../test/fixtures/anilist/detail_anime_101922.json";
@@ -400,8 +405,8 @@ describe("POST /api/media — TMDB source", () => {
     const row = (await res.json()) as Record<string, unknown>;
     expect(row.type).toBe("drama");
     expect(row.external_id).toBe("tv:211089:s2");
-    expect(row.series_id).toBe("tmdb:tv:211089");
-    expect(row.season_number).toBe(2);
+    expect(row.collection_id).toBe("tmdb:tv:211089");
+    expect(row.sort_order).toBe(2);
     expect(row.total_episodes).toBe(40);
     expect(row.title_chinese).toBe("唐朝诡事录 西行");
   });
@@ -520,11 +525,13 @@ const BASE_ROW: AniListMapperResult = {
   current_chapter: null,
   total_chapters: null,
   runtime_minutes: null,
+  release_date: null,
+  source_rating: null,
+  genres: null,
   platform: null,
   consumption_mode: null,
-  series_id: null,
-  series_name: null,
-  season_number: null,
+  collection_id: null,
+  sort_order: null,
 };
 
 async function get(path: string): Promise<Response> {
@@ -635,6 +642,40 @@ describe("GET /api/media/:id — single", () => {
   it("returns 400 for a non-numeric id", async () => {
     const res = await get("/api/media/abc");
     expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/media/bulk", () => {
+  it("applies one patch (collection + status) to many rows, leaving others", async () => {
+    const a = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b1" });
+    const b = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b2" });
+    const c = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b3" });
+    await insertCollection(env.DB, {
+      id: "col:ac", name: "AC", parent_id: null, cover_url: null, sort_order: null,
+    });
+
+    const res = await patch("/api/media/bulk", {
+      ids: [a.id, b.id],
+      patch: { collection_id: "col:ac", status: "completed" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ updated: 2 });
+
+    for (const id of [a.id, b.id]) {
+      const row = (await findById(env.DB, id))!;
+      expect(row.collection_id).toBe("col:ac");
+      expect(row.status).toBe("completed");
+    }
+    expect((await findById(env.DB, c.id))!.collection_id).toBeNull(); // untouched
+  });
+
+  it("400s on empty ids, empty patch, or a missing collection", async () => {
+    const a = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b4" });
+    expect((await patch("/api/media/bulk", { ids: [], patch: { status: "completed" } })).status).toBe(400);
+    expect((await patch("/api/media/bulk", { ids: [a.id], patch: {} })).status).toBe(400);
+    expect(
+      (await patch("/api/media/bulk", { ids: [a.id], patch: { collection_id: "col:ghost" } })).status,
+    ).toBe(400);
   });
 });
 

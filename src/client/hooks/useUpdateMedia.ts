@@ -18,22 +18,37 @@ async function patchMedia(id: number, patch: MediaPatch): Promise<MediaRow> {
   return (await res.json()) as MediaRow;
 }
 
-// Replace the row with the given id across every cached ["media", …] list.
-// Guard against non-list caches under the same prefix (e.g. the
-// ["media","titles-index"] Set): only touch query data shaped like a list page.
+// Replace the row with the given id across every cached ["media", …] list —
+// both flat list pages ({ items, total }) AND infinite-query caches
+// ({ pages: [{ items, total }], pageParams }), since the drill-down grid is an
+// infinite query. Other caches under the prefix (the ["media","titles-index"]
+// Set, ["media","collection-rollups"], …) aren't list-shaped and are left as-is.
+type InfiniteMedia = { pages: MediaListResponse[]; pageParams: unknown[] };
+
 function mapRow(
   queryClient: ReturnType<typeof useQueryClient>,
   id: number,
   transform: (row: MediaRow) => MediaRow,
 ): void {
-  queryClient.setQueriesData<MediaListResponse>({ queryKey: ["media"] }, (old) => {
-    if (!old || !Array.isArray((old as Partial<MediaListResponse>).items)) {
-      return old;
+  const mapItems = (items: MediaRow[]) =>
+    items.map((it) => (it.id === id ? transform(it) : it));
+
+  queryClient.setQueriesData<unknown>({ queryKey: ["media"] }, (old: unknown) => {
+    if (!old || typeof old !== "object") return old;
+    // Flat list page.
+    if (Array.isArray((old as Partial<MediaListResponse>).items)) {
+      const page = old as MediaListResponse;
+      return { ...page, items: mapItems(page.items) };
     }
-    return {
-      ...old,
-      items: old.items.map((it) => (it.id === id ? transform(it) : it)),
-    };
+    // Infinite query — map every loaded page.
+    if (Array.isArray((old as Partial<InfiniteMedia>).pages)) {
+      const inf = old as InfiniteMedia;
+      return {
+        ...inf,
+        pages: inf.pages.map((p) => ({ ...p, items: mapItems(p.items) })),
+      };
+    }
+    return old;
   });
 }
 

@@ -14,7 +14,7 @@ export function useDeleteMedia() {
   return useMutation({
     mutationFn: (id: number) => deleteMedia(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["media"] });
+      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
     },
   });
 }

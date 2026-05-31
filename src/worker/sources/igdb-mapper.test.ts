@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { igdbToMediaRow } from "./igdb-mapper";
-import type { IgdbGame } from "./igdb";
+import { extractIgdbGenres, type IgdbGame } from "./igdb";
 
 const GAME: IgdbGame = {
   id: 1942,
@@ -27,6 +27,23 @@ describe("igdbToMediaRow", () => {
     expect(row.external_source).toBe("igdb");
     expect(row.external_id).toBe("1942"); // bare id (IGDB ids are globally unique)
     expect(row.status).toBe("in_progress");
+  });
+
+  it("derives release_date from first_release_date (Unix seconds → ISO)", () => {
+    const row = igdbToMediaRow(GAME, {
+      status: "planned",
+      consumptionMode: "playing",
+      platform: "pc",
+    });
+    expect(row.release_date).toBe("2015-05-19");
+  });
+
+  it("leaves release_date null when IGDB has no release date", () => {
+    const row = igdbToMediaRow(
+      { ...GAME, first_release_date: null },
+      { status: "planned", consumptionMode: "playing", platform: "pc" },
+    );
+    expect(row.release_date).toBeNull();
   });
 
   it("builds the cover URL from cover.image_id", () => {
@@ -57,6 +74,36 @@ describe("igdbToMediaRow", () => {
     );
     expect(row.cover_url).toBeNull();
     expect(row.title_english).toBe("Tetris");
+  });
+});
+
+describe("igdbToMediaRow — genres", () => {
+  it("merges genres + themes and cleans the RPG label into the row", () => {
+    const game: IgdbGame = {
+      ...GAME,
+      genres: [{ name: "Role-playing (RPG)" }, { name: "Adventure" }],
+      themes: [{ name: "Fantasy" }],
+    };
+    expect(extractIgdbGenres(game)).toEqual([
+      "Role-playing (RPG)",
+      "Adventure",
+      "Fantasy",
+    ]);
+    const row = igdbToMediaRow(game, {
+      status: "planned",
+      consumptionMode: "playing",
+      platform: null,
+    });
+    expect(row.genres).toBe("|RPG|Adventure|Fantasy|");
+  });
+
+  it("leaves genres null when IGDB returns none", () => {
+    const row = igdbToMediaRow(GAME, {
+      status: "planned",
+      consumptionMode: "playing",
+      platform: null,
+    });
+    expect(row.genres).toBeNull();
   });
 });
 

@@ -1,32 +1,40 @@
 import { useTranslation } from "react-i18next";
 
-import type { MediaFilters } from "../lib/api";
-import { REGION_FACETS, STATUS_FACETS, TYPE_FACETS } from "../lib/facets";
+import type { GenreFacet, MediaFilters } from "../lib/api";
+import { REGION_FILTER_FACETS, STATUS_FACETS, TYPE_FACETS } from "../lib/facets";
 
-export type FacetKey = "types" | "regions" | "statuses";
+export type FacetKey = "types" | "regions" | "statuses" | "genres";
 
 interface FilterSidebarProps {
   filters: MediaFilters;
+  // Dynamic genre options (server-computed, scoped to the selected types).
+  genreFacets: GenreFacet[];
   onToggle: (facet: FacetKey, value: string) => void;
   onClear: () => void;
 }
 
 interface CheckboxGroupProps {
   legendKey: string;
-  labelPrefix: string;
   values: readonly string[];
   selected: string[];
   onToggle: (value: string) => void;
+  // How to render each value's label. Facet enums use an i18n prefix
+  // (`type.animation`); genres are source-native strings shown verbatim.
+  labelPrefix?: string;
+  renderLabel?: (value: string) => string;
 }
 
 function CheckboxGroup({
   legendKey,
   labelPrefix,
+  renderLabel,
   values,
   selected,
   onToggle,
 }: CheckboxGroupProps) {
   const { t } = useTranslation();
+  const label = (value: string) =>
+    renderLabel ? renderLabel(value) : t(`${labelPrefix}.${value}`);
   return (
     <fieldset>
       <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 light:text-zinc-500">
@@ -44,7 +52,7 @@ function CheckboxGroup({
               onChange={() => onToggle(value)}
               className="h-4 w-4 accent-blue-500"
             />
-            {t(`${labelPrefix}.${value}`)}
+            {label(value)}
           </label>
         ))}
       </div>
@@ -54,13 +62,25 @@ function CheckboxGroup({
 
 // CSS-only responsive drawer: on < md the panel is hidden behind a toggle
 // (a label + peer checkbox); on >= md it's always visible. No JS state.
-export function FilterSidebar({ filters, onToggle, onClear }: FilterSidebarProps) {
+export function FilterSidebar({
+  filters,
+  genreFacets,
+  onToggle,
+  onClear,
+}: FilterSidebarProps) {
   const { t } = useTranslation();
   const hasAny =
     filters.types.length +
       filters.regions.length +
-      filters.statuses.length >
+      filters.statuses.length +
+      filters.genres.length >
     0;
+  // Show whatever's selected even if it dropped out of the current facet list
+  // (e.g. you picked a genre, then narrowed the type filter) so it stays
+  // un-checkable-away-able and visible.
+  const genreValues = [
+    ...new Set([...genreFacets.map((g) => g.value), ...filters.genres]),
+  ];
 
   return (
     <>
@@ -98,10 +118,19 @@ export function FilterSidebar({ filters, onToggle, onClear }: FilterSidebarProps
         <CheckboxGroup
           legendKey="filters.region"
           labelPrefix="region"
-          values={REGION_FACETS}
+          values={REGION_FILTER_FACETS}
           selected={filters.regions}
           onToggle={(v) => onToggle("regions", v)}
         />
+        {genreValues.length > 0 && (
+          <CheckboxGroup
+            legendKey="filters.genre"
+            renderLabel={(v) => v}
+            values={genreValues}
+            selected={filters.genres}
+            onToggle={(v) => onToggle("genres", v)}
+          />
+        )}
         <CheckboxGroup
           legendKey="filters.status"
           labelPrefix="status"

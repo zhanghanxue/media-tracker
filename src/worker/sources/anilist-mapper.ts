@@ -14,8 +14,16 @@ import type {
   MediaStatus,
   MediaType,
 } from "../db/schema";
-import type { AniListFormat, AniListMedia, AniListMediaType } from "./anilist";
+import {
+  extractAniListGenres,
+  type AniListFormat,
+  type AniListMedia,
+  type AniListMediaType,
+} from "./anilist";
 import { countryToRegion } from "./country-region";
+import { joinGenres } from "./genres";
+import { isoFromParts } from "./release-date";
+import { ratingFrom100 } from "./rating";
 
 const ANIME_FORMATS = new Set<AniListFormat>([
   "TV",
@@ -68,11 +76,19 @@ export function aniListToMediaRow(
     current_chapter: null,
     total_chapters: totalChapters,
     runtime_minutes: null, // AniList doesn't model runtime; TMDB-only field.
+    // Full startDate when present; otherwise the season year (padded to Jan 1).
+    release_date:
+      isoFromParts(
+        detail.startDate?.year,
+        detail.startDate?.month,
+        detail.startDate?.day,
+      ) ?? isoFromParts(detail.seasonYear),
+    source_rating: ratingFrom100(detail.averageScore), // 0–100 → 0–10
+    genres: joinGenres(extractAniListGenres(detail)),
     platform: null, // game-only fields (IGDB)
     consumption_mode: null,
-    series_id: null,
-    series_name: null,
-    season_number: null,
+    collection_id: null,
+    sort_order: null,
   };
 }
 

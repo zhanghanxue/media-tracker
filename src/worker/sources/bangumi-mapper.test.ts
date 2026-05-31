@@ -47,6 +47,16 @@ describe("bangumiToMediaRow — anime (type 2)", () => {
     expect(row.cover_url).toBe(ANIME.images!.large);
   });
 
+  it("derives release_date from the subject's date", () => {
+    // The captured subject has date "2019-04-06".
+    expect(bangumiToMediaRow(ANIME, "planned").release_date).toBe("2019-04-06");
+  });
+
+  it("leaves release_date null when the subject has no date", () => {
+    const row = bangumiToMediaRow({ ...ANIME, date: null }, "planned");
+    expect(row.release_date).toBeNull();
+  });
+
   it("accepts a region override (non-Chinese exception)", () => {
     const row = bangumiToMediaRow(ANIME, "planned", "japan");
     expect(row.region).toBe("japan");

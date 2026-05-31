@@ -5,7 +5,8 @@ import { mediaRoutes } from "./routes/media";
 import { anilistRoutes } from "./routes/anilist";
 import { tmdbRoutes } from "./routes/tmdb";
 import { igdbRoutes } from "./routes/igdb";
-import { seriesRoutes } from "./routes/series";
+import { collectionsRoutes } from "./routes/collections";
+import { recommendRoutes } from "./routes/recommend";
 
 const app = new Hono<{ Bindings: AppEnv; Variables: AuthVariables }>();
 
@@ -29,7 +30,11 @@ app.route("/api/anilist", anilistRoutes);
 app.route("/api/tmdb", tmdbRoutes);
 // IGDB search proxy (Twitch-OAuth-bearing → Worker-side, same rule as TMDB).
 app.route("/api/igdb", igdbRoutes);
-// Series rename (the one series-level op that spans rows; link/unlink is on /media).
-app.route("/api/series", seriesRoutes);
+// Collections: the nestable grouping tree (create/rename/move/delete + subtree
+// bulk-edit). Item↔collection linking is a media PATCH (collection_id).
+app.route("/api/collections", collectionsRoutes);
+// Feature B (v2): source-native recommendations per type. movie/drama/variety →
+// TMDB, game → IGDB (anime recs run in the browser, like the AniList add flow).
+app.route("/api/recommendations", recommendRoutes);
 
 export default app;

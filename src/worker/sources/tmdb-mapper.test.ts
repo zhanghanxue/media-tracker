@@ -50,6 +50,10 @@ describe("tmdbToMediaRow — movie", () => {
   it("carries the caller-supplied status", () => {
     expect(row.status).toBe("completed");
   });
+
+  it("derives release_date from release_date", () => {
+    expect(row.release_date).toBe("2019-05-30");
+  });
 });
 
 describe("tmdbToMediaRow — tv", () => {
@@ -71,6 +75,10 @@ describe("tmdbToMediaRow — tv", () => {
 
   it("derives region from origin_country", () => {
     expect(row.region).toBe("korea");
+  });
+
+  it("derives release_date from first_air_date", () => {
+    expect(row.release_date).toBe("2021-09-17");
   });
 
   it("kind-prefixes the external id (tv namespace distinct from movie)", () => {
@@ -95,7 +103,7 @@ describe("tmdbSeasonToMediaRow", () => {
     seasons: [
       { season_number: 0, name: "特别篇", episode_count: 0 },
       { season_number: 1, name: "第 1 季", episode_count: 36, poster_path: "/s1.jpg" },
-      { season_number: 2, name: "西行", episode_count: 40, poster_path: "/s2.jpg" },
+      { season_number: 2, name: "西行", episode_count: 40, poster_path: "/s2.jpg", air_date: "2024-07-22" },
     ],
   };
   const season2: TmdbSeasonDetail = {
@@ -120,10 +128,9 @@ describe("tmdbSeasonToMediaRow", () => {
     expect(row.title_native).toBe("唐朝诡事录 西行"); // native = zh (show original_language)
   });
 
-  it("pre-links into the show's series with the season number", () => {
-    expect(row.series_id).toBe("tmdb:tv:211089");
-    expect(row.series_name).toBeNull(); // auto-derived per language
-    expect(row.season_number).toBe(2);
+  it("pre-links into the show's collection with the season as sort_order", () => {
+    expect(row.collection_id).toBe("tmdb:tv:211089");
+    expect(row.sort_order).toBe(2);
     expect(row.external_id).toBe("tv:211089:s2");
   });
 
@@ -133,11 +140,15 @@ describe("tmdbSeasonToMediaRow", () => {
     expect(row.region).toBe("china");
   });
 
+  it("derives release_date from the season's air_date", () => {
+    expect(row.release_date).toBe("2024-07-22");
+  });
+
   it("falls back to the summary name when the season fetch is null", () => {
     const r = tmdbSeasonToMediaRow(show, summary, null, "planned");
     // No season translations → uses summary.name "西行" for every language slot.
     expect(r.title_chinese).toBe("唐朝诡事录 西行");
-    expect(r.season_number).toBe(2);
+    expect(r.sort_order).toBe(2);
   });
 });
 
@@ -197,5 +208,28 @@ describe("tmdbToMediaRow — edge cases", () => {
     };
     const row = tmdbToMediaRow(twOnly, "movie", "planned");
     expect(row.title_chinese).toBe("繁體標題");
+  });
+
+  it("falls back to the base title when there's no `en` translation (English-origin)", () => {
+    // An English-origin movie: TMDB lists no separate `en` translation, but the
+    // en-US fetch puts the English title in the base `title` field.
+    const noEn: TmdbDetail = {
+      id: 27205,
+      title: "Inception",
+      original_title: "Inception",
+      translations: { translations: [] },
+    };
+    const row = tmdbToMediaRow(noEn, "movie", "planned");
+    expect(row.title_english).toBe("Inception");
+  });
+
+  it("uses the base name for a tv show lacking an `en` translation", () => {
+    const noEnTv: TmdbDetail = {
+      id: 1396,
+      name: "Breaking Bad",
+      original_name: "Breaking Bad",
+    };
+    const row = tmdbToMediaRow(noEnTv, "tv", "planned");
+    expect(row.title_english).toBe("Breaking Bad");
   });
 });

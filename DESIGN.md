@@ -231,6 +231,12 @@ CREATE TABLE media (
   -- Movies
   runtime_minutes INTEGER,
 
+  -- The work's actual air / release date (NOT library activity), padded ISO
+  -- "YYYY-MM-DD" so SQLite's TEXT sort is chronological; NULL = unknown (sorts
+  -- last). Set by every source mapper on add; backfilled via
+  -- scripts/backfill-release-dates.ts. Migration 0007.
+  release_date    TEXT,
+
   date_added      TEXT NOT NULL DEFAULT (datetime('now')),
   date_updated    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -239,6 +245,7 @@ CREATE INDEX idx_media_type_status      ON media(type, status);
 CREATE INDEX idx_media_region           ON media(region);
 CREATE INDEX idx_media_date_updated     ON media(date_updated DESC);
 CREATE INDEX idx_media_platform         ON media(platform);
+CREATE INDEX idx_media_release_date     ON media(release_date);  -- migration 0007
 
 -- Used only for games in watching mode (URL-as-content); other watching types use episode numbers
 CREATE TABLE media_video_parts (

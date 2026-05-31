@@ -17,6 +17,9 @@
 
 import type { ExternalSource, MediaInsert, MediaStatus } from "../db/schema";
 import { countryToRegion } from "./country-region";
+import { joinGenres } from "./genres";
+import { isoFromString } from "./release-date";
+import { ratingFrom10 } from "./rating";
 import {
   tmdbPosterUrl,
   type TmdbDetail,
@@ -45,6 +48,28 @@ function pickPosterPath(
 
 export type TmdbMapperResult = MediaInsert;
 
+/** TMDB's genres ride in the base detail response as `[{id, name}]`. */
+export function extractTmdbGenres(detail: TmdbDetail): string[] {
+  return (detail.genres ?? []).map((g) => g.name).filter(Boolean);
+}
+
+/**
+ * The English title: prefer the explicit `en` translation, then fall back to the
+ * base `title`/`name` field. The detail is fetched in en-US, so that base field
+ * IS the English title — and English-origin titles often carry NO `en` entry in
+ * `translations` (English is the original), which would otherwise leave it null.
+ * Returns null only when neither source has a usable value.
+ */
+export function pickEnglishTitle(
+  detail: TmdbDetail,
+  kind: TmdbKind,
+): string | null {
+  const fromTranslation = pickTranslation(detail, kind, "en", null);
+  if (fromTranslation) return fromTranslation;
+  const base = kind === "movie" ? detail.title : detail.name;
+  return blankToNull(base ?? null);
+}
+
 export function tmdbToMediaRow(
   detail: TmdbDetail,
   kind: TmdbKind,
@@ -54,7 +79,7 @@ export function tmdbToMediaRow(
 
   const titleNative =
     (kind === "movie" ? detail.original_title : detail.original_name) ?? null;
-  const titleEnglish = pickTranslation(detail, kind, "en", null);
+  const titleEnglish = pickEnglishTitle(detail, kind);
   const titleChinese = pickTranslation(detail, kind, "zh", "CN");
 
   const region = countryToRegion(
@@ -94,11 +119,16 @@ export function tmdbToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: runtimeMinutes,
+    // movie → release_date; tv → first_air_date (the show's premiere).
+    release_date: isoFromString(
+      kind === "movie" ? detail.release_date : detail.first_air_date,
+    ),
+    source_rating: ratingFrom10(detail.vote_average), // already 0–10
+    genres: joinGenres(extractTmdbGenres(detail)),
     platform: null, // game-only fields (IGDB)
     consumption_mode: null,
-    series_id: null,
-    series_name: null,
-    season_number: null,
+    collection_id: null,
+    sort_order: null,
   };
 }
 
@@ -117,7 +147,7 @@ export function tmdbSeasonToMediaRow(
 ): TmdbMapperResult {
   const n = summary.season_number;
   const showNative = show.original_name ?? null;
-  const showEnglish = pickTranslation(show, "tv", "en", null);
+  const showEnglish = pickEnglishTitle(show, "tv");
   const showChinese = pickTranslation(show, "tv", "zh", "CN");
 
   // Season name per language (from the season endpoint's translations), falling
@@ -164,11 +194,22 @@ export function tmdbSeasonToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    // The SEASON's air date (so seasons order chronologically among themselves),
+    // falling back to the season fetch, then the show's premiere.
+    release_date: isoFromString(
+      summary.air_date ?? season?.air_date ?? show.first_air_date,
+    ),
+    // The show's rating (TMDB has no per-season score), so a season carries the
+    // show's standing — better than leaving every season unrated.
+    source_rating: ratingFrom10(show.vote_average),
+    genres: joinGenres(extractTmdbGenres(show)), // genres live on the show, not the season
     platform: null, // game-only fields (IGDB)
     consumption_mode: null,
-    series_id: `tmdb:tv:${show.id}`,
-    series_name: null, // auto-derived per language from members' titles
-    season_number: n,
+    // Pre-link every season into the show's collection ("tmdb:tv:<id>"); the
+    // route ensures that collection row exists before insert. sort_order = the
+    // season number so seasons order naturally. Collection name auto-derives.
+    collection_id: `tmdb:tv:${show.id}`,
+    sort_order: n,
   };
 }
 

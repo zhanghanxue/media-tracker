@@ -51,6 +51,18 @@ export interface BangumiSubject {
   images?: BangumiImages | null; // legacy search + v0 detail
   image?: string | null; // v0 search (single URL)
   infobox?: BangumiInfoboxItem[]; // v0 detail only — holds 别名 (aliases)
+  // v0 detail only. `tags` are user tags (name + count, noisy); `meta_tags` are
+  // a curated subset. The mapper keeps only the ones in a genre whitelist.
+  tags?: BangumiTag[];
+  meta_tags?: string[];
+  // v0 detail: aggregate community rating. `score` is 0–10 (0 / absent =
+  // unrated). Normalized to `source_rating` by the mapper.
+  rating?: { score?: number | null } | null;
+}
+
+export interface BangumiTag {
+  name: string;
+  count?: number;
 }
 
 // A v0 subject-detail infobox row. `value` is either a plain string or a list

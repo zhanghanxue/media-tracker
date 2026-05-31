@@ -15,12 +15,27 @@ describe("parseListQuery — defaults", () => {
         types: [],
         regions: [],
         statuses: [],
+        genres: [],
         q: null,
+        collection: null,
         sort: "date_updated",
         limit: 50,
         offset: 0,
       },
     });
+  });
+
+  it("parses a collection scope (id and the __root__ sentinel)", () => {
+    const byId = parse({ collection: "col:abc" });
+    expect(byId.ok).toBe(true);
+    if (byId.ok) expect(byId.value.collection).toBe("col:abc");
+
+    const root = parse({ collection: "__root__" });
+    expect(root.ok).toBe(true);
+    if (root.ok) expect(root.value.collection).toBe("__root__");
+
+    const none = parse({});
+    if (none.ok) expect(none.value.collection).toBeNull();
   });
 });
 
@@ -43,6 +58,12 @@ describe("parseListQuery — facets", () => {
     const result = parse({ type: ["animation", "  ", ""] });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.types).toEqual(["animation"]);
+  });
+
+  it("keeps genre values (open-ended, OR-within)", () => {
+    const result = parse({ genre: ["RPG", "Mystery", "  "] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.genres).toEqual(["RPG", "Mystery"]);
   });
 
   it("rejects an unknown type", () => {
@@ -74,6 +95,14 @@ describe("parseListQuery — q", () => {
 });
 
 describe("parseListQuery — sort", () => {
+  it("accepts the Feature D reverse sort keys", () => {
+    for (const s of ["release_date_desc", "title_desc", "title_zh_desc"]) {
+      const result = parse({ sort: s });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.sort).toBe(s);
+    }
+  });
+
   it("accepts a whitelisted sort", () => {
     const result = parse({ sort: "date_added" });
     expect(result.ok).toBe(true);
@@ -87,10 +116,16 @@ describe("parseListQuery — sort", () => {
 });
 
 describe("parseListQuery — limit & offset", () => {
-  it("clamps limit to the max of 200", () => {
-    const result = parse({ limit: "500" });
+  it("clamps limit to the max (raised to clear the whole library)", () => {
+    const result = parse({ limit: "999999" });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value.limit).toBe(200);
+    if (result.ok) expect(result.value.limit).toBe(5000);
+  });
+
+  it("keeps a 5000-row library page request (the client's full-library fetch)", () => {
+    const result = parse({ limit: "5000" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.limit).toBe(5000);
   });
 
   it("keeps a valid in-range limit", () => {

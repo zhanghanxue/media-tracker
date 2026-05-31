@@ -13,37 +13,67 @@ import { MEDIA_STATUSES, MEDIA_TYPES } from "./validation";
 // `title` sorts English-first; `title_zh` sorts Chinese-first — the client
 // picks which when the UI language is English vs Chinese (same "Title A–Z"
 // control), so ordering matches the titles actually displayed.
+// PRD-v2 Feature D adds the reverse directions: release_date_desc (newest first)
+// and title_desc / title_zh_desc (Z–A), so every sort has both directions.
 export const SORT_KEYS = [
   "date_updated",
   "date_added",
+  "release_date",
+  "release_date_desc",
   "title",
+  "title_desc",
   "title_zh",
+  "title_zh_desc",
+  // Feature D — by the source's rating (0–10). Unrated rows sort last either way.
+  "rating_desc",
+  "rating_asc",
 ] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 
 export const DEFAULT_SORT: SortKey = "date_updated";
 export const DEFAULT_LIMIT = 50;
-export const MAX_LIMIT = 200;
+// The client fetches the WHOLE library in one page (client-side pinyin collation
+// + series grouping both need every row). After the bulk import that's ~1.2k+
+// rows, so the cap has to clear it — at 200 most of the library was invisible.
+export const MAX_LIMIT = 5000;
 export const DEFAULT_OFFSET = 0;
 
 export interface ListFilters {
   types: MediaType[];
   // Open-ended (DESIGN: region accepts any ISO fallback string), so no enum
-  // check — only emptiness filtering.
+  // check — only emptiness filtering. The sentinel REGION_UNSET selects rows
+  // whose region IS NULL/empty (the "fix these by hand" bucket).
   regions: string[];
   statuses: MediaStatus[];
+  // Genre names (source-native), open-ended like regions. Matched against the
+  // sentinel-delimited `genres` column.
+  genres: string[];
   q: string | null;
+  // Collection scope (drill-down): a collection id restricts to items sitting
+  // DIRECTLY in it; the COLLECTION_ROOT sentinel restricts to loose items (no
+  // collection). null = no collection scoping (whole library, the old behavior).
+  collection: string | null;
   sort: SortKey;
   limit: number;
   offset: number;
 }
+
+// Region facet value that means "no region set". Picked so it can't collide
+// with a real region string.
+export const REGION_UNSET = "__unset__";
+
+// Collection scope value that means "loose items, in no collection" (the root
+// level of the drill-down). Picked so it can't collide with a real collection id.
+export const COLLECTION_ROOT = "__root__";
 
 /** Raw, pre-validation shape the handler pulls off the request. */
 export interface RawListQuery {
   type?: string[];
   region?: string[];
   status?: string[];
+  genre?: string[];
   q?: string;
+  collection?: string;
   sort?: string;
   limit?: string;
   offset?: string;
@@ -80,8 +110,15 @@ export function parseListQuery(raw: RawListQuery): ListQueryResult {
   // Regions are open-ended; just drop empties.
   const regions = (raw.region ?? []).map((r) => r.trim()).filter(Boolean);
 
+  // Genres open-ended like regions; drop empties.
+  const genres = (raw.genre ?? []).map((g) => g.trim()).filter(Boolean);
+
   const trimmedQ = raw.q?.trim() ?? "";
   const q = trimmedQ.length > 0 ? trimmedQ : null;
+
+  // Collection scope: a real id, the COLLECTION_ROOT sentinel, or null (unscoped).
+  const trimmedCollection = raw.collection?.trim() ?? "";
+  const collection = trimmedCollection.length > 0 ? trimmedCollection : null;
 
   let sort: SortKey = DEFAULT_SORT;
   if (raw.sort !== undefined) {
@@ -124,7 +161,9 @@ export function parseListQuery(raw: RawListQuery): ListQueryResult {
       types: types as MediaType[],
       regions,
       statuses: statuses as MediaStatus[],
+      genres,
       q,
+      collection,
       sort,
       limit,
       offset,

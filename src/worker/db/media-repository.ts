@@ -11,6 +11,8 @@ import type { ListFilters } from "../api/list-query";
 import type { MediaPatch } from "../api/patch-media";
 import { buildMediaListQuery } from "../api/media-query-builder";
 import type {
+  Collection,
+  CollectionInsert,
   ExternalSource,
   MediaInsert,
   MediaRow,
@@ -34,11 +36,13 @@ const INSERT_COLUMNS = [
   "current_chapter",
   "total_chapters",
   "runtime_minutes",
+  "release_date",
+  "source_rating",
+  "genres",
   "platform",
   "consumption_mode",
-  "series_id",
-  "series_name",
-  "season_number",
+  "collection_id",
+  "sort_order",
 ] as const;
 
 const INSERT_SQL = `
@@ -75,11 +79,153 @@ export async function findById(
     .first<MediaRow>();
 }
 
+/**
+ * Read just the `genres` column for rows matching an optional type filter — the
+ * raw input to the facet tally (api/facets.ts). Returns one entry per row
+ * (NULLs included; the tally ignores them). `types` empty = the whole library.
+ * Type values come from a server-validated facet list, but we still bind them as
+ * `?` placeholders.
+ */
+export async function selectGenresColumn(
+  db: D1Database,
+  types: string[],
+): Promise<(string | null)[]> {
+  const where =
+    types.length > 0
+      ? `WHERE type IN (${types.map(() => "?").join(", ")})`
+      : "";
+  const result = await db
+    .prepare(`SELECT genres FROM media ${where}`)
+    .bind(...types)
+    .all<{ genres: string | null }>();
+  return result.results.map((r) => r.genres);
+}
+
 export interface MediaListPage {
   items: MediaRow[];
   // Total rows matching the filters, ignoring limit/offset — lets the UI render
   // "showing 50 of 312" and drive pagination.
   total: number;
+}
+
+// Compact per-collection summary used to render collection cards WITHOUT loading
+// the whole library to the client. `sampleTitles` carries the first few direct
+// items' titles (enough for the longest-common-prefix name derivation) and
+// `sampleCover` the first non-null direct cover; counts/dates roll the DIRECT
+// items only — the client sums these across a collection's subtree using the
+// (small) collection tree. All fields are derived in SQL, so the response size
+// is O(#collections), not O(#items).
+export interface CollectionRollup {
+  collection_id: string;
+  direct_count: number;
+  // Status breakdown of the DIRECT items, so the client can roll a subtree up to
+  // a single badge (all completed → completed, all planned → planned, else
+  // in-progress) by summing across the subtree.
+  completed_count: number;
+  planned_count: number;
+  latest_updated: string | null;
+  earliest_release: string | null;
+  sample_cover: string | null;
+  sample_titles: {
+    title_native: string | null;
+    title_romaji: string | null;
+    title_english: string | null;
+    title_chinese: string | null;
+  }[];
+}
+
+// How many direct items to sample per collection for name/cover derivation. The
+// longest-common-prefix name only needs a handful; cap keeps the payload tiny.
+const ROLLUP_SAMPLE_SIZE = 5;
+
+/**
+ * Per-collection rollups for the drill-down UI. Two bounded queries:
+ *   1. GROUP BY aggregate: direct count + newest activity + earliest release.
+ *   2. The first ROLLUP_SAMPLE_SIZE direct items per collection (window
+ *      function), for the common-prefix name + representative cover.
+ * Both are O(#collections) in the response — never the whole library — so the
+ * Worker's CPU/serialization stays flat as the library grows.
+ */
+export async function selectCollectionRollups(
+  db: D1Database,
+): Promise<CollectionRollup[]> {
+  const aggSql = `
+    SELECT collection_id,
+           COUNT(*)                                          AS direct_count,
+           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+           SUM(CASE WHEN status = 'planned'   THEN 1 ELSE 0 END) AS planned_count,
+           MAX(date_updated)                                 AS latest_updated,
+           MIN(NULLIF(release_date, ''))                     AS earliest_release
+    FROM media
+    WHERE collection_id IS NOT NULL
+    GROUP BY collection_id
+  `;
+  const sampleSql = `
+    SELECT collection_id, title_native, title_romaji, title_english,
+           title_chinese, cover_url
+    FROM (
+      SELECT collection_id, title_native, title_romaji, title_english,
+             title_chinese, cover_url,
+             ROW_NUMBER() OVER (
+               PARTITION BY collection_id
+               ORDER BY sort_order ASC, date_added ASC
+             ) AS rn
+      FROM media
+      WHERE collection_id IS NOT NULL
+    )
+    WHERE rn <= ?
+    ORDER BY collection_id, rn
+  `;
+
+  const [agg, samples] = await Promise.all([
+    db
+      .prepare(aggSql)
+      .all<{
+        collection_id: string;
+        direct_count: number;
+        completed_count: number;
+        planned_count: number;
+        latest_updated: string | null;
+        earliest_release: string | null;
+      }>(),
+    db
+      .prepare(sampleSql)
+      .bind(ROLLUP_SAMPLE_SIZE)
+      .all<{
+        collection_id: string;
+        title_native: string | null;
+        title_romaji: string | null;
+        title_english: string | null;
+        title_chinese: string | null;
+        cover_url: string | null;
+      }>(),
+  ]);
+
+  const byId = new Map<string, CollectionRollup>();
+  for (const r of agg.results) {
+    byId.set(r.collection_id, {
+      collection_id: r.collection_id,
+      direct_count: r.direct_count,
+      completed_count: r.completed_count,
+      planned_count: r.planned_count,
+      latest_updated: r.latest_updated,
+      earliest_release: r.earliest_release,
+      sample_cover: null,
+      sample_titles: [],
+    });
+  }
+  for (const s of samples.results) {
+    const roll = byId.get(s.collection_id);
+    if (!roll) continue; // aggregate is authoritative for which ids exist
+    roll.sample_titles.push({
+      title_native: s.title_native,
+      title_romaji: s.title_romaji,
+      title_english: s.title_english,
+      title_chinese: s.title_chinese,
+    });
+    if (roll.sample_cover === null && s.cover_url) roll.sample_cover = s.cover_url;
+  }
+  return [...byId.values()];
 }
 
 /**
@@ -134,6 +280,82 @@ export async function findExistingExternalIds(
 }
 
 /**
+ * Feature B (Recommendations): a bounded set of a type's library rows to seed
+ * recommendations from. Completed first, then in_progress, newest within each
+ * (a finished favourite is a stronger signal than something half-watched). The
+ * LIMIT keeps external-call volume bounded regardless of library size. Only rows
+ * with SOME source identity (so a seed id can be resolved) are returned. `type`
+ * is a server-validated enum value, still bound as a `?` placeholder.
+ */
+export async function selectRecommendationSeeds(
+  db: D1Database,
+  type: string,
+  limit: number,
+): Promise<MediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT * FROM media
+       WHERE type = ?
+         AND status IN ('completed', 'in_progress')
+         AND (external_id IS NOT NULL OR anilist_id IS NOT NULL
+              OR tmdb_id IS NOT NULL OR igdb_id IS NOT NULL)
+       ORDER BY (status = 'completed') DESC, date_updated DESC
+       LIMIT ?`,
+    )
+    .bind(type, limit)
+    .all<MediaRow>();
+  return result.results;
+}
+
+/**
+ * Feature B: every (source, external_id)-style identity the library holds — the
+ * primary (external_source, external_id) PLUS each cross-reference id (migration
+ * 0008) — as `${source}:${id}` keys, for excluding already-owned candidates. Also
+ * returns the display-title columns so the caller can build a normalized-title
+ * exclusion set for cross-source dedup. Reads the whole library once (bounded by
+ * row count, one cheap query) — the recommend route runs it a single time.
+ */
+export interface LibraryIdentity {
+  keys: string[]; // e.g. ["anilist:101922", "tmdb:movie:603", "bangumi:140001"]
+  titles: (string | null)[];
+}
+
+export async function selectLibraryIdentities(
+  db: D1Database,
+): Promise<LibraryIdentity> {
+  const result = await db
+    .prepare(
+      `SELECT external_source, external_id, anilist_id, tmdb_id, igdb_id, bangumi_id,
+              title_native, title_romaji, title_english, title_chinese
+       FROM media`,
+    )
+    .all<{
+      external_source: string | null;
+      external_id: string | null;
+      anilist_id: string | null;
+      tmdb_id: string | null;
+      igdb_id: string | null;
+      bangumi_id: string | null;
+      title_native: string | null;
+      title_romaji: string | null;
+      title_english: string | null;
+      title_chinese: string | null;
+    }>();
+
+  const keys: string[] = [];
+  const titles: (string | null)[] = [];
+  for (const r of result.results) {
+    if (r.external_source && r.external_id) keys.push(`${r.external_source}:${r.external_id}`);
+    if (r.anilist_id) keys.push(`anilist:${r.anilist_id}`);
+    if (r.tmdb_id) keys.push(`tmdb:${r.tmdb_id}`);
+    if (r.igdb_id) keys.push(`igdb:${r.igdb_id}`);
+    if (r.bangumi_id) keys.push(`bangumi:${r.bangumi_id}`);
+    titles.push(r.title_native, r.title_romaji, r.title_english, r.title_chinese);
+  }
+  return { keys, titles };
+}
+
+/**
  * Apply a validated partial update and return the updated row (or null if no
  * row has that id). `date_updated` is always bumped. Column names come only
  * from MediaPatch's fixed keys (the validator never lets arbitrary strings in),
@@ -158,6 +380,30 @@ export async function updateMedia(
 }
 
 /**
+ * Apply the SAME validated patch to many rows at once (the bulk selection action:
+ * e.g. drop a set of games into a collection + mark them completed). Column names
+ * come only from MediaPatch's fixed keys (the validator gates them), so the
+ * dynamic SET is injection-safe. Does NOT bump date_updated — a bulk organize
+ * shouldn't flood the top of a date-sorted list. Returns the rows changed.
+ */
+export async function bulkUpdateMedia(
+  db: D1Database,
+  ids: number[],
+  patch: MediaPatch,
+): Promise<number> {
+  const keys = Object.keys(patch) as (keyof MediaPatch)[];
+  if (ids.length === 0 || keys.length === 0) return 0;
+  const assignments = keys.map((k) => `${k} = ?`);
+  const values = keys.map((k) => patch[k]);
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await db
+    .prepare(`UPDATE media SET ${assignments.join(", ")} WHERE id IN (${placeholders})`)
+    .bind(...values, ...ids)
+    .run();
+  return result.meta.changes;
+}
+
+/**
  * Delete a row by id. Returns true if a row was removed, false if no row had
  * that id (→ 404). The R2 cover object is left in place — it's harmless, cheap,
  * and keyed by (source, external_id) so a future re-add reuses it.
@@ -173,42 +419,167 @@ export async function deleteMedia(
   return result.meta.changes > 0;
 }
 
-/**
- * Set `series_name` on every member sharing `seriesId`. `name` may be null to
- * CLEAR the manual override (reverting the group to its auto-derived,
- * per-language name). Returns the number of rows updated (0 if no such series).
- * Does NOT bump `date_updated` — a rename is metadata and shouldn't reorder a
- * date-sorted list.
- */
-export async function renameSeries(
-  db: D1Database,
-  seriesId: string,
-  name: string | null,
-): Promise<number> {
+// --- Collections (migration 0005) ------------------------------------------
+// A collection is a real row that can nest (parent_id) and hold media items
+// (media.collection_id). These ops back the /api/collections routes.
+
+/** All collections (the client builds the tree from the flat list). */
+export async function listCollections(db: D1Database): Promise<Collection[]> {
   const result = await db
-    .prepare("UPDATE media SET series_name = ? WHERE series_id = ?")
-    .bind(name, seriesId)
+    .prepare("SELECT * FROM collections ORDER BY sort_order, name")
+    .all<Collection>();
+  return result.results;
+}
+
+export async function getCollection(
+  db: D1Database,
+  id: string,
+): Promise<Collection | null> {
+  return db
+    .prepare("SELECT * FROM collections WHERE id = ?")
+    .bind(id)
+    .first<Collection>();
+}
+
+/** Insert a collection and return it. */
+export async function insertCollection(
+  db: D1Database,
+  row: CollectionInsert,
+): Promise<Collection> {
+  const inserted = await db
+    .prepare(
+      "INSERT INTO collections (id, name, parent_id, cover_url, sort_order) VALUES (?, ?, ?, ?, ?) RETURNING *",
+    )
+    .bind(row.id, row.name, row.parent_id, row.cover_url, row.sort_order)
+    .first<Collection>();
+  if (inserted === null) {
+    throw new Error("insertCollection: INSERT ... RETURNING * returned no row");
+  }
+  return inserted;
+}
+
+/**
+ * Create a collection only if `id` isn't taken — used by TMDB-season adds, whose
+ * collection_id ("tmdb:tv:<id>") must point at a real row before the item insert.
+ * Idempotent across the seasons of one show.
+ */
+export async function ensureCollection(
+  db: D1Database,
+  id: string,
+  name: string | null = null,
+): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT(id) DO NOTHING",
+    )
+    .bind(id, name)
+    .run();
+}
+
+const COLLECTION_FIELDS = ["name", "cover_url", "parent_id", "sort_order"] as const;
+export type CollectionPatch = Partial<
+  Pick<Collection, (typeof COLLECTION_FIELDS)[number]>
+>;
+
+/** Apply a partial update (name/cover/parent/sort) and return the row, or null. */
+export async function updateCollection(
+  db: D1Database,
+  id: string,
+  patch: CollectionPatch,
+): Promise<Collection | null> {
+  const keys = (Object.keys(patch) as (keyof CollectionPatch)[]).filter((k) =>
+    COLLECTION_FIELDS.includes(k),
+  );
+  if (keys.length === 0) return getCollection(db, id);
+  const assignments = keys.map((k) => `${k} = ?`);
+  const values = keys.map((k) => patch[k]);
+  return db
+    .prepare(`UPDATE collections SET ${assignments.join(", ")} WHERE id = ? RETURNING *`)
+    .bind(...values, id)
+    .first<Collection>();
+}
+
+/**
+ * All collection ids in `rootId`'s subtree (including rootId itself), via a
+ * recursive walk down parent_id. Drives subtree bulk-edits + cycle checks.
+ */
+export async function collectionSubtreeIds(
+  db: D1Database,
+  rootId: string,
+): Promise<string[]> {
+  const result = await db
+    .prepare(
+      `WITH RECURSIVE sub(id) AS (
+         SELECT id FROM collections WHERE id = ?
+         UNION
+         SELECT c.id FROM collections c JOIN sub ON c.parent_id = sub.id
+       )
+       SELECT id FROM sub`,
+    )
+    .bind(rootId)
+    .all<{ id: string }>();
+  return result.results.map((r) => r.id);
+}
+
+/**
+ * Bulk-set item metadata (region / type / genres) on EVERY item in `rootId`'s
+ * subtree (items directly in it + items in any descendant collection). Whitelist
+ * keys only → injection-safe. Does NOT bump date_updated (a correction
+ * shouldn't reorder a date-sorted list). Returns the number of items updated.
+ */
+export interface SubtreeItemFields {
+  region?: string | null;
+  type?: string;
+  genres?: string | null;
+}
+
+export async function updateSubtreeItemFields(
+  db: D1Database,
+  rootId: string,
+  fields: SubtreeItemFields,
+): Promise<number> {
+  const keys = Object.keys(fields) as (keyof SubtreeItemFields)[];
+  if (keys.length === 0) return 0;
+  const ids = await collectionSubtreeIds(db, rootId);
+  if (ids.length === 0) return 0;
+  const assignments = keys.map((k) => `${k} = ?`);
+  const values = keys.map((k) => fields[k]);
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await db
+    .prepare(
+      `UPDATE media SET ${assignments.join(", ")} WHERE collection_id IN (${placeholders})`,
+    )
+    .bind(...values, ...ids)
     .run();
   return result.meta.changes;
 }
 
 /**
- * Set `series_cover_url` on every member sharing `seriesId` (the "pick
- * collection cover" override). `url` may be null to CLEAR the override (the
- * grouped card reverts to its first member's cover). Returns the number of rows
- * updated (0 if no such series). Like renameSeries, does NOT bump date_updated —
- * picking a cover is metadata and shouldn't reorder a date-sorted list.
+ * Delete a collection, re-parenting its contents UP to its own parent so nothing
+ * is lost: its sub-collections' parent_id and its member items' collection_id
+ * both move to the deleted node's parent (NULL → they become root/loose).
+ * Returns true if a collection was removed.
  */
-export async function setSeriesCover(
+export async function deleteCollection(
   db: D1Database,
-  seriesId: string,
-  url: string | null,
-): Promise<number> {
-  const result = await db
-    .prepare("UPDATE media SET series_cover_url = ? WHERE series_id = ?")
-    .bind(url, seriesId)
+  id: string,
+): Promise<boolean> {
+  const existing = await getCollection(db, id);
+  if (!existing) return false;
+  const parent = existing.parent_id; // may be null → contents go to root/loose
+  await db
+    .prepare("UPDATE collections SET parent_id = ? WHERE parent_id = ?")
+    .bind(parent, id)
     .run();
-  return result.meta.changes;
+  await db
+    .prepare("UPDATE media SET collection_id = ? WHERE collection_id = ?")
+    .bind(parent, id)
+    .run();
+  const result = await db
+    .prepare("DELETE FROM collections WHERE id = ?")
+    .bind(id)
+    .run();
+  return result.meta.changes > 0;
 }
 
 /**
@@ -311,6 +682,28 @@ export async function deleteVideoPart(
  * `date_added`, `date_updated`). Uses `RETURNING *` so we don't round-trip a
  * second SELECT.
  */
+/**
+ * The DISTINCT non-null collection_ids whose DIRECT items match `filters`. The
+ * drill-down uses this under an active filter/search to decide which collection
+ * cards to surface (then expands to ancestors client-side via the small tree),
+ * without shipping the matching items themselves. Reuses the same WHERE builder
+ * as the list, minus its own collection scope (we want matches anywhere). Bounded
+ * by #collections.
+ */
+export async function selectMatchingCollectionIds(
+  db: D1Database,
+  filters: ListFilters,
+): Promise<string[]> {
+  // Ignore any collection scope here — we want every collection with a match.
+  const { where, params } = buildMediaListQuery({ ...filters, collection: null });
+  const scope = where ? `${where} AND collection_id IS NOT NULL` : "WHERE collection_id IS NOT NULL";
+  const result = await db
+    .prepare(`SELECT DISTINCT collection_id FROM media ${scope}`)
+    .bind(...params)
+    .all<{ collection_id: string }>();
+  return result.results.map((r) => r.collection_id);
+}
+
 export async function insertMedia(
   db: D1Database,
   row: MediaInsert,
@@ -334,11 +727,13 @@ export async function insertMedia(
       row.current_chapter,
       row.total_chapters,
       row.runtime_minutes,
+      row.release_date,
+      row.source_rating,
+      row.genres,
       row.platform,
       row.consumption_mode,
-      row.series_id,
-      row.series_name,
-      row.season_number,
+      row.collection_id,
+      row.sort_order,
     )
     .first<MediaRow>();
 

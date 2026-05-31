@@ -13,7 +13,7 @@ export function useAddMedia() {
   return useMutation({
     mutationFn: (input: AddMediaInput) => addMedia(input),
     onSuccess: async (row) => {
-      void queryClient.invalidateQueries({ queryKey: ["media"] });
+      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
       void queryClient.invalidateQueries({ queryKey: ["anilist-search"] });
 
       if (!needsChineseTitle(row)) return;
@@ -21,7 +21,7 @@ export function useAddMedia() {
         const cn = await lookupChineseTitle(row);
         if (cn) {
           await saveChineseTitle(row.id, cn);
-          void queryClient.invalidateQueries({ queryKey: ["media"] });
+          void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
         }
       } catch {
         // Enrichment is a nicety — never fail an add over it.

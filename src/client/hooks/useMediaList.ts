@@ -19,9 +19,16 @@ export function useMediaList(filters: MediaFilters) {
   const lang = uiLangFromI18n(i18n.language);
   const isTitleSort = filters.sort === "title";
 
+  // Normalize the search term BEFORE it becomes part of the query key. The server
+  // trims `q`, so "加速世界" and "加速世界 " hit the same SQL — but if the raw
+  // (untrimmed) value were in the key, the trailing space would spawn a second
+  // cache entry and a redundant refetch whose in-flight (keepPreviousData) state
+  // looks like a different result count. Trimming the key collapses them to one.
+  const effective: MediaFilters = { ...filters, q: filters.q.trim() };
+
   return useQuery({
-    queryKey: ["media", filters, isTitleSort ? lang : null],
-    queryFn: () => fetchMediaList(filters),
+    queryKey: ["media", effective, isTitleSort ? lang : null],
+    queryFn: () => fetchMediaList(effective),
     placeholderData: keepPreviousData,
     select: isTitleSort
       ? (data) => ({

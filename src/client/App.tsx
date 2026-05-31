@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { AddMediaModal } from "./components/AddMediaModal";
+import { RecommendModal } from "./components/RecommendModal";
 import { EnrichChineseButton } from "./components/EnrichChineseButton";
 import { FilterSidebar, type FacetKey } from "./components/FilterSidebar";
 import { LanguageToggle } from "./components/LanguageToggle";
@@ -9,30 +11,60 @@ import { MediaList } from "./components/MediaList";
 import { RefreshEpisodesButton } from "./components/RefreshEpisodesButton";
 import { SearchBar } from "./components/SearchBar";
 import { ThemeToggle } from "./components/ThemeToggle";
-import type { MediaFilters } from "./lib/api";
+import { fetchMediaFacets, type MediaFilters } from "./lib/api";
 import type { SortKey } from "./lib/api";
 
 const EMPTY_FILTERS: MediaFilters = {
   types: [],
   regions: [],
   statuses: [],
+  genres: [],
   q: "",
   sort: "date_updated",
 };
 
-const SORT_OPTIONS: SortKey[] = ["date_updated", "date_added", "title"];
+// Dropdown order (PRD-v2 Feature D adds the reverse directions). title_zh /
+// title_zh_desc are NOT listed: the grid collates titles client-side by UI
+// language anyway, so one "Title A–Z / Z–A" pair covers both languages.
+const SORT_OPTIONS: SortKey[] = [
+  "date_updated",
+  "date_added",
+  "release_date",
+  "release_date_desc",
+  "title",
+  "title_desc",
+  "rating_desc",
+  "rating_asc",
+];
 
 export function App() {
   const { t } = useTranslation();
   const [filters, setFilters] = useState<MediaFilters>(EMPTY_FILTERS);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showRecommendModal, setShowRecommendModal] = useState(false);
+
+  // Genre facet options, scoped to the selected types (so picking type=game
+  // shows only game genres, anime only anime genres). Only fetched once at least
+  // one type is chosen — otherwise the genre list would be the whole library's
+  // union, which is huge and mixes every type's genres together.
+  const { data: genreFacets = [] } = useQuery({
+    queryKey: ["facets", filters.types],
+    queryFn: () => fetchMediaFacets(filters.types),
+    enabled: filters.types.length > 0,
+  });
 
   const toggleFacet = (facet: FacetKey, value: string) => {
     setFilters((prev) => {
       const next = new Set(prev[facet]);
       if (next.has(value)) next.delete(value);
       else next.add(value);
-      return { ...prev, [facet]: [...next] };
+      const updated = { ...prev, [facet]: [...next] };
+      // Genres are scoped to the selected type(s) — a "game" RPG means nothing
+      // under "movie". So changing the TYPE selection clears the genre choices,
+      // and the genre list repopulates for the new type (no stale cross-type
+      // genres left checked in the sidebar).
+      if (facet === "types") updated.genres = [];
+      return updated;
     });
   };
 
@@ -53,6 +85,13 @@ export function App() {
             >
               {t("add.button")}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowRecommendModal(true)}
+              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+            >
+              {t("recommend.button")}
+            </button>
             <RefreshEpisodesButton />
             <EnrichChineseButton />
             <ThemeToggle />
@@ -64,6 +103,7 @@ export function App() {
       <div className="mx-auto max-w-7xl px-4 py-4 md:flex md:gap-6">
         <FilterSidebar
           filters={filters}
+          genreFacets={genreFacets}
           onToggle={toggleFacet}
           onClear={clearAll}
         />
@@ -88,12 +128,16 @@ export function App() {
               </select>
             </label>
           </div>
-          <MediaList filters={filters} />
+          <MediaList filters={filters} onClearSearch={() => setQuery("")} />
         </main>
       </div>
 
       {showAddModal && (
         <AddMediaModal onClose={() => setShowAddModal(false)} />
+      )}
+
+      {showRecommendModal && (
+        <RecommendModal onClose={() => setShowRecommendModal(false)} />
       )}
     </div>
   );
