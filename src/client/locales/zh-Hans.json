@@ -28,6 +28,19 @@
     "because": "因为你有《{{title}}》",
     "added": "已添加 ✓"
   },
+  "whatsNew": {
+    "button": "🔔 更新",
+    "title": "新内容",
+    "intro": "扫描你的作品，查找尚未拥有的新一季（TMDB）和续作（AniList）。",
+    "checkButton": "检查更新",
+    "scanning": "扫描中… {{done}}/{{total}}",
+    "idle": "点击“检查更新”开始扫描。",
+    "error": "扫描失败，请重试。",
+    "empty": "已是最新 —— 已检查 {{count}} 部作品。",
+    "seasonAvailable": "{{label}} 可添加",
+    "sequelAvailable": "续作《{{label}}》可添加",
+    "dismiss": "忽略"
+  },
   "filters": {
     "heading": "筛选",
     "type": "类型",

@@ -28,6 +28,19 @@
     "because": "because you have {{title}}",
     "added": "Added ✓"
   },
+  "whatsNew": {
+    "button": "🔔 What's New",
+    "title": "What's New",
+    "intro": "Scan your shows for new seasons (TMDB) and sequels (AniList) you don't have yet.",
+    "checkButton": "Check for updates",
+    "scanning": "Scanning… {{done}}/{{total}}",
+    "idle": "Press \"Check for updates\" to scan.",
+    "error": "Scan failed. Try again.",
+    "empty": "You're all caught up — checked {{count}} shows.",
+    "seasonAvailable": "{{label}} available",
+    "sequelAvailable": "Sequel ‘{{label}}’ available",
+    "dismiss": "Dismiss"
+  },
   "filters": {
     "heading": "Filters",
     "type": "Type",

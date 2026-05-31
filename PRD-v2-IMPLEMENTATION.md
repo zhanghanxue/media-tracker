@@ -113,7 +113,21 @@ a collapsed "+ Add video links (optional)" toggle for type drama/variety, below 
 i18n editor.videoLinksShow/Hide. (Overrides the old CLAUDE.md "drama tracks by episode not URLs"
 note — now an opt-in add-on per user.)
 
-### Round 2b — Feature A (What's New scanner) — NOT STARTED
-Next: migration for dismissed_suggestions (persistent, keyed (source, external_id)); TMDB season-diff
-(worker) + AniList sequel-walk (browser, reuse getAniListRelations); throttled scan w/ progress;
-manual trigger only; results panel grouped by show w/ Add + Dismiss.
+### Round 2b — Feature A (What's New scanner) DONE & GREEN (571 tests, typecheck clean, build exit 0)
+- Pure core: `src/worker/api/whats-new.ts` (diffTmdbSeasons — aired, non-specials, unowned;
+  findNewSequels — SEQUEL edges, season-like formats, not owned, deduped) + 10 tests.
+- Backend: migration 0010 dismissed_suggestions (PK (source, external_id), additive). Repo
+  listDismissedSuggestionKeys + insertDismissedSuggestion (idempotent ON CONFLICT DO NOTHING).
+  Route src/worker/routes/suggestions.ts: GET /api/suggestions/dismissed, POST /dismiss (validated
+  source∈{anilist,tmdb}, kind∈{sequel,new_season}). Wired in index.ts. 4 integration tests.
+- NO new TMDB worker endpoint needed — reused existing GET /api/tmdb/tv/:id/seasons +
+  fetchTmdbSeasons client helper (deviates from PRD's "new endpoint" suggestion; simpler/aligned
+  with no-premature-abstraction). AniList sequel walk reuses getAniListRelations + getAniListDetail.
+- Browser: client/lib/whatsNew.ts (scanWhatsNew — group tv:ID:sN rows by show, diff seasons; walk
+  anime SEQUEL edges; filter dismissed; paced 350ms w/ progress cb; per-item error isolation like
+  refreshOngoing). useWhatsNew hook (manual scan, add via existing addMedia, dismiss). WhatsNewModal
+  (Check-for-updates → progress → grouped suggestions w/ Add + Dismiss). Button in App. i18n en+zh.
+- Decisions honored: manual trigger only (no cron); dismissals PERSISTENT. Out of scope (PRD v2.0):
+  movies, manga/LN, game sequels.
+
+## ROUND 2 COMPLETE. Both features (A + B) + the drama/variety video-links add-on shipped & green.
