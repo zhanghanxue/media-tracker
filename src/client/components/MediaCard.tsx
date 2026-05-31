@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
@@ -48,7 +48,17 @@ function progressLabel(t: TFunction, p: Progress): string {
   }
 }
 
-export function MediaCard({ media }: { media: MediaRow }) {
+export function MediaCard({
+  media,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  media: MediaRow;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: number) => void;
+}) {
   const { t, i18n } = useTranslation();
   const update = useUpdateMedia();
 
@@ -82,12 +92,20 @@ export function MediaCard({ media }: { media: MediaRow }) {
   return (
     <>
       <article
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setEditing(true);
-        }}
-        {...longPress}
-        className="group overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-800 transition hover:ring-blue-500 light:bg-white light:ring-zinc-200 light:shadow-sm"
+        {...(selectMode
+          ? { onClick: () => onToggleSelect?.(media.id) }
+          : {
+              onContextMenu: (e: MouseEvent) => {
+                e.preventDefault();
+                setEditing(true);
+              },
+              ...longPress,
+            })}
+        className={`group overflow-hidden rounded-lg bg-zinc-900 transition light:bg-white light:shadow-sm ${
+          selected
+            ? "ring-2 ring-blue-500"
+            : "ring-1 ring-zinc-800 hover:ring-blue-500 light:ring-zinc-200"
+        } ${selectMode ? "cursor-pointer" : ""}`}
       >
         <div className="relative aspect-[2/3] bg-zinc-800 light:bg-zinc-100">
           {media.cover_url && (
@@ -98,9 +116,18 @@ export function MediaCard({ media }: { media: MediaRow }) {
               className="h-full w-full object-cover"
             />
           )}
-          {/* +1 floats over the cover (top-right) so the footer never gets
-              crowded off-screen on narrow cards. Episodic/chapter items only. */}
-          {!isGamePlaying && incrementPatch && (
+          {/* Selection checkbox overlay (top-left) in select mode. */}
+          {selectMode && (
+            <span
+              className={`absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full text-sm ${
+                selected ? "bg-blue-600 text-white" : "bg-black/45 text-white/80"
+              }`}
+            >
+              {selected ? "✓" : ""}
+            </span>
+          )}
+          {/* +1 floats over the cover (top-right). Hidden in select mode. */}
+          {!selectMode && !isGamePlaying && incrementPatch && (
             <button
               type="button"
               onClick={(e) => {
@@ -133,7 +160,11 @@ export function MediaCard({ media }: { media: MediaRow }) {
               {t(`status.${media.status}`)}
             </span>
 
-            {isGamePlaying ? (
+            {selectMode ? (
+              <span className="truncate text-zinc-400 light:text-zinc-500">
+                {isGamePlaying ? (media.game_progress ?? t("progress.none")) : progressLabel(t, progress)}
+              </span>
+            ) : isGamePlaying ? (
               editingGame ? (
                 <input
                   autoFocus

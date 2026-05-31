@@ -68,6 +68,17 @@ describe("parsePatchMediaRequest — invalid", () => {
     expect(parsePatchMediaRequest({ status: "banana" }).ok).toBe(false);
   });
 
+  it("accepts a valid type (re-classify drama → variety)", () => {
+    expect(parsePatchMediaRequest({ type: "variety" })).toEqual({
+      ok: true,
+      value: { type: "variety" },
+    });
+  });
+
+  it("rejects an invalid type", () => {
+    expect(parsePatchMediaRequest({ type: "podcast" }).ok).toBe(false);
+  });
+
   it("rejects negative / float / string integers", () => {
     expect(parsePatchMediaRequest({ current_episode: -1 }).ok).toBe(false);
     expect(parsePatchMediaRequest({ current_episode: 1.5 }).ok).toBe(false);
@@ -100,28 +111,25 @@ describe("parsePatchMediaRequest — invalid", () => {
     expect(parsePatchMediaRequest({ is_rewatching: true }).ok).toBe(false);
   });
 
-  it("accepts series link fields (id + name + season_number)", () => {
+  it("accepts collection link fields (collection_id + sort_order)", () => {
     const r = parsePatchMediaRequest({
-      series_id: "series:abc",
-      series_name: "进击的巨人",
-      season_number: 2,
+      collection_id: "col:abc",
+      sort_order: 2,
     });
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.value.series_id).toBe("series:abc");
-      expect(r.value.series_name).toBe("进击的巨人");
-      expect(r.value.season_number).toBe(2);
+      expect(r.value.collection_id).toBe("col:abc");
+      expect(r.value.sort_order).toBe(2);
     }
   });
 
-  it("accepts nulling series fields (unlink)", () => {
+  it("accepts nulling collection fields (unlink)", () => {
     const r = parsePatchMediaRequest({
-      series_id: null,
-      series_name: null,
-      season_number: null,
+      collection_id: null,
+      sort_order: null,
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.series_id).toBeNull();
+    if (r.ok) expect(r.value.collection_id).toBeNull();
   });
 
   it("collects all errors at once", () => {
@@ -151,6 +159,10 @@ function row(overrides: Partial<MediaRow>): MediaRow {
     cover_url: null,
     external_id: "1",
     external_source: "anilist",
+    anilist_id: null,
+    tmdb_id: null,
+    igdb_id: null,
+    bangumi_id: null,
     notes: null,
     current_episode: null,
     total_episodes: null,
@@ -159,11 +171,12 @@ function row(overrides: Partial<MediaRow>): MediaRow {
     platform: null,
     consumption_mode: null,
     game_progress: null,
+    genres: null,
     runtime_minutes: null,
-    series_id: null,
-    series_name: null,
-    season_number: null,
-    series_cover_url: null,
+    release_date: null,
+    source_rating: null,
+    collection_id: null,
+    sort_order: null,
     date_added: "2026-01-01",
     date_updated: "2026-01-01",
     ...overrides,
@@ -310,11 +323,13 @@ function insert(overrides: Partial<MediaInsert>): MediaInsert {
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    release_date: null,
+    source_rating: null,
+    genres: null,
     platform: null,
     consumption_mode: null,
-    series_id: null,
-    series_name: null,
-    season_number: null,
+    collection_id: null,
+    sort_order: null,
     ...overrides,
   };
 }

@@ -24,17 +24,23 @@ import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
 import {
   addVideoPart,
+  bulkUpdateMedia,
   deleteMedia,
   deleteVideoPart,
+  ensureCollection,
   findByExternalRef,
   findById,
+  getCollection,
   insertMedia,
   listMedia,
   listVideoParts,
+  selectGenresColumn,
+  selectMatchingCollectionIds,
   setCoverUrl,
   setTotalEpisodes,
   updateMedia,
 } from "../db/media-repository";
+import { tallyGenres } from "../api/facets";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
 import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../sources/tmdb-mapper";
@@ -210,6 +216,13 @@ mediaRoutes.post("/", async (c) => {
     });
   }
 
+  // A mapper-assigned collection_id (TMDB whole-show seasons → "tmdb:tv:<id>")
+  // must point at a real collection row before the FK is set. Idempotent across
+  // the show's seasons; name stays null so the client auto-derives it.
+  if (row.collection_id) {
+    await ensureCollection(c.env.DB, row.collection_id);
+  }
+
   const inserted = await insertMedia(c.env.DB, row);
   return c.json(inserted, 201);
 });
@@ -221,7 +234,9 @@ mediaRoutes.get("/", async (c) => {
     type: c.req.queries("type"),
     region: c.req.queries("region"),
     status: c.req.queries("status"),
+    genre: c.req.queries("genre"),
     q: c.req.query("q"),
+    collection: c.req.query("collection"),
     sort: c.req.query("sort"),
     limit: c.req.query("limit"),
     offset: c.req.query("offset"),
@@ -232,6 +247,37 @@ mediaRoutes.get("/", async (c) => {
 
   const page = await listMedia(c.env.DB, parsed.value);
   return c.json(page);
+});
+
+// GET /api/media/facets — the distinct genres present in the library, optionally
+// scoped to one or more media types (?type=game&type=animation). Powers the
+// dynamic genre filter: pick a type, see only that type's genres. Computed
+// server-side because the client only loads a slice and couldn't see them all.
+mediaRoutes.get("/facets", async (c) => {
+  const types = (c.req.queries("type") ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const rows = await selectGenresColumn(c.env.DB, types);
+  return c.json({ genres: tallyGenres(rows) });
+});
+
+// GET /api/media/matching-collections — DISTINCT collection ids whose direct
+// items match the filters/search. Powers the drill-down's "which collection
+// cards to show" under an active filter, without shipping the matching items.
+// Registered before "/:id" so "matching-collections" isn't captured as an id.
+mediaRoutes.get("/matching-collections", async (c) => {
+  const parsed = parseListQuery({
+    type: c.req.queries("type"),
+    region: c.req.queries("region"),
+    status: c.req.queries("status"),
+    genre: c.req.queries("genre"),
+    q: c.req.query("q"),
+  });
+  if (!parsed.ok) {
+    return c.json({ error: "invalid query", details: parsed.errors }, 400);
+  }
+  const collection_ids = await selectMatchingCollectionIds(c.env.DB, parsed.value);
+  return c.json({ collection_ids });
 });
 
 // GET /api/media/:id — single record (used by the detail view later).
@@ -251,6 +297,47 @@ mediaRoutes.get("/:id", async (c) => {
 // PATCH /api/media/:id — update mutable fields (status / progress / notes / …).
 // Bumps date_updated; auto-completes when progress reaches total unless status
 // is set explicitly. Returns the updated row.
+// PATCH /api/media/bulk — apply ONE validated patch to many rows at once (the
+// selection bulk action: add a set of items to a collection, set their status,
+// etc.). Body: { ids: number[], patch: {...same fields as PATCH /:id...} }.
+// Registered before /:id so "bulk" isn't captured as an id param.
+mediaRoutes.patch("/bulk", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+  const obj =
+    typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+
+  const rawIds = obj.ids;
+  if (
+    !Array.isArray(rawIds) ||
+    rawIds.length === 0 ||
+    !rawIds.every((n) => typeof n === "number" && Number.isInteger(n) && n > 0)
+  ) {
+    return c.json({ error: "ids must be a non-empty array of positive integers" }, 400);
+  }
+  const ids = rawIds as number[];
+
+  const parsed = parsePatchMediaRequest(obj.patch);
+  if (!parsed.ok) {
+    return c.json({ error: "validation failed", details: parsed.errors }, 400);
+  }
+
+  // Guard the FK: a non-null collection_id must reference a real collection
+  // (else the bulk would orphan every selected item).
+  if (typeof parsed.value.collection_id === "string") {
+    if (!(await getCollection(c.env.DB, parsed.value.collection_id))) {
+      return c.json({ error: `collection ${parsed.value.collection_id} not found` }, 400);
+    }
+  }
+
+  const updated = await bulkUpdateMedia(c.env.DB, ids, parsed.value);
+  return c.json({ updated }, 200);
+});
+
 mediaRoutes.patch("/:id", async (c) => {
   const idParam = c.req.param("id");
   if (!/^[1-9][0-9]*$/.test(idParam)) {

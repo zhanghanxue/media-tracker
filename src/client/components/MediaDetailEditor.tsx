@@ -1,26 +1,47 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
 import { useRefreshCover } from "../hooks/useRefreshCover";
-import { useSeriesIndex } from "../hooks/useSeriesIndex";
-import { useRenameSeries } from "../hooks/useRenameSeries";
+import { useCollections } from "../hooks/useCollections";
 import { BangumiTitlePicker } from "./BangumiTitlePicker";
-import { AniListTitlePicker } from "./AniListTitlePicker";
+import { AniListTitlePicker, type PickedAniListTitles } from "./AniListTitlePicker";
+import { IgdbLinkPicker, type PickedIgdbGame } from "./IgdbLinkPicker";
 import { VideoPartsEditor } from "./VideoPartsEditor";
+import { CollectionEditor } from "./CollectionEditor";
+import { CollectionPicker } from "./CollectionPicker";
 import { mediaProgress } from "../lib/progress";
-import { REGION_FACETS } from "../lib/facets";
-import { newSeriesId } from "../lib/series";
+import { REGION_FACETS, TYPE_FACETS } from "../lib/facets";
+import { fetchMediaList, type MediaFilters } from "../lib/api";
+import {
+  childCollections,
+  collectionName,
+  directItems,
+} from "../lib/collections";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import type { MediaPatch } from "../../worker/api/patch-media";
 import type {
   MediaConsumptionMode,
   MediaPlatform,
   MediaStatus,
+  MediaType,
 } from "../../worker/db/schema";
-import type { MediaRow } from "../lib/types";
+import type { Collection, MediaRow } from "../lib/types";
+
+// The whole, unfiltered library — used to derive collection display names in the
+// picker (so auto-named collections aren't all "(untitled)").
+// Matches App's EMPTY_FILTERS exactly so the query key reuses the library the
+// main list already loaded (no extra full-library fetch).
+const ALL_LIBRARY_FILTERS: MediaFilters = {
+  types: [],
+  regions: [],
+  statuses: [],
+  genres: [],
+  q: "",
+  sort: "date_updated",
+};
 
 const STATUSES: MediaStatus[] = [
   "planned",
@@ -60,13 +81,22 @@ export function MediaDetailEditor({
     del.mutate(media.id, { onSuccess: onClose });
   };
 
-  const handleAniListPick = (titles: {
-    english: string | null;
-    romaji: string | null;
-  }) => {
-    if (titles.english) setTitleEnglish(titles.english);
-    if (titles.romaji) setTitleRomaji(titles.romaji);
+  // Picking an AniList entry both fills the Latin titles AND persists the link as
+  // anilist_id (PRD-v2 Issue A — previously only the titles were saved, so the
+  // link silently vanished). Skip the link write when AniList is already this
+  // row's primary source (its id is in external_id; nothing to cross-reference).
+  const handleAniListPick = (picked: PickedAniListTitles) => {
+    if (picked.english) setTitleEnglish(picked.english);
+    if (picked.romaji) setTitleRomaji(picked.romaji);
+    if (media.external_source !== "anilist") setAnilistId(String(picked.id));
     setShowAniListPicker(false);
+  };
+
+  // Feature C: link a game (typically Bangumi-sourced) to its IGDB entry. Stores
+  // igdb_id only — Bangumi stays the source of record.
+  const handleIgdbPick = (game: PickedIgdbGame) => {
+    if (media.external_source !== "igdb") setIgdbId(String(game.id));
+    setShowIgdbPicker(false);
   };
 
   const isGame = media.type === "game";
@@ -105,6 +135,9 @@ export function MediaDetailEditor({
         : null;
 
   const [status, setStatus] = useState<MediaStatus>(media.status);
+  // Type is editable: TMDB files every tv show as "drama", so reality shows come
+  // in mistyped and the user re-classifies them (e.g. drama → variety).
+  const [type, setType] = useState<MediaType>(media.type);
   const [count, setCount] = useState(
     initialCount != null ? String(initialCount) : "",
   );
@@ -118,57 +151,50 @@ export function MediaDetailEditor({
   const [region, setRegion] = useState(media.region ?? "");
   const [showPicker, setShowPicker] = useState(false);
   const [showAniListPicker, setShowAniListPicker] = useState(false);
+  // Cross-reference links (migration 0008), staged like the titles and saved with
+  // the rest. anilist_id for anime/manga (Issue A); igdb_id for games (Feature C).
+  const [anilistId, setAnilistId] = useState(media.anilist_id ?? "");
+  const [igdbId, setIgdbId] = useState(media.igdb_id ?? "");
+  const [showIgdbPicker, setShowIgdbPicker] = useState(false);
+  // Optional drama/variety video-links add-on, collapsed by default.
+  const [showVideoLinks, setShowVideoLinks] = useState(false);
 
-  // Series grouping. These apply IMMEDIATELY (their own mutations), separate from
-  // the Save button which handles status/progress/titles. series_id is just a
-  // grouping tag — linking/moving/unlinking never touches the entry's own data.
-  const [seriesId, setSeriesId] = useState(media.series_id);
-  const [seriesName, setSeriesName] = useState(media.series_name ?? "");
-  const [showSeriesPicker, setShowSeriesPicker] = useState(false);
-  const [seriesQuery, setSeriesQuery] = useState("");
-  const seriesIndex = useSeriesIndex();
-  const renameSeries = useRenameSeries();
+  // Collection placement. Applies IMMEDIATELY (its own mutation), separate from
+  // the Save button. collection_id is just a placement pointer — it never
+  // touches the entry's own data.
+  const [collectionId, setCollectionId] = useState(media.collection_id);
+  const [showColPicker, setShowColPicker] = useState(false);
+  const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
+  const { data: collections = [] } = useCollections();
+  // The whole library so we can show the CURRENT collection's DERIVED name
+  // (auto-named ones would otherwise read "(untitled)"). Unfiltered, shared cache.
+  const { data: colLibrary } = useQuery({
+    queryKey: ["media", ALL_LIBRARY_FILTERS, null],
+    queryFn: () => fetchMediaList(ALL_LIBRARY_FILTERS),
+  });
+  const colItems = colLibrary?.items ?? [];
 
-  const applySeries = (id: string | null, name: string | null) => {
-    setSeriesId(id);
-    setSeriesName(name ?? "");
+  const invalidateTree = () => {
+    void queryClient.invalidateQueries({ queryKey: ["media"] });
+    void queryClient.invalidateQueries({ queryKey: ["collections"] });
+  };
+  const assignCollection = (id: string | null) => {
+    setCollectionId(id);
     update.mutate(
-      {
-        id: media.id,
-        patch: {
-          series_id: id,
-          series_name: name,
-          ...(id === null ? { season_number: null } : {}),
-        },
-      },
-      {
-        // A series change is structural (regroups the list, adds a new series to
-        // the picker), so — unlike a +1 — invalidate so both the grouped library
-        // and the series index refetch instead of needing a manual page refresh.
-        onSuccess: () =>
-          void queryClient.invalidateQueries({ queryKey: ["media"] }),
-      },
+      { id: media.id, patch: { collection_id: id } },
+      { onSuccess: invalidateTree },
     );
-    setShowSeriesPicker(false);
-    setSeriesQuery("");
+    setShowColPicker(false);
   };
-  const createSeries = () => {
-    // override = the typed name, or null to auto-name from members per-language.
-    applySeries(newSeriesId(), seriesQuery.trim() || null);
-  };
-  const commitRename = () => {
-    const n = seriesName.trim();
-    const current = media.series_name ?? "";
-    if (seriesId && n !== current) {
-      // Empty → clear the override (revert to the auto-derived per-language name).
-      renameSeries.mutate({ seriesId, name: n === "" ? null : n });
-    }
-  };
-  const seriesQ = seriesQuery.trim().toLowerCase();
-  const seriesMatches = seriesIndex.filter(
-    (s) => s.id !== seriesId && s.name.toLowerCase().includes(seriesQ),
-  );
-  const seriesExactMatch = seriesIndex.some((s) => s.name.toLowerCase() === seriesQ);
+  const colLabel = (c: Collection) =>
+    collectionName(
+      c,
+      directItems(colItems, c.id),
+      childCollections(collections, c.id).map((g) => g.name ?? ""),
+      lang,
+      t("collection.untitled"),
+    );
+  const currentCollection = collections.find((c) => c.id === collectionId) ?? null;
   // Seed the picker with a Latin title (best for Bangumi's v0 search).
   const pickerQuery =
     media.title_english ?? media.title_romaji ?? media.title_native ?? "";
@@ -190,6 +216,7 @@ export function MediaDetailEditor({
   const save = () => {
     const patch: MediaPatch = {};
     if (status !== media.status) patch.status = status;
+    if (type !== media.type) patch.type = type;
     if (notes !== (media.notes ?? "")) patch.notes = notes === "" ? null : notes;
     if (titleChinese !== (media.title_chinese ?? "")) {
       patch.title_chinese = titleChinese.trim() === "" ? null : titleChinese.trim();
@@ -202,6 +229,16 @@ export function MediaDetailEditor({
     }
     if (region !== (media.region ?? "")) {
       patch.region = region === "" ? null : region;
+    }
+
+    // Cross-reference links (Issue A / Feature C) — included only when changed.
+    const stagedAnilist = anilistId.trim() === "" ? null : anilistId.trim();
+    if (stagedAnilist !== (media.anilist_id ?? null)) {
+      patch.anilist_id = stagedAnilist;
+    }
+    const stagedIgdb = igdbId.trim() === "" ? null : igdbId.trim();
+    if (stagedIgdb !== (media.igdb_id ?? null)) {
+      patch.igdb_id = stagedIgdb;
     }
 
     if (isGame) {
@@ -230,10 +267,25 @@ export function MediaDetailEditor({
       onClose();
       return;
     }
-    update.mutate({ id: media.id, patch }, { onSuccess: onClose });
+    update.mutate(
+      { id: media.id, patch },
+      {
+        onSuccess: () => {
+          // A type change can move the item in/out of a type-filtered view and
+          // shifts the per-type genre facets, so refetch both (a normal save's
+          // in-place update would otherwise leave a filtered list stale).
+          if (patch.type) {
+            void queryClient.invalidateQueries({ queryKey: ["media"] });
+            void queryClient.invalidateQueries({ queryKey: ["facets"] });
+          }
+          onClose();
+        },
+      },
+    );
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
@@ -343,6 +395,42 @@ export function MediaDetailEditor({
           </div>
         )}
 
+        {/* Feature C: link a game (typically Bangumi-sourced) to its IGDB entry.
+            Stores igdb_id only; the row's primary source stays as it was. */}
+        {isGame && media.external_source !== "igdb" && (
+          <div className="text-sm">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-zinc-400 light:text-zinc-500">
+                {t("editor.igdbLink")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowIgdbPicker((v) => !v)}
+                className="text-xs text-blue-400 hover:underline light:text-blue-600"
+              >
+                {showIgdbPicker ? t("picker.close") : t("picker.buttonIgdb")}
+              </button>
+            </div>
+            {igdbId && (
+              <p className="flex items-center gap-2 text-xs text-emerald-400 light:text-emerald-600">
+                {t("editor.linkedIgdb", { id: igdbId })}
+                <button
+                  type="button"
+                  onClick={() => setIgdbId("")}
+                  className="text-zinc-500 hover:text-zinc-300 hover:underline"
+                >
+                  {t("editor.unlinkRef")}
+                </button>
+              </p>
+            )}
+            {showIgdbPicker && (
+              <div className="mt-2">
+                <IgdbLinkPicker initialQuery={pickerQuery} onPick={handleIgdbPick} />
+              </div>
+            )}
+          </div>
+        )}
+
         {dimension && (
           <label className="block text-sm">
             <span className="mb-1 block text-zinc-400 light:text-zinc-500">
@@ -386,6 +474,29 @@ export function MediaDetailEditor({
           <VideoPartsEditor mediaId={media.id} />
         )}
 
+        {/* Optional video links for drama / variety — an ADD-ON alongside the
+            episode tracking above, not a replacement (some shows scatter clips /
+            full episodes across video sites). Collapsed by default so it doesn't
+            clutter shows that don't use it; the same media_video_parts table. */}
+        {(media.type === "drama" || media.type === "variety") && (
+          <div className="text-sm">
+            <button
+              type="button"
+              onClick={() => setShowVideoLinks((v) => !v)}
+              className="text-xs text-blue-400 hover:underline light:text-blue-600"
+            >
+              {showVideoLinks
+                ? t("editor.videoLinksHide")
+                : t("editor.videoLinksShow")}
+            </button>
+            {showVideoLinks && (
+              <div className="mt-2">
+                <VideoPartsEditor mediaId={media.id} />
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="text-sm">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-zinc-400 light:text-zinc-500">
@@ -414,6 +525,21 @@ export function MediaDetailEditor({
                 onPick={handleAniListPick}
               />
             </div>
+          )}
+          {/* Persisted AniList cross-reference (Issue A): shows the link actually
+              stuck. Only for non-AniList-primary rows — a native AniList row
+              already shows its id in the provenance line above. */}
+          {media.external_source !== "anilist" && anilistId && (
+            <p className="mt-1 flex items-center gap-2 text-xs text-emerald-400 light:text-emerald-600">
+              {t("editor.linkedAniList", { id: anilistId })}
+              <button
+                type="button"
+                onClick={() => setAnilistId("")}
+                className="text-zinc-500 hover:text-zinc-300 hover:underline"
+              >
+                {t("editor.unlinkRef")}
+              </button>
+            </p>
           )}
         </div>
 
@@ -466,6 +592,23 @@ export function MediaDetailEditor({
 
         <label className="block text-sm">
           <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+            {t("editor.type")}
+          </span>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as MediaType)}
+            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+          >
+            {TYPE_FACETS.map((ty) => (
+              <option key={ty} value={ty}>
+                {t(`type.${ty}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
             {t("editor.region")}
           </span>
           <select
@@ -482,97 +625,62 @@ export function MediaDetailEditor({
           </select>
         </label>
 
-        {/* Series grouping — applies immediately (not via Save). */}
+        {/* Collection placement — applies immediately (not via Save). */}
         <div className="text-sm">
           <span className="mb-1 block text-zinc-400 light:text-zinc-500">
-            {t("series.section")}
+            {t("collection.section")}
           </span>
 
-          {seriesId ? (
+          {collectionId ? (
             <div className="space-y-2 rounded-md border border-zinc-700 bg-zinc-800/30 p-2 light:border-zinc-300 light:bg-zinc-50">
-              <input
-                type="text"
-                value={seriesName}
-                onChange={(e) => setSeriesName(e.target.value)}
-                onBlur={commitRename}
-                placeholder={t("series.namePlaceholder")}
-                className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
-              />
-              <p className="text-[11px] text-zinc-500">{t("series.note")}</p>
-              <div className="flex gap-2">
+              <p className="truncate text-sm">
+                {currentCollection ? colLabel(currentCollection) : collectionId}
+              </p>
+              <p className="text-[11px] text-zinc-500">{t("collection.note")}</p>
+              <div className="flex flex-wrap gap-2">
+                {/* Jump straight to THIS collection's editor — e.g. to nest it
+                    under a master collection — without hunting for it by drilling. */}
                 <button
                   type="button"
-                  onClick={() => setShowSeriesPicker((v) => !v)}
+                  onClick={() => setEditingCollectionId(collectionId)}
                   className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-700"
                 >
-                  {t("series.relink")}
+                  ⚙ {t("collection.edit")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => applySeries(null, null)}
+                  onClick={() => setShowColPicker((v) => !v)}
+                  className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-700"
+                >
+                  {t("collection.relink")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => assignCollection(null)}
                   className="rounded-md px-2 py-1 text-xs text-red-300 hover:bg-red-500/10 light:text-red-600"
                 >
-                  {t("series.unlink")}
+                  {t("collection.unlink")}
                 </button>
               </div>
             </div>
           ) : (
-            !showSeriesPicker && (
+            !showColPicker && (
               <button
                 type="button"
-                onClick={() => setShowSeriesPicker(true)}
+                onClick={() => setShowColPicker(true)}
                 className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
               >
-                {t("series.link")}
+                {t("collection.link")}
               </button>
             )
           )}
 
-          {showSeriesPicker && (
-            <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-950/40 p-2 light:border-zinc-300 light:bg-white">
-              <input
-                type="search"
-                autoFocus
-                value={seriesQuery}
-                onChange={(e) => setSeriesQuery(e.target.value)}
-                placeholder={t("series.searchPlaceholder")}
-                className="mb-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm light:border-zinc-300 light:bg-white"
-              />
-              <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {seriesMatches.map((s) => (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => applySeries(s.id, s.override)}
-                      className="flex w-full items-center justify-between rounded p-1.5 text-left text-sm hover:bg-zinc-800 light:hover:bg-zinc-100"
-                    >
-                      <span className="truncate">{s.name}</span>
-                      <span className="shrink-0 text-xs text-zinc-500">
-                        {t("series.seasons", { count: s.count })}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-                {!seriesExactMatch && (
-                  <li>
-                    <button
-                      type="button"
-                      onClick={createSeries}
-                      className="w-full rounded p-1.5 text-left text-sm text-blue-400 hover:bg-zinc-800 light:text-blue-600 light:hover:bg-zinc-100"
-                    >
-                      {seriesQuery.trim()
-                        ? t("series.create", { name: seriesQuery.trim() })
-                        : t("series.createAuto")}
-                    </button>
-                  </li>
-                )}
-              </ul>
+          {showColPicker && (
+            <div className="mt-2">
+              <CollectionPicker excludeId={collectionId} onPick={assignCollection} />
               <button
                 type="button"
-                onClick={() => {
-                  setShowSeriesPicker(false);
-                  setSeriesQuery("");
-                }}
+                onClick={() => setShowColPicker(false)}
                 className="mt-1 text-xs text-zinc-500 hover:text-zinc-300"
               >
                 {t("picker.close")}
@@ -622,5 +730,14 @@ export function MediaDetailEditor({
         </div>
       </div>
     </div>
+
+    {editingCollectionId && (
+      <CollectionEditor
+        collectionId={editingCollectionId}
+        onClose={() => setEditingCollectionId(null)}
+        onDeleted={() => setEditingCollectionId(null)}
+      />
+    )}
+    </>
   );
 }

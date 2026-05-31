@@ -2,9 +2,9 @@
 // worker's schema (single source of truth — type-only import, erased at build,
 // so no worker code leaks into the client bundle).
 
-import type { MediaRow } from "../../worker/db/schema";
+import type { Collection, ExternalSource, MediaRow } from "../../worker/db/schema";
 
-export type { MediaRow };
+export type { Collection, ExternalSource, MediaRow };
 
 /** Shape returned by GET /api/media. */
 export interface MediaListResponse {

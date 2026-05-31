@@ -19,9 +19,38 @@ import type {
 } from "../db/schema";
 import type { AniListMedia } from "./anilist";
 import type { BangumiInfoboxItem, BangumiSubject } from "./bangumi";
+import { joinGenres } from "./genres";
+import { isoFromString } from "./release-date";
+import { ratingFrom10 } from "./rating";
 
 // Same insert shape as the AniList mapper (schema.ts § MediaInsert).
 export type BangumiMapperResult = MediaInsert;
+
+// Bangumi tags are free-form Chinese user tags (year, studio, "TV", etc.), so we
+// keep only a curated genre whitelist — best-effort, source-native (Chinese).
+// Empty is fine: most genre-bearing items resolve to AniList/TMDB instead.
+const BANGUMI_GENRE_WHITELIST = new Set([
+  "科幻", "奇幻", "魔幻", "悬疑", "推理", "恐怖", "惊悚", "喜剧", "搞笑",
+  "恋爱", "爱情", "校园", "青春", "日常", "治愈", "热血", "战斗", "冒险",
+  "动作", "历史", "战争", "运动", "竞技", "音乐", "歌舞", "美食", "职场",
+  "悬幻", "武侠", "仙侠", "古装", "犯罪", "侦探", "机战", "机甲", "后宫",
+  "百合", "耽美", "乙女", "剧情", "家庭", "伦理", "社会", "传记", "奇幻冒险",
+]);
+
+/**
+ * Best-effort genres for a Bangumi-direct item: its tags ∩ a curated genre
+ * whitelist, most-used first. Pure. Returns [] when nothing matches.
+ */
+export function extractBangumiGenres(subject: BangumiSubject): string[] {
+  const tags = (subject.tags ?? [])
+    .filter((t) => BANGUMI_GENRE_WHITELIST.has(t.name))
+    .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+    .map((t) => t.name);
+  const meta = (subject.meta_tags ?? []).filter((t) =>
+    BANGUMI_GENRE_WHITELIST.has(t),
+  );
+  return [...tags, ...meta];
+}
 
 // Bangumi book `platform` values that mean "prose" rather than comics.
 const NOVEL_PLATFORMS = new Set(["小说", "輕小說", "轻小说"]);
@@ -77,13 +106,15 @@ export function bangumiToMediaRow(
     current_chapter: null,
     total_chapters: totalChapters,
     runtime_minutes: null, // anime/manga don't track runtime; TMDB-only field.
+    release_date: isoFromString(subject.date), // v0 "YYYY-MM-DD" (legacy: air_date)
+    source_rating: ratingFrom10(subject.rating?.score), // already 0–10
+    genres: joinGenres(extractBangumiGenres(subject)),
     platform: null, // platform is editor-set for Bangumi-direct games
     // Default a Bangumi-direct game to "playing" so its card shows free-text
     // progress (not episode counts); the editor can switch it to watching.
     consumption_mode: type === "game" ? "playing" : null,
-    series_id: null,
-    series_name: null,
-    season_number: null,
+    collection_id: null,
+    sort_order: null,
   };
 }
 

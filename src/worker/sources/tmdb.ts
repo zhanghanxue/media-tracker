@@ -32,6 +32,8 @@ export interface TmdbSearchResultRaw {
   release_date?: string; // movie, "YYYY-MM-DD"
   first_air_date?: string; // tv
   origin_country?: string[];
+  // Community rating 0–10 — used as the recommendation ranking score (Feature B).
+  vote_average?: number;
 }
 
 interface TmdbSearchResponse {
@@ -96,6 +98,11 @@ export interface TmdbDetail {
   overview?: string;
   poster_path?: string | null;
   origin_country?: string[];
+  // Community rating, 0–10 (0 = unvoted). Normalized to `source_rating` by the
+  // mapper; present on both movie and tv detail.
+  vote_average?: number | null;
+  // Genres ship in the base movie/tv detail response (no append needed).
+  genres?: { id: number; name: string }[];
   translations?: { translations: TmdbTranslationItem[] };
   images?: TmdbImages;
 }
@@ -176,6 +183,23 @@ export async function searchTmdb(
   const payload = await tmdbRequest<TmdbSearchResponse>(
     `/search/${kind}?${params.toString()}`,
     options,
+  );
+  return payload?.results ?? [];
+}
+
+// Feature B: TMDB's own "more like this" list for a movie/tv id. Returns the same
+// partial result shape as search (id + titles + poster + vote_average), localized
+// to zh-CN so titles match the library. Empty array when TMDB has none / 404.
+export async function getTmdbRecommendations(
+  id: number,
+  kind: TmdbKind,
+  options: TmdbClientOptions,
+): Promise<TmdbSearchResultRaw[]> {
+  const params = new URLSearchParams({ language: "zh-CN", page: "1" });
+  const payload = await tmdbRequest<TmdbSearchResponse>(
+    `/${kind}/${id}/recommendations?${params.toString()}`,
+    options,
+    { notFoundIsNull: true },
   );
   return payload?.results ?? [];
 }

@@ -7,14 +7,19 @@ import type { SearchType } from "../lib/api";
 import type { MediaType } from "../../worker/db/schema";
 
 export interface PickedAniListTitles {
+  // AniList Media id of the picked entry. The caller stores it as the row's
+  // anilist_id cross-reference (PRD-v2 Issue A) so the link actually PERSISTS —
+  // previously this picker returned titles only and the link was never saved.
+  id: number;
   english: string | null;
   romaji: string | null;
 }
 
-// Manual AniList search → pick an entry → return its English + romaji titles, to
-// "link" a Bangumi-direct row to its AniList equivalent (fills the Latin titles
-// AniList models better — e.g. mapping Bangumi's "S2 前編" to AniList's entry).
-// Pulls titles only; it does not re-key the row's source.
+// Manual AniList search → pick an entry → return its id + English + romaji
+// titles, to link a Bangumi-direct row to its AniList equivalent: the id is
+// saved as anilist_id (the persistent cross-reference), and the Latin titles
+// (which AniList models better — e.g. Bangumi's "S2 前編" → AniList's entry) are
+// filled in. Does NOT re-key the row's primary source.
 export function AniListTitlePicker({
   mediaType,
   initialQuery,
@@ -67,6 +72,7 @@ export function AniListTitlePicker({
                   type="button"
                   onClick={() =>
                     onPick({
+                      id: item.id,
                       english: item.title.english,
                       romaji: item.title.romaji,
                     })

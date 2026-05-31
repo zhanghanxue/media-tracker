@@ -18,38 +18,129 @@ export interface MediaFilters {
   types: string[];
   regions: string[];
   statuses: string[];
+  genres: string[];
   q: string;
   sort: SortKey;
+  // Drill-down scope: a collection id restricts to that level's direct items;
+  // COLLECTION_ROOT to loose items; undefined/null = unscoped (whole library).
+  collection?: string | null;
 }
 
-export function buildMediaQueryString(filters: MediaFilters): string {
+// Loose-items sentinel (mirrors the Worker's COLLECTION_ROOT) — selects items in
+// no collection (the root level of the drill-down).
+export const COLLECTION_ROOT = "__root__";
+
+// Default page size for a level's item grid. Small + paginated (offset) so the
+// Worker never serializes the whole library in one request — that O(library)
+// response was blowing the Worker CPU limit once the library passed ~3.5k rows.
+export const LEVEL_PAGE_SIZE = 60;
+
+export function buildMediaQueryString(
+  filters: MediaFilters,
+  page?: { limit: number; offset: number },
+): string {
   const params = new URLSearchParams();
   for (const t of filters.types) params.append("type", t);
   for (const r of filters.regions) params.append("region", r);
   for (const s of filters.statuses) params.append("status", s);
+  for (const g of filters.genres) params.append("genre", g);
   const q = filters.q.trim();
   if (q) params.set("q", q);
+  if (filters.collection) params.set("collection", filters.collection);
   // Default (date_updated) is the server default — omit it to keep URLs clean.
   if (filters.sort && filters.sort !== "date_updated") {
     params.set("sort", filters.sort);
   }
-  // Fetch the whole library (server clamps at 200): client-side title collation
-  // (pinyin) AND series grouping both need every row, not just one server page —
-  // a series' members could otherwise be split across pages. Fine for a
-  // single-user library; revisit if it ever outgrows 200.
-  params.set("limit", "200");
+  if (page) {
+    params.set("limit", String(page.limit));
+    params.set("offset", String(page.offset));
+  }
   return params.toString();
 }
+
+// Dynamic genre facets, scoped to the selected media types (empty = whole
+// library). Server-computed because the client only loads a slice of rows.
+export interface GenreFacet {
+  value: string;
+  count: number;
+}
+
+export async function fetchMediaFacets(types: string[]): Promise<GenreFacet[]> {
+  const params = new URLSearchParams();
+  for (const t of types) params.append("type", t);
+  const qs = params.toString();
+  const res = await fetch(`/api/media/facets${qs ? `?${qs}` : ""}`);
+  if (!res.ok) return [];
+  const data = (await res.json()) as { genres: GenreFacet[] };
+  return data.genres;
+}
+
+// Legacy whole-library limit — still used by the collection/detail editors,
+// which derive names over the full library. TODO: migrate those to rollups too;
+// the main list no longer uses this (it paginates via fetchMediaPage).
+const LIBRARY_PAGE_SIZE = 5000;
 
 export async function fetchMediaList(
   filters: MediaFilters,
 ): Promise<MediaListResponse> {
-  const qs = buildMediaQueryString(filters);
+  return fetchMediaPage(filters, { limit: LIBRARY_PAGE_SIZE, offset: 0 });
+}
+
+export async function fetchMediaPage(
+  filters: MediaFilters,
+  page: { limit: number; offset: number },
+): Promise<MediaListResponse> {
+  const qs = buildMediaQueryString(filters, page);
   const res = await fetch(`/api/media${qs ? `?${qs}` : ""}`);
   if (!res.ok) {
     throw new Error(`Failed to load media (HTTP ${res.status})`);
   }
   return (await res.json()) as MediaListResponse;
+}
+
+// --- Drill-down support (collection rollups + filtered match set) -----------
+
+export interface CollectionRollupTitles {
+  title_native: string | null;
+  title_romaji: string | null;
+  title_english: string | null;
+  title_chinese: string | null;
+}
+
+export interface CollectionRollup {
+  collection_id: string;
+  direct_count: number;
+  completed_count: number;
+  planned_count: number;
+  latest_updated: string | null;
+  earliest_release: string | null;
+  sample_cover: string | null;
+  sample_titles: CollectionRollupTitles[];
+}
+
+/** Per-collection rollups (counts/dates/cover/name-samples) — O(#collections),
+ *  so the client renders collection cards without loading the whole library. */
+export async function fetchCollectionRollups(): Promise<CollectionRollup[]> {
+  const res = await fetch("/api/collections/rollups");
+  if (!res.ok) throw new Error(`Failed to load rollups (HTTP ${res.status})`);
+  const { rollups } = (await res.json()) as { rollups: CollectionRollup[] };
+  return rollups;
+}
+
+/** Collection ids whose direct items match the active filters — used while
+ *  filtering to decide which collection cards to surface, without the items. */
+export async function fetchMatchingCollections(
+  filters: MediaFilters,
+): Promise<string[]> {
+  const qs = buildMediaQueryString({
+    ...filters,
+    collection: null,
+    sort: "date_updated",
+  });
+  const res = await fetch(`/api/media/matching-collections${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error(`Failed to load matches (HTTP ${res.status})`);
+  const { collection_ids } = (await res.json()) as { collection_ids: string[] };
+  return collection_ids;
 }
 
 // --- AniList search + add -------------------------------------------------

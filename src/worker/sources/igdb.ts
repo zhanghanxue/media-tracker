@@ -51,6 +51,27 @@ export interface IgdbGame {
   alternative_names?: { name?: string }[];
   involved_companies?: IgdbInvolvedCompany[];
   summary?: string;
+  // Genres (RPG, Shooter, …) + themes (Mystery, Horror, …). Both fetched on
+  // detail only; the mapper merges them into one genre list.
+  genres?: { name?: string }[];
+  themes?: { name?: string }[];
+  // Aggregate rating, 0–100 (absent when unrated). Normalized to the 0–10
+  // `source_rating` by the mapper. Fetched on both search + detail.
+  rating?: number | null;
+  // Feature B: IGDB's own "similar games" — full nested game objects (id + name +
+  // cover + rating), so one request yields addable recommendation candidates.
+  // Fetched only by getIgdbSimilarGames.
+  similar_games?: IgdbGame[];
+}
+
+/** Merge IGDB's genres + themes into one source-native genre list. */
+export function extractIgdbGenres(game: IgdbGame): string[] {
+  return [
+    ...(game.genres ?? []),
+    ...(game.themes ?? []),
+  ]
+    .map((g) => g.name ?? "")
+    .filter(Boolean);
 }
 
 export interface IgdbClientOptions {
@@ -131,7 +152,7 @@ async function getTwitchToken(options: IgdbClientOptions): Promise<string> {
 // --- IGDB queries ----------------------------------------------------------
 
 const GAME_FIELDS =
-  "name,cover.image_id,first_release_date,platforms.name,platforms.abbreviation,alternative_names.name";
+  "name,cover.image_id,first_release_date,platforms.name,platforms.abbreviation,alternative_names.name,rating";
 
 export async function searchIgdb(
   query: string,
@@ -151,11 +172,26 @@ export async function getIgdbDetail(
   // Detail also pulls the involved companies' developer flag + country, so the
   // mapper can derive a region (the developer's country) for the game.
   const body =
-    `fields ${GAME_FIELDS},summary,` +
+    `fields ${GAME_FIELDS},summary,genres.name,themes.name,` +
     `involved_companies.developer,involved_companies.publisher,involved_companies.company.country;` +
     ` where id = ${id};`;
   const results = await igdbRequest(body, options);
   return results[0] ?? null;
+}
+
+// Feature B: the games IGDB considers similar to `id`, as addable candidates
+// (id + name + cover + rating each). One request, expanding the similar_games
+// connection. Returns [] when the game has none / isn't found.
+export async function getIgdbSimilarGames(
+  id: number,
+  options: IgdbClientOptions,
+): Promise<IgdbGame[]> {
+  const body =
+    `fields similar_games.name,similar_games.cover.image_id,` +
+    `similar_games.first_release_date,similar_games.rating;` +
+    ` where id = ${id};`;
+  const results = await igdbRequest(body, options);
+  return results[0]?.similar_games ?? [];
 }
 
 async function igdbRequest(

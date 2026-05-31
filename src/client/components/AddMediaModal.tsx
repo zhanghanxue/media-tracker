@@ -13,7 +13,7 @@ import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles"
 import { bangumiCover } from "../lib/bangumiSearch";
 import { igdbChineseAlias, type IgdbGame } from "../lib/igdbSearch";
 import { toSimplified } from "../lib/toSimplified";
-import { autoLinkAniListSeries } from "../lib/seriesAutoLink";
+import { autoLinkAniListSeries } from "../lib/collectionAutoLink";
 import { TmdbResultRow } from "./TmdbResultRow";
 import { IgdbResultRow } from "./IgdbResultRow";
 import {
@@ -96,7 +96,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       const res = await autoLinkAniListSeries(row);
       if (res.linked) {
         setAutoLinkNotice(res.created ? t("add.autoGrouped") : t("add.autoLinked"));
-        void queryClient.invalidateQueries({ queryKey: ["media"] });
+        void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
       }
     } catch {
       // Grouping is a convenience — never let it surface as an add failure.
@@ -200,7 +200,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
           });
         }
       }
-      await queryClient.invalidateQueries({ queryKey: ["media"] });
+      await queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
     } finally {
       setAddingAllId(null);
     }

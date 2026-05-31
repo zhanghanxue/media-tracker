@@ -8,7 +8,9 @@ const BASE: ListFilters = {
   types: [],
   regions: [],
   statuses: [],
+  genres: [],
   q: null,
+  collection: null,
   sort: "date_updated",
   limit: 50,
   offset: 0,
@@ -88,6 +90,69 @@ describe("buildMediaListQuery — q (search across title columns)", () => {
   });
 });
 
+describe("buildMediaListQuery — genres (OR-within)", () => {
+  it("ORs a sentinel-wrapped LIKE per selected genre", () => {
+    const { where, params } = build({ genres: ["RPG", "Action"] });
+    expect(where).toBe(
+      "WHERE (genres LIKE ? ESCAPE '\\' OR genres LIKE ? ESCAPE '\\')",
+    );
+    expect(params).toEqual(["%|RPG|%", "%|Action|%"]);
+  });
+
+  it("ANDs genres with other facets", () => {
+    const { where, params } = build({ types: ["game"], genres: ["RPG"] });
+    expect(where).toBe("WHERE type IN (?) AND (genres LIKE ? ESCAPE '\\')");
+    expect(params).toEqual(["game", "%|RPG|%"]);
+  });
+});
+
+describe("buildMediaListQuery — region __unset__ sentinel", () => {
+  it("turns the lone sentinel into an IS NULL / empty test (no params)", () => {
+    const { where, params } = build({ regions: ["__unset__"] });
+    expect(where).toBe("WHERE (region IS NULL OR region = '')");
+    expect(params).toEqual([]);
+  });
+
+  it("ORs the sentinel with real regions", () => {
+    const { where, params } = build({ regions: ["japan", "__unset__"] });
+    expect(where).toBe("WHERE (region IN (?) OR region IS NULL OR region = '')");
+    expect(params).toEqual(["japan"]);
+  });
+
+  it("real regions alone stay a plain IN (...) (no parens)", () => {
+    const { where, params } = build({ regions: ["japan", "china"] });
+    expect(where).toBe("WHERE region IN (?, ?)");
+    expect(params).toEqual(["japan", "china"]);
+  });
+});
+
+describe("buildMediaListQuery — collection scope", () => {
+  it("scopes to a named collection by id (parameterized)", () => {
+    const { where, params } = build({ collection: "col:abc" });
+    expect(where).toBe("WHERE collection_id = ?");
+    expect(params).toEqual(["col:abc"]);
+  });
+
+  it("scopes to loose (no-collection) items at the root sentinel", () => {
+    const { where, params } = build({ collection: "__root__" });
+    expect(where).toBe("WHERE collection_id IS NULL");
+    expect(params).toEqual([]);
+  });
+
+  it("adds no collection clause when unscoped (null)", () => {
+    expect(build({ collection: null }).where).toBe("");
+  });
+
+  it("ANDs the collection scope with other facets", () => {
+    const { where, params } = build({
+      collection: "col:x",
+      statuses: ["completed"],
+    });
+    expect(where).toBe("WHERE status IN (?) AND collection_id = ?");
+    expect(params).toEqual(["completed", "col:x"]);
+  });
+});
+
 describe("buildMediaListQuery — sort whitelist", () => {
   it("maps date_added", () => {
     expect(build({ sort: "date_added" }).orderBy).toBe("date_added DESC");
@@ -102,6 +167,31 @@ describe("buildMediaListQuery — sort whitelist", () => {
   it("maps title_zh to a Chinese-first COALESCE clause", () => {
     expect(build({ sort: "title_zh" }).orderBy).toBe(
       "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
+    );
+  });
+
+  it("maps release_date to oldest-first with nulls last", () => {
+    expect(build({ sort: "release_date" }).orderBy).toBe(
+      "release_date IS NULL, release_date ASC",
+    );
+  });
+
+  // Feature D — reverse directions. Undated rows still sort LAST in both.
+  it("maps release_date_desc to newest-first with nulls still last", () => {
+    expect(build({ sort: "release_date_desc" }).orderBy).toBe(
+      "release_date IS NULL, release_date DESC",
+    );
+  });
+
+  it("maps title_desc to a COALESCE NOCASE DESC clause (English-first)", () => {
+    expect(build({ sort: "title_desc" }).orderBy).toBe(
+      "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE DESC",
+    );
+  });
+
+  it("maps title_zh_desc to a Chinese-first COALESCE DESC clause", () => {
+    expect(build({ sort: "title_zh_desc" }).orderBy).toBe(
+      "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
     );
   });
 });

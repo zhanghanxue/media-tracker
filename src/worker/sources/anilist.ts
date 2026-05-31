@@ -43,7 +43,21 @@ export interface AniListMedia {
   volumes: number | null;
   season: AniListSeason | null;
   seasonYear: number | null;
+  // The actual start/air date. Often only `year` is set (and may all be null for
+  // an announced-but-undated title); the mapper pads + falls back to seasonYear.
+  // Optional so older captured fixtures still type-check.
+  startDate?: {
+    year: number | null;
+    month: number | null;
+    day: number | null;
+  } | null;
   countryOfOrigin: string | null; // ISO-3166 alpha-2, e.g. "JP", "CN", "KR"
+  // Clean fixed vocabulary (Action, Slice of Life, Mystery, …). Optional so
+  // older captured fixtures still type-check.
+  genres?: string[] | null;
+  // Weighted mean score, 0–100 (null when too few votes). Normalized to the
+  // 0–10 `source_rating` by the mapper. Optional so older fixtures type-check.
+  averageScore?: number | null;
 }
 
 interface GraphQLError {
@@ -68,8 +82,16 @@ const MEDIA_FIELDS = `
   volumes
   season
   seasonYear
+  startDate { year month day }
   countryOfOrigin
+  genres
+  averageScore
 `;
+
+/** AniList ships a clean genre vocabulary; just pass it through (cleanup later). */
+export function extractAniListGenres(media: AniListMedia): string[] {
+  return media.genres ?? [];
+}
 
 const SEARCH_QUERY = `
   query ($search: String!, $type: MediaType!, $perPage: Int!) {
@@ -172,6 +194,66 @@ export async function getAniListRelations(
     Media: { relations?: { edges?: AniListRelationEdge[] } } | null;
   }>(RELATIONS_QUERY, { id }, options);
   return response.Media?.relations?.edges ?? [];
+}
+
+// Feature B: AniList's own recommendations for a media id. Each edge's
+// mediaRecommendation is a full-ish Media node (id + titles + cover + averageScore)
+// we can surface as an addable candidate. `rating` is AniList's community
+// up/down score on the recommendation pairing (a relevance signal). Runs in the
+// browser like the other AniList calls.
+const RECOMMENDATIONS_QUERY = `
+  query ($id: Int!, $perPage: Int!) {
+    Media(id: $id) {
+      recommendations(perPage: $perPage, sort: RATING_DESC) {
+        edges {
+          node {
+            rating
+            mediaRecommendation {
+              id
+              type
+              title { romaji english native }
+              coverImage { extraLarge }
+              averageScore
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export interface AniListRecommendation {
+  /** The recommended media (an addable AniList entry). */
+  media: AniListMedia;
+  /** AniList's community score for this recommendation pairing (relevance). */
+  rating: number;
+}
+
+/**
+ * AniList's recommendations for an anime/manga id (Feature B). Returns the
+ * recommended media plus the pairing's community `rating` (used as the ranking
+ * score). Browser-side. Returns [] when the id has none / the Media is null.
+ */
+export async function getAniListRecommendations(
+  id: number,
+  options: AniListClientOptions & { perPage?: number } = {},
+): Promise<AniListRecommendation[]> {
+  const response = await graphqlRequest<{
+    Media: {
+      recommendations?: {
+        edges?: {
+          node: { rating: number | null; mediaRecommendation: AniListMedia | null };
+        }[];
+      };
+    } | null;
+  }>(RECOMMENDATIONS_QUERY, { id, perPage: options.perPage ?? 15 }, options);
+  const edges = response.Media?.recommendations?.edges ?? [];
+  const out: AniListRecommendation[] = [];
+  for (const e of edges) {
+    const m = e.node.mediaRecommendation;
+    if (m) out.push({ media: m, rating: e.node.rating ?? 0 });
+  }
+  return out;
 }
 
 // Just the fields needed to compute the latest aired episode count.

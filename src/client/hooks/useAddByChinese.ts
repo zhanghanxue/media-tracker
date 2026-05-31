@@ -17,7 +17,7 @@ export function useAddByChinese() {
     mutationFn: ({ subject, status }: AddByChineseVars) =>
       addByBangumiSubject(subject, status),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["media"] });
+      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
     },
   });
 }

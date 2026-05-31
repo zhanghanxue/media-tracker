@@ -11,8 +11,11 @@ import type { ListFilters } from "../api/list-query";
 import {
   findByExternalRef,
   findById,
+  insertCollection,
   insertMedia,
   listMedia,
+  selectCollectionRollups,
+  selectMatchingCollectionIds,
   updateMedia,
 } from "./media-repository";
 
@@ -35,11 +38,13 @@ const ANIME_ROW: AniListMapperResult = {
   current_chapter: null,
   total_chapters: null,
   runtime_minutes: null,
+  release_date: null,
+  source_rating: null,
+  genres: null,
   platform: null,
   consumption_mode: null,
-  series_id: null,
-  series_name: null,
-  season_number: null,
+  collection_id: null,
+  sort_order: null,
 };
 
 // Each test starts from an empty table so row counts / lookups are deterministic.
@@ -128,7 +133,9 @@ function filters(overrides: Partial<ListFilters> = {}): ListFilters {
     types: [],
     regions: [],
     statuses: [],
+    genres: [],
     q: null,
+    collection: null,
     sort: "date_updated",
     limit: 50,
     offset: 0,
@@ -266,6 +273,202 @@ describe("listMedia — pagination", () => {
     expect(second.items).toHaveLength(2);
     // Disjoint pages.
     expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
+  });
+});
+
+describe("listMedia — sort by release_date", () => {
+  it("orders chronologically (oldest first) with undated rows last", async () => {
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "a", title_english: "Newer", release_date: "2024-07-22" }),
+    );
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "b", title_english: "Undated", release_date: null }),
+    );
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "c", title_english: "Older", release_date: "2019-04-06" }),
+    );
+
+    const { items } = await listMedia(env.DB, filters({ sort: "release_date" }));
+    expect(items.map((r) => r.title_english)).toEqual([
+      "Older", // 2019
+      "Newer", // 2024
+      "Undated", // null sorts last
+    ]);
+  });
+});
+
+describe("listMedia — collection scope", () => {
+  beforeEach(async () => {
+    await insertCollection(env.DB, {
+      id: "col:a",
+      name: "A",
+      parent_id: null,
+      cover_url: null,
+      sort_order: null,
+    });
+    await insertMedia(env.DB, makeRow({ external_id: "in-a", collection_id: "col:a" }));
+    await insertMedia(env.DB, makeRow({ external_id: "loose1", collection_id: null }));
+    await insertMedia(env.DB, makeRow({ external_id: "loose2", collection_id: null }));
+  });
+
+  it("returns only items directly in the named collection", async () => {
+    const { items, total } = await listMedia(env.DB, filters({ collection: "col:a" }));
+    expect(total).toBe(1);
+    expect(items.map((r) => r.external_id)).toEqual(["in-a"]);
+  });
+
+  it("returns only loose items for the __root__ sentinel", async () => {
+    const { items, total } = await listMedia(
+      env.DB,
+      filters({ collection: "__root__" }),
+    );
+    expect(total).toBe(2);
+    expect(items.map((r) => r.external_id).sort()).toEqual(["loose1", "loose2"]);
+  });
+});
+
+describe("selectCollectionRollups", () => {
+  it("rolls up direct count, dates, cover, and sample titles per collection", async () => {
+    await insertCollection(env.DB, {
+      id: "col:s",
+      name: null, // forces client-side name derivation from sample titles
+      parent_id: null,
+      cover_url: null,
+      sort_order: null,
+    });
+    await insertMedia(
+      env.DB,
+      makeRow({
+        external_id: "s1",
+        collection_id: "col:s",
+        sort_order: 1,
+        title_english: "Strange Tales S1",
+        cover_url: "https://x/s1.jpg",
+        release_date: "2022-04-01",
+      }),
+    );
+    await insertMedia(
+      env.DB,
+      makeRow({
+        external_id: "s2",
+        collection_id: "col:s",
+        sort_order: 2,
+        title_english: "Strange Tales S2",
+        cover_url: "https://x/s2.jpg",
+        release_date: "2024-07-22",
+      }),
+    );
+    // A loose item must NOT appear in any rollup.
+    await insertMedia(env.DB, makeRow({ external_id: "loose", collection_id: null }));
+
+    const rollups = await selectCollectionRollups(env.DB);
+    const s = rollups.find((r) => r.collection_id === "col:s");
+    expect(s).toBeDefined();
+    expect(s!.direct_count).toBe(2);
+    expect(s!.planned_count).toBe(2); // ANIME_ROW defaults to "planned"
+    expect(s!.completed_count).toBe(0);
+    expect(s!.earliest_release).toBe("2022-04-01"); // MIN across the two
+    expect(s!.sample_cover).toBe("https://x/s1.jpg"); // first by sort_order
+    expect(s!.sample_titles.map((t) => t.title_english)).toEqual([
+      "Strange Tales S1",
+      "Strange Tales S2",
+    ]);
+    // Loose items form no rollup row.
+    expect(rollups.some((r) => r.collection_id === null)).toBe(false);
+  });
+});
+
+describe("selectMatchingCollectionIds", () => {
+  it("returns distinct collections whose direct items match the filters", async () => {
+    await insertCollection(env.DB, {
+      id: "col:anime",
+      name: "Anime",
+      parent_id: null,
+      cover_url: null,
+      sort_order: null,
+    });
+    await insertCollection(env.DB, {
+      id: "col:manga",
+      name: "Manga",
+      parent_id: null,
+      cover_url: null,
+      sort_order: null,
+    });
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "a1", type: "animation", collection_id: "col:anime" }),
+    );
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "a2", type: "animation", collection_id: "col:anime" }),
+    );
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "m1", type: "manga", collection_id: "col:manga" }),
+    );
+    // A matching but LOOSE item contributes no collection id.
+    await insertMedia(
+      env.DB,
+      makeRow({ external_id: "loose", type: "animation", collection_id: null }),
+    );
+
+    const ids = await selectMatchingCollectionIds(
+      env.DB,
+      filters({ types: ["animation"] }),
+    );
+    expect(ids).toEqual(["col:anime"]); // distinct; col:manga excluded; loose ignored
+  });
+});
+
+describe("updateMedia — cross-reference ids (PRD-v2 Issue A / Feature C)", () => {
+  // Issue A: a Bangumi-sourced anime gets its AniList link saved as anilist_id —
+  // WITHOUT re-keying its primary source. The pre-fix bug was that the link never
+  // persisted (the editor only copied titles; PATCH dropped external_id anyway).
+  it("persists anilist_id while leaving the primary source untouched", async () => {
+    const inserted = await insertMedia(
+      env.DB,
+      makeRow({ external_source: "bangumi", external_id: "b-555", type: "animation" }),
+    );
+
+    const updated = await updateMedia(env.DB, inserted.id, { anilist_id: "101922" });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.anilist_id).toBe("101922");
+    // Primary source of record is unchanged — the link is a cross-reference only.
+    expect(updated!.external_source).toBe("bangumi");
+    expect(updated!.external_id).toBe("b-555");
+
+    // And it actually round-trips from storage (the symptom was "doesn't save").
+    const reread = await findById(env.DB, inserted.id);
+    expect(reread!.anilist_id).toBe("101922");
+  });
+
+  // Feature C: a Bangumi-sourced game gets an igdb_id cross-reference.
+  it("persists igdb_id for a Bangumi-sourced game", async () => {
+    const inserted = await insertMedia(
+      env.DB,
+      makeRow({ external_source: "bangumi", external_id: "b-700", type: "game" }),
+    );
+
+    const updated = await updateMedia(env.DB, inserted.id, { igdb_id: "1020" });
+
+    expect(updated!.igdb_id).toBe("1020");
+    expect(updated!.external_source).toBe("bangumi");
+  });
+
+  // Clearing a link (the editor's "unlink") nulls the column back out.
+  it("clears a cross-reference id when set to null", async () => {
+    const inserted = await insertMedia(
+      env.DB,
+      makeRow({ external_source: "bangumi", external_id: "b-800", type: "animation" }),
+    );
+    await updateMedia(env.DB, inserted.id, { anilist_id: "42" });
+
+    const cleared = await updateMedia(env.DB, inserted.id, { anilist_id: null });
+    expect(cleared!.anilist_id).toBeNull();
   });
 });
 

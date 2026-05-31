@@ -16,7 +16,10 @@ import type {
   MediaRegion,
   MediaStatus,
 } from "../db/schema";
-import { igdbCoverUrl, type IgdbGame } from "./igdb";
+import { extractIgdbGenres, igdbCoverUrl, type IgdbGame } from "./igdb";
+import { joinGenres } from "./genres";
+import { isoFromUnixSeconds } from "./release-date";
+import { ratingFrom100 } from "./rating";
 
 export type IgdbMapperResult = MediaInsert;
 
@@ -102,10 +105,12 @@ export function igdbToMediaRow(
     current_chapter: null,
     total_chapters: null,
     runtime_minutes: null,
+    release_date: isoFromUnixSeconds(game.first_release_date), // Unix seconds → ISO
+    source_rating: ratingFrom100(game.rating), // 0–100 → 0–10
+    genres: joinGenres(extractIgdbGenres(game)),
     platform: opts.platform,
     consumption_mode: opts.consumptionMode,
-    series_id: null,
-    series_name: null,
-    season_number: null,
+    collection_id: null,
+    sort_order: null,
   };
 }
