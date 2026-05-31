@@ -1,0 +1,18 @@
+-- Genre dimension for filtering (RPG for games, "Slice of Life" for anime,
+-- "Mystery" for movies/drama).
+--
+--   genres  SENTINEL-DELIMITED list of the item's genres, e.g. "|RPG|Action|"
+--           (leading + trailing "|" so a substring match `LIKE '%|RPG|%'` can't
+--           false-match a genre that merely CONTAINS another's name). NULL = no
+--           genres known. Stored verbatim from each source's native vocabulary
+--           with light cleanup (see src/worker/sources/genres.ts); facets are
+--           scoped per media type so cross-source name differences don't collide.
+--
+-- Why a delimited TEXT column (not a join table): single-user library, and the
+-- only query is "rows whose genre set contains X" — a parameterized LIKE on the
+-- sentinel form covers it with no join, matching the project's existing
+-- denormalized style (series_id, series_name).
+--
+-- Nullable + additive: existing rows default to NULL until the backfill
+-- (scripts/backfill-genres.ts) re-fetches each source's genres.
+ALTER TABLE media ADD COLUMN genres TEXT;
