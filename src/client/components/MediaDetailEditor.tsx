@@ -9,6 +9,7 @@ import { useCollections } from "../hooks/useCollections";
 import { BangumiTitlePicker, type PickedBangumiSubject } from "./BangumiTitlePicker";
 import { AniListTitlePicker, type PickedAniListTitles } from "./AniListTitlePicker";
 import { IgdbLinkPicker, type PickedIgdbGame } from "./IgdbLinkPicker";
+import { TmdbLinkPicker, type PickedTmdbItem } from "./TmdbLinkPicker";
 import { VideoPartsEditor } from "./VideoPartsEditor";
 import { CollectionEditor } from "./CollectionEditor";
 import { CollectionPicker } from "./CollectionPicker";
@@ -90,14 +91,24 @@ export function MediaDetailEditor({
     if (picked.english) setTitleEnglish(picked.english);
     if (picked.romaji) setTitleRomaji(picked.romaji);
     if (media.external_source !== "anilist") setAnilistId(String(picked.id));
-    setShowAniListPicker(false);
+    setShowEnglishPicker(false);
   };
 
-  // Feature C: link a game (typically Bangumi-sourced) to its IGDB entry. Stores
-  // igdb_id only — Bangumi stays the source of record.
+  // Games: the English-title row's "Find on IGDB" fills the English title AND
+  // links igdb_id (Feature C — Bangumi/other stays the source of record).
   const handleIgdbPick = (game: PickedIgdbGame) => {
+    if (game.name) setTitleEnglish(game.name);
     if (media.external_source !== "igdb") setIgdbId(String(game.id));
-    setShowIgdbPicker(false);
+    setShowEnglishPicker(false);
+  };
+
+  // Drama/movie/variety: "Find on TMDB" fills the English title AND links tmdb_id
+  // (kind-prefixed, e.g. "tv:1399"). Skip the link write when TMDB is already the
+  // primary source (its id is in external_id).
+  const handleTmdbPick = (picked: PickedTmdbItem) => {
+    if (picked.title) setTitleEnglish(picked.title);
+    if (media.external_source !== "tmdb") setTmdbId(picked.id);
+    setShowEnglishPicker(false);
   };
 
   const isGame = media.type === "game";
@@ -151,13 +162,17 @@ export function MediaDetailEditor({
   const [titleRomaji, setTitleRomaji] = useState(media.title_romaji ?? "");
   const [region, setRegion] = useState(media.region ?? "");
   const [showPicker, setShowPicker] = useState(false);
-  const [showAniListPicker, setShowAniListPicker] = useState(false);
+  // One toggle for the English-title-row picker; which SOURCE it shows depends on
+  // the media type (AniList for anime/manga/LN, TMDB for drama/movie/variety,
+  // IGDB for game) — see englishPickerSource below.
+  const [showEnglishPicker, setShowEnglishPicker] = useState(false);
   // Cross-reference links (migration 0008), staged like the titles and saved with
-  // the rest. anilist_id for anime/manga (Issue A); igdb_id for games (Feature C).
+  // the rest: anilist_id (anime/manga, Issue A), tmdb_id (drama/movie/variety),
+  // igdb_id (game, Feature C). Each is set by the matching English-title picker.
   const [anilistId, setAnilistId] = useState(media.anilist_id ?? "");
   const [igdbId, setIgdbId] = useState(media.igdb_id ?? "");
+  const [tmdbId, setTmdbId] = useState(media.tmdb_id ?? "");
   const [bangumiId, setBangumiId] = useState(media.bangumi_id ?? "");
-  const [showIgdbPicker, setShowIgdbPicker] = useState(false);
   // Optional drama/variety video-links add-on, collapsed by default.
   const [showVideoLinks, setShowVideoLinks] = useState(false);
 
@@ -201,6 +216,17 @@ export function MediaDetailEditor({
   const pickerQuery =
     media.title_english ?? media.title_romaji ?? media.title_native ?? "";
 
+  // Which source the English-title row's picker uses, by media type: games → IGDB,
+  // drama/movie/variety → TMDB, everything else (anime/manga/LN) → AniList. Drives
+  // the button label + which picker renders + which cross-ref id is shown.
+  const englishPickerSource: "anilist" | "tmdb" | "igdb" = isGame
+    ? "igdb"
+    : media.type === "drama" || media.type === "movie" || media.type === "variety"
+      ? "tmdb"
+      : "anilist";
+  // TMDB search needs a kind: tv for drama/variety, movie for movie.
+  const tmdbKind = media.type === "movie" ? "movie" : "tv";
+
   // If the current region isn't one of the curated facets, keep it selectable.
   const regionOptions =
     region && !REGION_FACETS.includes(region)
@@ -241,6 +267,10 @@ export function MediaDetailEditor({
     const stagedIgdb = igdbId.trim() === "" ? null : igdbId.trim();
     if (stagedIgdb !== (media.igdb_id ?? null)) {
       patch.igdb_id = stagedIgdb;
+    }
+    const stagedTmdb = tmdbId.trim() === "" ? null : tmdbId.trim();
+    if (stagedTmdb !== (media.tmdb_id ?? null)) {
+      patch.tmdb_id = stagedTmdb;
     }
     const stagedBangumi = bangumiId.trim() === "" ? null : bangumiId.trim();
     if (stagedBangumi !== (media.bangumi_id ?? null)) {
@@ -410,42 +440,6 @@ export function MediaDetailEditor({
           </div>
         )}
 
-        {/* Feature C: link a game (typically Bangumi-sourced) to its IGDB entry.
-            Stores igdb_id only; the row's primary source stays as it was. */}
-        {isGame && media.external_source !== "igdb" && (
-          <div className="text-sm">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-zinc-400 light:text-zinc-500">
-                {t("editor.igdbLink")}
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowIgdbPicker((v) => !v)}
-                className="text-xs text-blue-400 hover:underline light:text-blue-600"
-              >
-                {showIgdbPicker ? t("picker.close") : t("picker.buttonIgdb")}
-              </button>
-            </div>
-            {igdbId && (
-              <p className="flex items-center gap-2 text-xs text-emerald-400 light:text-emerald-600">
-                {t("editor.linkedIgdb", { id: igdbId })}
-                <button
-                  type="button"
-                  onClick={() => setIgdbId("")}
-                  className="text-zinc-500 hover:text-zinc-300 hover:underline"
-                >
-                  {t("editor.unlinkRef")}
-                </button>
-              </p>
-            )}
-            {showIgdbPicker && (
-              <div className="mt-2">
-                <IgdbLinkPicker initialQuery={pickerQuery} onPick={handleIgdbPick} />
-              </div>
-            )}
-          </div>
-        )}
-
         {dimension && (
           <label className="block text-sm">
             <span className="mb-1 block text-zinc-400 light:text-zinc-500">
@@ -512,6 +506,10 @@ export function MediaDetailEditor({
           </div>
         )}
 
+        {/* English title, with a type-aware "Find on …" picker: AniList for
+            anime/manga/LN, TMDB for drama/movie/variety, IGDB for games. Each
+            fills the English title AND persists the matching cross-reference id
+            (so it shows in the provenance line above). */}
         <div className="text-sm">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-zinc-400 light:text-zinc-500">
@@ -519,10 +517,12 @@ export function MediaDetailEditor({
             </span>
             <button
               type="button"
-              onClick={() => setShowAniListPicker((v) => !v)}
+              onClick={() => setShowEnglishPicker((v) => !v)}
               className="text-xs text-blue-400 hover:underline light:text-blue-600"
             >
-              {showAniListPicker ? t("picker.close") : t("picker.buttonAniList")}
+              {showEnglishPicker
+                ? t("picker.close")
+                : t(`picker.button${englishPickerSource === "tmdb" ? "Tmdb" : englishPickerSource === "igdb" ? "Igdb" : "AniList"}`)}
             </button>
           </div>
           <input
@@ -532,30 +532,55 @@ export function MediaDetailEditor({
             placeholder={t("editor.titleEnglishPlaceholder")}
             className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
           />
-          {showAniListPicker && (
+          {showEnglishPicker && (
             <div className="mt-2">
-              <AniListTitlePicker
-                mediaType={media.type}
-                initialQuery={pickerQuery}
-                onPick={handleAniListPick}
-              />
+              {englishPickerSource === "tmdb" ? (
+                <TmdbLinkPicker
+                  kind={tmdbKind}
+                  initialQuery={pickerQuery}
+                  onPick={handleTmdbPick}
+                />
+              ) : englishPickerSource === "igdb" ? (
+                <IgdbLinkPicker initialQuery={pickerQuery} onPick={handleIgdbPick} />
+              ) : (
+                <AniListTitlePicker
+                  mediaType={media.type}
+                  initialQuery={pickerQuery}
+                  onPick={handleAniListPick}
+                />
+              )}
             </div>
           )}
-          {/* Persisted AniList cross-reference (Issue A): shows the link actually
-              stuck. Only for non-AniList-primary rows — a native AniList row
-              already shows its id in the provenance line above. */}
-          {media.external_source !== "anilist" && anilistId && (
-            <p className="mt-1 flex items-center gap-2 text-xs text-emerald-400 light:text-emerald-600">
-              {t("editor.linkedAniList", { id: anilistId })}
-              <button
-                type="button"
-                onClick={() => setAnilistId("")}
-                className="text-zinc-500 hover:text-zinc-300 hover:underline"
-              >
-                {t("editor.unlinkRef")}
-              </button>
-            </p>
-          )}
+          {/* Persisted cross-reference for whichever source applies. Hidden when
+              that source is already the row's primary (its id is in the provenance
+              line above). */}
+          {englishPickerSource === "anilist" &&
+            media.external_source !== "anilist" &&
+            anilistId && (
+              <LinkedRef
+                label={t("editor.linkedAniList", { id: anilistId })}
+                onUnlink={() => setAnilistId("")}
+                unlinkLabel={t("editor.unlinkRef")}
+              />
+            )}
+          {englishPickerSource === "tmdb" &&
+            media.external_source !== "tmdb" &&
+            tmdbId && (
+              <LinkedRef
+                label={t("editor.linkedTmdb", { id: tmdbId })}
+                onUnlink={() => setTmdbId("")}
+                unlinkLabel={t("editor.unlinkRef")}
+              />
+            )}
+          {englishPickerSource === "igdb" &&
+            media.external_source !== "igdb" &&
+            igdbId && (
+              <LinkedRef
+                label={t("editor.linkedIgdb", { id: igdbId })}
+                onUnlink={() => setIgdbId("")}
+                unlinkLabel={t("editor.unlinkRef")}
+              />
+            )}
         </div>
 
         <label className="block text-sm">
@@ -759,5 +784,30 @@ export function MediaDetailEditor({
       />
     )}
     </>
+  );
+}
+
+// A persisted cross-reference line: "✓ Linked to X · #id" + an unlink button.
+// Shared by the AniList / TMDB / IGDB variants on the English-title row.
+function LinkedRef({
+  label,
+  onUnlink,
+  unlinkLabel,
+}: {
+  label: string;
+  onUnlink: () => void;
+  unlinkLabel: string;
+}) {
+  return (
+    <p className="mt-1 flex items-center gap-2 text-xs text-emerald-400 light:text-emerald-600">
+      {label}
+      <button
+        type="button"
+        onClick={onUnlink}
+        className="text-zinc-500 hover:text-zinc-300 hover:underline"
+      >
+        {unlinkLabel}
+      </button>
+    </p>
   );
 }

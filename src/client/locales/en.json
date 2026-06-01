@@ -218,9 +218,9 @@
     "refreshCover": "↻ Refresh cover (origin poster)",
     "refreshingCover": "Refreshing cover…",
     "refreshCoverFailed": "Couldn't refresh the cover.",
-    "igdbLink": "IGDB game link",
     "linkedAniList": "✓ Linked to AniList · #{{id}}",
     "linkedIgdb": "✓ Linked to IGDB · #{{id}}",
+    "linkedTmdb": "✓ Linked to TMDB · #{{id}}",
     "unlinkRef": "unlink"
   },
   "refresh": {
@@ -279,6 +279,7 @@
     "button": "Find on Bangumi",
     "buttonAniList": "Find on AniList",
     "buttonIgdb": "Find on IGDB",
+    "buttonTmdb": "Find on TMDB",
     "close": "Close",
     "searchPlaceholder": "Search Bangumi (EN / 日本語 / 中文)…",
     "searchPlaceholderAniList": "Search AniList (EN / romaji / 日本語)…",
