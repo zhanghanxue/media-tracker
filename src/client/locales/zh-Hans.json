@@ -188,6 +188,13 @@
     "sourceAniList": "已关联 AniList · #{{id}}",
     "sourceBangumi": "来自 Bangumi · #{{id}}（AniList 无对应条目）",
     "sourceManual": "手动添加",
+    "linkedSource": "已关联 {{source}} · #{{id}}",
+    "sourceName": {
+      "anilist": "AniList",
+      "tmdb": "TMDB",
+      "igdb": "IGDB",
+      "bangumi": "Bangumi"
+    },
     "titleChinese": "中文标题",
     "titleChinesePlaceholder": "例如：鬼灭之刃",
     "type": "类型",

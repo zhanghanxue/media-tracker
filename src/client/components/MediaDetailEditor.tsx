@@ -21,6 +21,7 @@ import {
   directItems,
 } from "../lib/collections";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
+import { linkedSourcesOf } from "../lib/crossRef";
 import type { MediaPatch } from "../../worker/api/patch-media";
 import type {
   MediaConsumptionMode,
@@ -309,15 +310,24 @@ export function MediaDetailEditor({
               {media.title_native}
             </p>
           )}
-          {/* Provenance: which source this row is linked to, so it's not a
-              guess. Bangumi-direct means AniList had no matching entry. */}
-          <p className="mt-1 text-xs text-zinc-500">
-            {media.external_source === "anilist"
-              ? t("editor.sourceAniList", { id: media.external_id })
-              : media.external_source === "bangumi"
-                ? t("editor.sourceBangumi", { id: media.external_id })
-                : t("editor.sourceManual")}
-          </p>
+          {/* Provenance: EVERY source this row links to (its primary source plus
+              any cross-references added in the editor), one line each — e.g.
+              "Linked to AniList #x / Linked to Bangumi #y". "Manual entry" when
+              it links to nothing. */}
+          <div className="mt-1 space-y-0.5 text-xs text-zinc-500">
+            {(() => {
+              const links = linkedSourcesOf(media);
+              if (links.length === 0) return <p>{t("editor.sourceManual")}</p>;
+              return links.map((l) => (
+                <p key={l.source}>
+                  {t("editor.linkedSource", {
+                    source: t(`editor.sourceName.${l.source}`),
+                    id: l.id,
+                  })}
+                </p>
+              ));
+            })()}
+          </div>
           {/* TMDB only: re-pull the origin-language poster (the selection that
               runs on new adds) and overwrite the cached cover for this row. */}
           {media.external_source === "tmdb" && (

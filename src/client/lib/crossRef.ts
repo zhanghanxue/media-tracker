@@ -43,6 +43,28 @@ export const tmdbIdOf = (row: RefRow) => refIdOf(row, "tmdb");
 export const igdbIdOf = (row: RefRow) => refIdOf(row, "igdb");
 export const bangumiIdOf = (row: RefRow) => refIdOf(row, "bangumi");
 
+export interface SourceLink {
+  source: ExternalSource;
+  id: string;
+  /** The row's source of record (its external_id), vs. a cross-reference. */
+  primary: boolean;
+}
+
+// Every source this row is linked to, primary first — so the editor can show
+// "Linked to AniList #x / Linked to Bangumi #y" instead of just the one source.
+// A row added from one source and linked to another in the editor surfaces both.
+const ALL_SOURCES: ExternalSource[] = ["anilist", "tmdb", "igdb", "bangumi"];
+
+export function linkedSourcesOf(row: RefRow): SourceLink[] {
+  const links: SourceLink[] = [];
+  for (const source of ALL_SOURCES) {
+    const id = refIdOf(row, source);
+    if (id) links.push({ source, id, primary: row.external_source === source });
+  }
+  // Primary first, then cross-references in ALL_SOURCES order.
+  return links.sort((a, b) => Number(b.primary) - Number(a.primary));
+}
+
 // The MediaPatch column a freshly-picked cross-reference id should be written to,
 // given the row's PRIMARY source. We never overwrite external_id; if the picked
 // source is already primary there's nothing to link (returns null → no-op).
