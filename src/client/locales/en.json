@@ -167,7 +167,8 @@
   "card": {
     "increment": "Add one",
     "editProgress": "Edit progress",
-    "progressPlaceholder": "e.g. Chapter 7"
+    "progressPlaceholder": "e.g. Chapter 7",
+    "linked": "Linked"
   },
   "editor": {
     "title": "Edit",

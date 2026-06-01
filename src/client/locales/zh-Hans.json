@@ -167,7 +167,8 @@
   "card": {
     "increment": "加一",
     "editProgress": "编辑进度",
-    "progressPlaceholder": "例如：第七章"
+    "progressPlaceholder": "例如：第七章",
+    "linked": "已关联"
   },
   "editor": {
     "title": "编辑",

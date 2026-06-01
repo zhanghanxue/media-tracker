@@ -29,13 +29,7 @@ function isFiltering(f: MediaFilters): boolean {
   );
 }
 
-export function MediaList({
-  filters,
-  onClearSearch,
-}: {
-  filters: MediaFilters;
-  onClearSearch: () => void;
-}) {
+export function MediaList({ filters }: { filters: MediaFilters }) {
   const { t, i18n } = useTranslation();
   const lang = uiLangFromI18n(i18n.language);
 
@@ -318,10 +312,10 @@ export function MediaList({
                     status={rollupStatus(roll)}
                     childCount={childCollections(collections, col.id).length}
                     onOpen={() => {
+                      // Drill in but KEEP the active search — the collection
+                      // then shows only its matching items (the reason you
+                      // opened it), not its full contents.
                       setCurrentId(col.id);
-                      // Drilling into a folder found via search → show its full
-                      // contents (drop the query) rather than a filtered subset.
-                      if (q) onClearSearch();
                     }}
                     onEdit={() => setEditing(col)}
                   />

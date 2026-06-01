@@ -73,6 +73,18 @@ export function MediaCard({
   const incrementPatch = nextIncrementPatch(media);
   const isGamePlaying =
     media.type === "game" && media.consumption_mode === "playing";
+  // Has at least one attached video link (drama/variety links, watching-game
+  // parts) — derived flag from the list query. When set, the card reads "linked"
+  // in place of the "x / y ep" count (you track these by the links, not a number).
+  const hasVideoParts = media.has_video_parts === 1;
+  // Watched-fraction for the bottom bar — episode-tracked cards only, and only
+  // once a total is known. Unstarted (current null) reads 0%; clamps at 100%.
+  const progressPct =
+    progress.kind === "episodes" &&
+    progress.total != null &&
+    progress.total > 0
+      ? Math.min(100, Math.round(((progress.current ?? 0) / progress.total) * 100))
+      : null;
 
   const increment = () => {
     if (incrementPatch) update.mutate({ id: media.id, patch: incrementPatch });
@@ -162,7 +174,11 @@ export function MediaCard({
 
             {selectMode ? (
               <span className="truncate text-zinc-400 light:text-zinc-500">
-                {isGamePlaying ? (media.game_progress ?? t("progress.none")) : progressLabel(t, progress)}
+                {isGamePlaying
+                  ? (media.game_progress ?? t("progress.none"))
+                  : hasVideoParts
+                    ? t("card.linked")
+                    : progressLabel(t, progress)}
               </span>
             ) : isGamePlaying ? (
               editingGame ? (
@@ -193,11 +209,27 @@ export function MediaCard({
               )
             ) : (
               <span className="truncate text-zinc-400 light:text-zinc-500">
-                {progressLabel(t, progress)}
+                {hasVideoParts ? t("card.linked") : progressLabel(t, progress)}
               </span>
             )}
           </div>
         </div>
+        {/* Watched-fraction bar pinned to the card's bottom edge (episode-tracked
+            items with a known total). */}
+        {progressPct != null && (
+          <div
+            className="h-1 w-full bg-zinc-800 light:bg-zinc-200"
+            role="progressbar"
+            aria-valuenow={progressPct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className="h-full bg-blue-500 transition-[width]"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        )}
       </article>
 
       {editing && (

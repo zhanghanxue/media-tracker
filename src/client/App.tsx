@@ -137,7 +137,7 @@ export function App() {
               </select>
             </label>
           </div>
-          <MediaList filters={filters} onClearSearch={() => setQuery("")} />
+          <MediaList filters={filters} />
         </main>
       </div>
 
