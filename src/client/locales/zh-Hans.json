@@ -218,9 +218,9 @@
     "refreshCover": "↻ 刷新封面（原产地海报）",
     "refreshingCover": "正在刷新封面…",
     "refreshCoverFailed": "封面刷新失败。",
-    "igdbLink": "IGDB 游戏关联",
     "linkedAniList": "✓ 已关联 AniList · #{{id}}",
     "linkedIgdb": "✓ 已关联 IGDB · #{{id}}",
+    "linkedTmdb": "✓ 已关联 TMDB · #{{id}}",
     "unlinkRef": "取消关联"
   },
   "refresh": {
@@ -277,6 +277,7 @@
     "button": "在 Bangumi 搜索",
     "buttonAniList": "在 AniList 搜索",
     "buttonIgdb": "在 IGDB 搜索",
+    "buttonTmdb": "在 TMDB 搜索",
     "close": "关闭",
     "searchPlaceholder": "搜索 Bangumi（英 / 日 / 中）…",
     "searchPlaceholderAniList": "搜索 AniList（英 / 罗马音 / 日）…",
