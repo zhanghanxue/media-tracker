@@ -6,6 +6,7 @@ import {
   fetchDismissed,
   dismissSuggestion,
   type ScanProgress,
+  type ScanScope,
   type Suggestion,
 } from "../lib/whatsNew";
 import { addMedia } from "../lib/api";
@@ -22,12 +23,14 @@ export function useWhatsNew() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [checked, setChecked] = useState(0);
 
-  const scan = useCallback(async () => {
+  // Scope defaults to "all"; the modal's section buttons pass "animation" /
+  // "drama" / "variety" to scan just that slice (fewer seeds → quicker, lighter).
+  const scan = useCallback(async (scope: ScanScope = "all") => {
     setPhase("scanning");
     setProgress({ done: 0, total: 0 });
     try {
       const dismissed = await fetchDismissed();
-      const result = await scanWhatsNew(dismissed, setProgress);
+      const result = await scanWhatsNew(dismissed, setProgress, scope);
       setSuggestions(result.suggestions);
       setChecked(result.checked);
       setPhase("done");

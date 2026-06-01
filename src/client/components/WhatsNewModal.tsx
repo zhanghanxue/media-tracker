@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useWhatsNew } from "../hooks/useWhatsNew";
-import type { Suggestion } from "../lib/whatsNew";
+import type { ScanScope, Suggestion } from "../lib/whatsNew";
+
+// The scannable sections. "all" is the whole library; the others scan just that
+// slice (quicker, lighter on the sources). Games are absent — game sequels are
+// out of scope for the scanner.
+const SCOPES: ScanScope[] = ["all", "animation", "drama", "variety"];
 
 // Feature A UI. A "Check for updates" button → progress → a results panel grouped
 // by show ("{Show} — {Season/Sequel} available") with Add + Dismiss. Standalone;
@@ -10,6 +15,13 @@ import type { Suggestion } from "../lib/whatsNew";
 export function WhatsNewModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { phase, progress, suggestions, checked, scan, add, dismiss } = useWhatsNew();
+  // Remember which section is being scanned, to label its button "Scanning…".
+  const [activeScope, setActiveScope] = useState<ScanScope | null>(null);
+
+  const runScan = (scope: ScanScope) => {
+    setActiveScope(scope);
+    void scan(scope);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -46,16 +58,26 @@ export function WhatsNewModal({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
           <p className="text-xs text-zinc-500">{t("whatsNew.intro")}</p>
-          <button
-            type="button"
-            onClick={() => void scan()}
-            disabled={phase === "scanning"}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          >
-            {phase === "scanning"
-              ? t("whatsNew.scanning", { done: progress.done, total: progress.total })
-              : t("whatsNew.checkButton")}
-          </button>
+          {/* Per-section scan buttons — scan just one slice for a quicker, lighter
+              run, or "All" for the whole library. */}
+          <div className="flex flex-wrap gap-2">
+            {SCOPES.map((scope) => {
+              const scanningThis = phase === "scanning" && activeScope === scope;
+              return (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => runScan(scope)}
+                  disabled={phase === "scanning"}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {scanningThis
+                    ? t("whatsNew.scanning", { done: progress.done, total: progress.total })
+                    : t(`whatsNew.scope.${scope}`)}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
