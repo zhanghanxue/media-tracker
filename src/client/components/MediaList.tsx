@@ -226,7 +226,12 @@ export function MediaList({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-2">
+      {/* Sticky just under the app header (h-14 = top-14) so New / Select / Edit
+          stay reachable while scrolled down a long level — previously this bar
+          scrolled away and you had to return to the top to enter select mode.
+          z below the header (z-10); opaque bg + a little vertical padding so
+          cards don't show through when it's pinned. */}
+      <div className="sticky top-14 z-[5] -mx-1 mb-4 flex items-center justify-between gap-2 bg-zinc-950/95 px-1 py-2 backdrop-blur light:bg-zinc-50/95">
         <Breadcrumb path={path} onNavigate={setCurrentId} homeLabel={t("collection.home")} />
         <div className="flex shrink-0 gap-2">
           {!selectMode && (
