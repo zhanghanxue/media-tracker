@@ -39,6 +39,13 @@ export interface Suggestion {
     | { source: "anilist"; media: AniListMedia };
 }
 
+// Which slice of the library to scan. "all" keeps the original whole-library
+// behaviour; the others scan ONE section so the run is quicker and lighter on the
+// sources (fewer seeds → fewer external calls). The coverable sections map to the
+// scanner's two source paths: anime → AniList sequels; drama/variety → TMDB
+// seasons. (Games aren't scanned — game sequels are out of scope for v2.0.)
+export type ScanScope = "all" | "animation" | "drama" | "variety";
+
 export interface ScanProgress {
   done: number;
   total: number;
@@ -86,36 +93,57 @@ function anilistIdOf(row: MediaRow): string | null {
 export async function scanWhatsNew(
   dismissed: Set<string>,
   onProgress?: (p: ScanProgress) => void,
+  scope: ScanScope = "all",
 ): Promise<ScanResult> {
   const res = await fetch("/api/media?limit=5000");
   if (!res.ok) throw new Error(`Failed to load library (HTTP ${res.status})`);
   const { items } = (await res.json()) as MediaListResponse;
 
+  // Which source paths this scope runs. Scoping to one section means we only seed
+  // (and only fire external calls) for that section — the whole point of the
+  // per-section buttons. TMDB covers drama + variety; AniList covers anime.
+  const scanTmdb = scope === "all" || scope === "drama" || scope === "variety";
+  const scanAniList = scope === "all" || scope === "animation";
+  // When a single TMDB section is chosen, restrict the season-row types to it so
+  // a "Drama" scan doesn't also pull in variety shows (and vice versa).
+  const tmdbTypes =
+    scope === "drama"
+      ? new Set(["drama"])
+      : scope === "variety"
+        ? new Set(["variety"])
+        : new Set(["drama", "variety"]);
+
   // --- TMDB: group season rows by show, remember which seasons are owned -------
   const tmdbShows = new Map<number, { owned: Set<number>; title: string }>();
-  for (const row of items) {
-    if (row.external_source !== "tmdb") continue;
-    if (row.type !== "drama" && row.type !== "variety") continue;
-    if (row.status === "dropped") continue;
-    const ref = parseTmdbSeasonRef(row.external_id ?? "");
-    if (!ref) continue;
-    const show = tmdbShows.get(ref.showId) ?? { owned: new Set(), title: displayTitleOf(row) };
-    show.owned.add(ref.season);
-    tmdbShows.set(ref.showId, show);
+  if (scanTmdb) {
+    for (const row of items) {
+      if (row.external_source !== "tmdb") continue;
+      if (!tmdbTypes.has(row.type)) continue;
+      if (row.status === "dropped") continue;
+      const ref = parseTmdbSeasonRef(row.external_id ?? "");
+      if (!ref) continue;
+      const show = tmdbShows.get(ref.showId) ?? { owned: new Set(), title: displayTitleOf(row) };
+      show.owned.add(ref.season);
+      tmdbShows.set(ref.showId, show);
+    }
   }
 
   // --- AniList: the anime seeds + the owned-id set for sequel exclusion --------
+  // The owned-id set is built from the WHOLE library regardless of scope, so a
+  // sequel you already own (under any type) is still excluded.
   const ownedAniListIds = new Set<string>();
   for (const row of items) {
     const aid = anilistIdOf(row);
     if (aid) ownedAniListIds.add(aid);
   }
-  const animeSeeds = items.filter(
-    (r) =>
-      r.type === "animation" &&
-      r.status !== "dropped" &&
-      anilistIdOf(r) !== null,
-  );
+  const animeSeeds = scanAniList
+    ? items.filter(
+        (r) =>
+          r.type === "animation" &&
+          r.status !== "dropped" &&
+          anilistIdOf(r) !== null,
+      )
+    : [];
 
   const total = tmdbShows.size + animeSeeds.length;
   let done = 0;

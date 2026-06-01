@@ -31,10 +31,16 @@
   "whatsNew": {
     "button": "🔔 What's New",
     "title": "What's New",
-    "intro": "Scan your shows for new seasons (TMDB) and sequels (AniList) you don't have yet.",
+    "intro": "Scan your shows for new seasons (TMDB) and sequels (AniList) you don't have yet. Scan a single section for a quicker check.",
     "checkButton": "Check for updates",
+    "scope": {
+      "all": "Check all",
+      "animation": "Check anime",
+      "drama": "Check drama",
+      "variety": "Check variety"
+    },
     "scanning": "Scanning… {{done}}/{{total}}",
-    "idle": "Press \"Check for updates\" to scan.",
+    "idle": "Pick a section to scan.",
     "error": "Scan failed. Try again.",
     "empty": "You're all caught up — checked {{count}} shows.",
     "seasonAvailable": "{{label}} available",
