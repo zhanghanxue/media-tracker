@@ -27,6 +27,20 @@ export async function addVideoPartApi(
   if (!res.ok) throw new Error(`Couldn't add link (HTTP ${res.status})`);
 }
 
+export async function updateVideoPartApi(
+  mediaId: number,
+  partId: number,
+  url: string,
+  title: string | null,
+): Promise<void> {
+  const res = await fetch(`/api/media/${mediaId}/parts/${partId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title }),
+  });
+  if (!res.ok) throw new Error(`Couldn't save link (HTTP ${res.status})`);
+}
+
 export async function deleteVideoPartApi(
   mediaId: number,
   partId: number,

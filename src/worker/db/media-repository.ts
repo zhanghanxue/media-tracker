@@ -702,6 +702,27 @@ export async function addVideoPart(
   return inserted;
 }
 
+/**
+ * Edit one video part's url and/or title (scoped to its media). part_number is
+ * NOT editable here — ordering is owned by add (append) / future reordering, not
+ * the edit. A null/blank title clears it. Returns the updated row, or null if no
+ * part with that (id, media_id) exists.
+ */
+export async function updateVideoPart(
+  db: D1Database,
+  mediaId: number,
+  partId: number,
+  url: string,
+  title: string | null,
+): Promise<MediaVideoPart | null> {
+  return db
+    .prepare(
+      "UPDATE media_video_parts SET url = ?, title = ? WHERE id = ? AND media_id = ? RETURNING *",
+    )
+    .bind(url, title, partId, mediaId)
+    .first<MediaVideoPart>();
+}
+
 /** Delete one part (scoped to its media). Returns true if a row was removed. */
 export async function deleteVideoPart(
   db: D1Database,
