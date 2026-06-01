@@ -6,7 +6,7 @@ import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
 import { useRefreshCover } from "../hooks/useRefreshCover";
 import { useCollections } from "../hooks/useCollections";
-import { BangumiTitlePicker } from "./BangumiTitlePicker";
+import { BangumiTitlePicker, type PickedBangumiSubject } from "./BangumiTitlePicker";
 import { AniListTitlePicker, type PickedAniListTitles } from "./AniListTitlePicker";
 import { IgdbLinkPicker, type PickedIgdbGame } from "./IgdbLinkPicker";
 import { VideoPartsEditor } from "./VideoPartsEditor";
@@ -156,6 +156,7 @@ export function MediaDetailEditor({
   // the rest. anilist_id for anime/manga (Issue A); igdb_id for games (Feature C).
   const [anilistId, setAnilistId] = useState(media.anilist_id ?? "");
   const [igdbId, setIgdbId] = useState(media.igdb_id ?? "");
+  const [bangumiId, setBangumiId] = useState(media.bangumi_id ?? "");
   const [showIgdbPicker, setShowIgdbPicker] = useState(false);
   // Optional drama/variety video-links add-on, collapsed by default.
   const [showVideoLinks, setShowVideoLinks] = useState(false);
@@ -240,6 +241,10 @@ export function MediaDetailEditor({
     const stagedIgdb = igdbId.trim() === "" ? null : igdbId.trim();
     if (stagedIgdb !== (media.igdb_id ?? null)) {
       patch.igdb_id = stagedIgdb;
+    }
+    const stagedBangumi = bangumiId.trim() === "" ? null : bangumiId.trim();
+    if (stagedBangumi !== (media.bangumi_id ?? null)) {
+      patch.bangumi_id = stagedBangumi;
     }
 
     if (isGame) {
@@ -591,8 +596,13 @@ export function MediaDetailEditor({
               <BangumiTitlePicker
                 mediaType={media.type}
                 initialQuery={pickerQuery}
-                onPick={(cn) => {
-                  setTitleChinese(cn);
+                onPick={(picked: PickedBangumiSubject) => {
+                  setTitleChinese(picked.chineseTitle);
+                  // Persist the Bangumi link too (unless Bangumi is already this
+                  // row's primary source — then its id is in external_id).
+                  if (media.external_source !== "bangumi") {
+                    setBangumiId(String(picked.id));
+                  }
                   setShowPicker(false);
                 }}
               />

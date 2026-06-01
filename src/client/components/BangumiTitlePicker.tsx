@@ -7,10 +7,19 @@ import { bangumiCover, bangumiTypeFor } from "../lib/bangumiSearch";
 import { toSimplified } from "../lib/toSimplified";
 import type { MediaType } from "../../worker/db/schema";
 
-// Manual Bangumi search → pick a subject → return its Simplified Chinese title.
-// Used in the detail editor to fix/fill title_chinese for the long tail the
-// auto-enricher can't match confidently (movies, donghua, naming mismatches).
-// Accepts EN / JP / Chinese input (searches both Bangumi endpoints).
+export interface PickedBangumiSubject {
+  // Bangumi subject id — the caller stores it as the row's bangumi_id cross-
+  // reference so the link PERSISTS (previously only the Chinese title was saved,
+  // so a Bangumi link never showed up in the editor's provenance line).
+  id: number;
+  chineseTitle: string;
+}
+
+// Manual Bangumi search → pick a subject → return its id + Simplified Chinese
+// title. The id is saved as bangumi_id (the persistent cross-reference); the
+// title fills title_chinese for the long tail the auto-enricher can't match
+// confidently (movies, donghua, naming mismatches). Accepts EN / JP / Chinese
+// input (searches both Bangumi endpoints).
 export function BangumiTitlePicker({
   mediaType,
   initialQuery,
@@ -18,7 +27,7 @@ export function BangumiTitlePicker({
 }: {
   mediaType: MediaType;
   initialQuery: string;
-  onPick: (chineseTitle: string) => void;
+  onPick: (picked: PickedBangumiSubject) => void;
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState(initialQuery);
@@ -26,10 +35,10 @@ export function BangumiTitlePicker({
   const type = bangumiTypeFor(mediaType);
   const search = useBangumiSearch(debounced, type);
 
-  const pick = async (subject: { name: string; name_cn: string }) => {
+  const pick = async (subject: { id: number; name: string; name_cn: string }) => {
     // Prefer the Chinese name; donghua sometimes carry Chinese in `name`.
     const raw = subject.name_cn?.trim() || subject.name;
-    onPick(await toSimplified(raw));
+    onPick({ id: subject.id, chineseTitle: await toSimplified(raw) });
   };
 
   return (
