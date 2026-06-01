@@ -188,6 +188,13 @@
     "sourceAniList": "Linked to AniList · #{{id}}",
     "sourceBangumi": "From Bangumi · #{{id}} (no AniList match)",
     "sourceManual": "Manual entry",
+    "linkedSource": "Linked to {{source}} · #{{id}}",
+    "sourceName": {
+      "anilist": "AniList",
+      "tmdb": "TMDB",
+      "igdb": "IGDB",
+      "bangumi": "Bangumi"
+    },
     "titleChinese": "Chinese title",
     "titleChinesePlaceholder": "e.g. 鬼灭之刃",
     "type": "Type",
