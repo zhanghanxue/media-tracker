@@ -173,8 +173,12 @@ export function MediaDetailEditor({
   const [igdbId, setIgdbId] = useState(media.igdb_id ?? "");
   const [tmdbId, setTmdbId] = useState(media.tmdb_id ?? "");
   const [bangumiId, setBangumiId] = useState(media.bangumi_id ?? "");
-  // Optional drama/variety video-links add-on, collapsed by default.
-  const [showVideoLinks, setShowVideoLinks] = useState(false);
+  // Optional drama/variety video-links add-on. Open by default when this row
+  // already has links (has_video_parts from the list query) so they're visible
+  // straight away; collapsed otherwise to keep the form uncluttered.
+  const [showVideoLinks, setShowVideoLinks] = useState(
+    media.has_video_parts === 1,
+  );
 
   // Collection placement. Applies IMMEDIATELY (its own mutation), separate from
   // the Save button. collection_id is just a placement pointer — it never

@@ -240,7 +240,12 @@ export async function listMedia(
 ): Promise<MediaListPage> {
   const { where, params, orderBy } = buildMediaListQuery(filters);
 
-  const listSql = `SELECT * FROM media ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  // `has_video_parts` is a derived 0/1 flag (correlated EXISTS, not a join) so a
+  // card can show "linked" / open its video-links section without an extra
+  // per-row fetch. One subquery on the page slice — O(page), CPU stays flat as
+  // the library grows. WHERE/ORDER BY column names stay unqualified (single
+  // table), so the builder's clauses keep resolving against `media`.
+  const listSql = `SELECT media.*, EXISTS(SELECT 1 FROM media_video_parts WHERE media_id = media.id) AS has_video_parts FROM media ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
   const listResult = await db
     .prepare(listSql)
     .bind(...params, filters.limit, filters.offset)

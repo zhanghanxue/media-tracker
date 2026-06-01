@@ -106,6 +106,12 @@ export interface MediaRow {
 
   date_added: string;
   date_updated: string;
+
+  // Derived flag (NOT a `media` column): 1 when this row has at least one
+  // media_video_parts entry, else 0. Populated only by listMedia's correlated
+  // EXISTS subquery; undefined on rows read by other queries. Lets a card show
+  // "linked" and the editor default its video-links section open.
+  has_video_parts?: 0 | 1;
 }
 
 export interface MediaVideoPart {
