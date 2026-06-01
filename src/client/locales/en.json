@@ -203,6 +203,8 @@
     "videoPartUrl": "Paste a video URL…",
     "videoPartTitle": "Label (optional)",
     "videoPartAdd": "Add",
+    "videoPartEdit": "Edit link",
+    "videoPartSave": "Save",
     "videoPartRemove": "Remove link",
     "videoLinksShow": "+ Add video links (optional)",
     "videoLinksHide": "Hide video links",

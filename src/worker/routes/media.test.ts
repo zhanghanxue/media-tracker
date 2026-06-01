@@ -912,6 +912,58 @@ describe("video parts (/api/media/:id/parts)", () => {
     expect(list.parts.map((p) => p.part_number)).toEqual([1, 2]);
   });
 
+  it("edits a part's url and title (PATCH)", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    const created = (await (await addPart(m.id, { url: "https://yt/old", title: "Old" })).json()) as {
+      id: number;
+      part_number: number;
+    };
+
+    const res = await app.request(
+      `/api/media/${m.id}/parts/${created.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://yt/new", title: "New" }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()) as object).toMatchObject({
+      id: created.id,
+      part_number: created.part_number, // unchanged
+      url: "https://yt/new",
+      title: "New",
+    });
+  });
+
+  it("clears a part's title when edited to blank, and 400s on a blank url", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    const created = (await (await addPart(m.id, { url: "https://yt/x", title: "T" })).json()) as {
+      id: number;
+    };
+    const patch = (body: unknown) =>
+      app.request(
+        `/api/media/${m.id}/parts/${created.id}`,
+        { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        env,
+      );
+
+    const cleared = await patch({ url: "https://yt/x", title: "  " });
+    expect(((await cleared.json()) as { title: string | null }).title).toBeNull();
+    expect((await patch({ url: "  " })).status).toBe(400);
+  });
+
+  it("404s editing a part that doesn't exist", async () => {
+    const m = await insertMedia(env.DB, BASE_ROW);
+    const res = await app.request(
+      `/api/media/${m.id}/parts/99999`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: "https://yt/z" }) },
+      env,
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("deletes a part (and cascades when the media is deleted)", async () => {
     const m = await insertMedia(env.DB, BASE_ROW);
     const created = (await (await addPart(m.id, { url: "https://yt/x" })).json()) as {

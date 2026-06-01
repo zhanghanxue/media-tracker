@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   addVideoPartApi,
+  updateVideoPartApi,
   deleteVideoPartApi,
   fetchVideoParts,
 } from "../lib/videoParts";
@@ -23,6 +24,24 @@ export function useAddVideoPart(mediaId: number) {
   return useMutation({
     mutationFn: ({ url, title }: { url: string; title: string | null }) =>
       addVideoPartApi(mediaId, url, title),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: partsKey(mediaId) });
+    },
+  });
+}
+
+export function useUpdateVideoPart(mediaId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      partId,
+      url,
+      title,
+    }: {
+      partId: number;
+      url: string;
+      title: string | null;
+    }) => updateVideoPartApi(mediaId, partId, url, title),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: partsKey(mediaId) });
     },

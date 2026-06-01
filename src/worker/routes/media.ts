@@ -27,6 +27,7 @@ import {
   bulkUpdateMedia,
   deleteMedia,
   deleteVideoPart,
+  updateVideoPart,
   ensureCollection,
   findByExternalRef,
   findById,
@@ -616,6 +617,48 @@ mediaRoutes.delete("/:id/parts/:partId", async (c) => {
     return c.json({ error: "no such video part" }, 404);
   }
   return c.body(null, 204);
+});
+
+// PATCH /api/media/:id/parts/:partId { url, title? } — edit a part's link/label.
+// Same validation as the POST add (non-empty url, optional title); part_number
+// isn't editable here. 200 with the updated part, 404 if it doesn't exist.
+mediaRoutes.patch("/:id/parts/:partId", async (c) => {
+  const idParam = c.req.param("id");
+  const partParam = c.req.param("partId");
+  if (!/^[1-9][0-9]*$/.test(idParam) || !/^[1-9][0-9]*$/.test(partParam)) {
+    return c.json({ error: "ids must be positive integers" }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+  const obj =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+  const url = typeof obj.url === "string" ? obj.url.trim() : "";
+  if (url === "") {
+    return c.json({ error: "url must be a non-empty string" }, 400);
+  }
+  const title =
+    typeof obj.title === "string" && obj.title.trim() !== ""
+      ? obj.title.trim()
+      : null;
+
+  const updated = await updateVideoPart(
+    c.env.DB,
+    Number(idParam),
+    Number(partParam),
+    url,
+    title,
+  );
+  if (updated === null) {
+    return c.json({ error: "no such video part" }, 404);
+  }
+  return c.json(updated, 200);
 });
 
 // DELETE /api/media/:id — remove an entry (e.g. added by mistake). 204 on
