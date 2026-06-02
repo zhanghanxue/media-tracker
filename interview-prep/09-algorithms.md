@@ -23,7 +23,7 @@
 | **Insertion** | n² / n² | O(1) | ✅ | tiny or nearly-sorted input |
 | **Timsort** *(Java objects, Python `sorted`)* | n log n / n log n | O(n) | ✅ | **the real-world default** |
 
-**Search defaults:** sorted → **binary search** (O(log n)); membership → **hash set** (O(1)); shortest path unweighted → **BFS**; deep explore/cycles → **DFS**. **Backend tie-in:** B-tree index = O(log n) seek vs O(n) scan; RAG vector search = **ANN/HNSW** (sub-linear nearest-neighbour).
+**Search defaults:** sorted → **binary search** (O(log n)); membership → **hash set** (O(1)); shortest path unweighted → **BFS**; weighted (non-negative) → **Dijkstra**; deep explore/cycles → **DFS**. **Backend tie-in:** B-tree index = O(log n) seek vs O(n) scan; RAG vector search = **ANN/HNSW** (sub-linear nearest-neighbour).
 
 ---
 
@@ -121,9 +121,27 @@ A **hash table** (Python `dict`/`set`, Java `HashMap`/`HashSet`) gives **average
 - **BST search** — O(log n) on a *balanced* tree, O(n) if degenerate. Real DBs use **B-trees/B+-trees** (the index structure) for this.
 - **BFS** (breadth-first, queue) — shortest path in *unweighted* graphs; level-by-level. O(V + E).
 - **DFS** (depth-first, stack/recursion) — explore deep; cycle detection, topological sort. O(V + E).
-- **Dijkstra** — shortest path in *weighted* graphs (good to name, rarely need to implement).
+- **Weighted shortest path** — once edges have *costs*, BFS no longer works → **Dijkstra** (§3.5).
 
 > **Backend/SQL framing:** "Indexed lookup vs full scan is binary-search-vs-linear-search in disguise — a B-tree index turns an O(n) scan into O(log n). A hash index is the O(1) lookup. I make this trade every time I design a schema." This connects algorithms to work I've actually done, which lands better than reciting theory.
+
+### 3.5 Weighted shortest paths — Dijkstra, A\*, Bellman-Ford
+
+Once graph edges carry **costs** (distance, latency, price), BFS's hop-counting is wrong — you need the *cheapest* path, not the *fewest-edge* one. This is the weighted family. For a backend screen the goal is to **name the right one and know its boundary condition**, not to implement it under pressure.
+
+| Algorithm | Use it for | Time | The one thing to remember |
+|---|---|---|---|
+| **Dijkstra** | Single-source shortest path, **non-negative** weights | O((V + E) log V) | Greedy + a **min-heap**. Breaks on negative edges. |
+| **Bellman-Ford** | Same, but **negative** weights allowed | O(V·E) | Slower, but handles negatives and **detects negative cycles**. |
+| **A\*** | Point-to-point with a goal + a distance estimate | ≤ Dijkstra | Dijkstra **+ heuristic**; mostly games/maps/robotics. |
+
+**Dijkstra** — BFS's greedy cousin. Instead of expanding by hop count, always expand the **closest-unvisited** node, pulled from a **priority queue (min-heap)** keyed by cumulative distance from the source. Each node is finalized once; relax its neighbours' tentative distances as you go.
+- **Complexity:** O((V + E) log V) with a binary-heap PQ — the `log V` *is* the heap (same structure as top-k / merge-k-sorted-lists in §4).
+- **The killer caveat interviewers probe:** **fails on negative edge weights** — the greedy "once finalized, never revisited" assumption breaks. If weights can be negative, reach for **Bellman-Ford** instead.
+
+**A\*** — Dijkstra guided by a **heuristic** `h(n)` that estimates the remaining cost to the goal, so it explores *toward* the target instead of uniformly outward. If `h` is **admissible** (never overestimates), A\* still returns the optimal path while expanding far fewer nodes. **A\* with `h = 0` is exactly Dijkstra.** Bread-and-butter for games/pathfinding/maps — recognize it; you'll rarely implement it in a backend screen.
+
+> **My honest framing:** "For weighted shortest path I reach for Dijkstra and immediately check the weights — if any can be negative, Dijkstra's greedy invariant breaks and I switch to Bellman-Ford, which also catches negative cycles. A\* is Dijkstra with a goal-distance heuristic; it's optimal when the heuristic never overestimates, but it's mostly a games/maps tool, not something I'd expect to hand-roll for backend work."
 
 ---
 
@@ -157,6 +175,9 @@ A **hash table** (Python `dict`/`set`, Java `HashMap`/`HashSet`) gives **average
 **Q5. "How is this relevant to backend / AI work you've done?"**
 > "Constantly, just abstracted behind libraries and databases. A B-tree index is binary search on disk — O(log n) seeks instead of an O(n) scan — which I reason about every time I add an index or look at a query plan. And in the AI project, vector search for RAG is a nearest-neighbour search problem: naive is O(n) per query, so production uses approximate nearest-neighbour indexes to make it sub-linear. The instinct is the same: exploit structure to beat the naive scan."
 
+**Q6. "How would you find the shortest path in a weighted graph?"**
+> "**Dijkstra** — expand the closest-unvisited node using a min-heap, relaxing neighbour distances as I go. It's O((V + E) log V), where the log factor is the heap. The one thing I check first is the edge weights: Dijkstra assumes **non-negative** weights, because once it finalizes a node it never revisits it. If weights can be negative I'd use **Bellman-Ford** — O(V·E), slower, but it handles negatives and detects negative cycles. And if I had a single goal plus a distance estimate — like grid pathfinding — I'd use **A\***, which is Dijkstra steered by a heuristic; with `h = 0` it degenerates back to Dijkstra."
+
 **If I'm asked something I don't recall** (e.g. implement red-black tree rotations, prove a complexity bound):
 > "I don't have the rotation cases memorized — I'd reach for the standard library's balanced tree in real code. I can tell you the *properties* it guarantees and why — O(log n) balanced operations — and reason from there." Honest; pivot to what you'd actually do.
 
@@ -172,5 +193,7 @@ A **hash table** (Python `dict`/`set`, Java `HashMap`/`HashSet`) gives **average
 - **Binary search:** O(log n), **needs sorted input**; `lo<=hi`, overflow-safe mid.
 - **Hash lookup:** O(1) avg, O(n) worst; default for fast membership.
 - **BFS** = shortest path unweighted (queue); **DFS** = deep explore (stack/recursion).
+- **Dijkstra** = weighted shortest path, **non-negative** weights; min-heap; O((V + E) log V). Negative weights → **Bellman-Ford** (O(V·E), detects negative cycles).
+- **A\*** = Dijkstra + admissible heuristic; optimal, fewer nodes expanded; `h = 0` ⇒ Dijkstra.
 - **B-tree index = O(log n) search**; full scan = O(n). (The backend tie-in.)
 - **ANN/HNSW** = sub-linear approximate nearest-neighbour for vector search (RAG).
