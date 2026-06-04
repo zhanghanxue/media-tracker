@@ -17,7 +17,8 @@
     "rating_asc": "Rating (low→high)"
   },
   "recommend": {
-    "button": "✨ Recommend",
+    "icon": "✨",
+    "button": "Recommend",
     "title": "Recommendations",
     "intro": "Suggestions grounded in what you already track — pick a type.",
     "pickType": "Pick a type to get recommendations.",
@@ -71,6 +72,9 @@
     "selected_other": "{{count}} selected",
     "addToCollection": "Add to collection…",
     "setStatus": "Set status",
+    "delete": "Delete",
+    "confirmDelete_one": "Delete {{count}} item? This can't be undone.",
+    "confirmDelete_other": "Delete {{count}} items? This can't be undone.",
     "clear": "Clear",
     "done": "Done"
   },
@@ -127,7 +131,8 @@
     "toDark": "Switch to dark theme"
   },
   "add": {
-    "button": "+ Add",
+    "icon": "+",
+    "button": "Add",
     "title": "Add media",
     "searchPlaceholder": "Search AniList…",
     "searchPlaceholderBangumi": "Search by Chinese name (Bangumi)…",
@@ -226,12 +231,14 @@
     "unlinkRef": "unlink"
   },
   "refresh": {
-    "button": "↻ Update episodes",
+    "icon": "↻",
+    "button": "Update episodes",
     "running": "Updating episodes…",
     "done": "Updated {{updated}} of {{checked}}",
     "error": "Couldn't update episodes"
   },
   "enrich": {
+    "icon": "🌐",
     "button": "Enrich titles",
     "running": "Filling {{done}}/{{total}}…",
     "done": "Filled {{filled}}, skipped {{skipped}}",

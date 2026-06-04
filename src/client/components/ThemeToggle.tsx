@@ -21,7 +21,7 @@ export function ThemeToggle() {
       }}
       aria-label={label}
       title={label}
-      className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+      className="rounded-md border border-zinc-700 px-2.5 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 sm:px-3 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
     >
       {theme === "dark" ? "☀" : "🌙"}
     </button>

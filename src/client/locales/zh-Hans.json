@@ -17,7 +17,8 @@
     "rating_asc": "评分（低→高）"
   },
   "recommend": {
-    "button": "✨ 推荐",
+    "icon": "✨",
+    "button": "推荐",
     "title": "推荐",
     "intro": "基于你已追踪的内容给出建议 —— 先选一个类型。",
     "pickType": "选择一个类型以获取推荐。",
@@ -70,6 +71,8 @@
     "selected_other": "已选 {{count}} 项",
     "addToCollection": "加入合集…",
     "setStatus": "设置状态",
+    "delete": "删除",
+    "confirmDelete_other": "删除选中的 {{count}} 项？此操作无法撤销。",
     "clear": "清除",
     "done": "完成"
   },
@@ -126,7 +129,8 @@
     "toDark": "切换到深色主题"
   },
   "add": {
-    "button": "+ 添加",
+    "icon": "+",
+    "button": "添加",
     "title": "添加媒体",
     "searchPlaceholder": "搜索 AniList…",
     "searchPlaceholderBangumi": "按中文名搜索（Bangumi）…",
@@ -226,12 +230,14 @@
     "unlinkRef": "取消关联"
   },
   "refresh": {
-    "button": "↻ 更新集数",
+    "icon": "↻",
+    "button": "更新集数",
     "running": "更新集数中…",
     "done": "已更新 {{updated}}/{{checked}}",
     "error": "更新集数失败"
   },
   "enrich": {
+    "icon": "🌐",
     "button": "补全标题",
     "running": "补全中 {{done}}/{{total}}…",
     "done": "已补全 {{filled}}，跳过 {{skipped}}",

@@ -29,15 +29,18 @@ export function EnrichChineseButton() {
   const showSkipped = state.phase === "done" && state.skippedTitles.length > 0;
 
   return (
-    <div className="relative hidden sm:block">
+    <div className="relative">
       <button
         type="button"
         onClick={() => void run()}
         disabled={running}
         title={t("enrich.button")}
-        className="rounded-md px-2 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 light:text-zinc-600 light:hover:bg-zinc-100"
+        aria-label={t("enrich.button")}
+        className="rounded-md px-2.5 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 sm:px-2 light:text-zinc-600 light:hover:bg-zinc-100"
       >
-        {label}
+        {/* Icon-only on mobile; the (state-dependent) label shows from sm up. */}
+        <span aria-hidden="true">{t("enrich.icon")}</span>
+        <span className="hidden sm:inline"> {label}</span>
       </button>
 
       {showSkipped && (

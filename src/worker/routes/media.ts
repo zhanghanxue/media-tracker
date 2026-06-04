@@ -24,6 +24,7 @@ import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
 import {
   addVideoPart,
+  bulkDeleteMedia,
   bulkUpdateMedia,
   deleteMedia,
   deleteVideoPart,
@@ -665,6 +666,32 @@ mediaRoutes.patch("/:id/parts/:partId", async (c) => {
     return c.json({ error: "no such video part" }, 404);
   }
   return c.json(updated, 200);
+});
+
+// DELETE /api/media/bulk — remove many rows at once (the selection bulk-delete
+// action). Body: { ids: number[] }. Registered before /:id so "bulk" isn't
+// captured as an id param. Returns { deleted } — the count actually removed.
+mediaRoutes.delete("/bulk", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+  const obj =
+    typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+
+  const rawIds = obj.ids;
+  if (
+    !Array.isArray(rawIds) ||
+    rawIds.length === 0 ||
+    !rawIds.every((n) => typeof n === "number" && Number.isInteger(n) && n > 0)
+  ) {
+    return c.json({ error: "ids must be a non-empty array of positive integers" }, 400);
+  }
+
+  const deleted = await bulkDeleteMedia(c.env.DB, rawIds as number[]);
+  return c.json({ deleted }, 200);
 });
 
 // DELETE /api/media/:id — remove an entry (e.g. added by mistake). 204 on
