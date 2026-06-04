@@ -47,7 +47,7 @@ describe("subtreeRollup", () => {
     expect(r.count).toBe(5); // 3 (im) + 2 (thor); mcu itself has no direct items
     expect(r.completed).toBe(3);
     expect(r.planned).toBe(2);
-    expect(r.games).toBe(1); // 1 (im) + 0 (thor) — drives the all-game bar suppression
+    expect(r.games).toBe(1); // 1 (im) + 0 (thor) — informational subtree aggregate
   });
 
   it("counts only the one collection when it has no children", () => {
@@ -55,7 +55,7 @@ describe("subtreeRollup", () => {
       count: 5,
       completed: 1,
       planned: 4,
-      games: 5, // all-game collection → MediaList suppresses the completion bar
+      games: 5, // all-game collection → completion bar still shown by MediaList
       latestUpdated: null,
       earliestRelease: null,
     });

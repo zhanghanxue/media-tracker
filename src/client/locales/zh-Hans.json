@@ -29,7 +29,8 @@
     "added": "已添加 ✓"
   },
   "whatsNew": {
-    "button": "🔔 更新",
+    "icon": "🔔",
+    "label": "更新",
     "title": "新内容",
     "intro": "扫描你的作品，查找尚未拥有的新一季（TMDB）和续作（AniList）。可只扫描单个分区以更快检查。",
     "checkButton": "检查更新",

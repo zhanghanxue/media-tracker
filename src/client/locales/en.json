@@ -29,7 +29,8 @@
     "added": "Added ✓"
   },
   "whatsNew": {
-    "button": "🔔 What's New",
+    "icon": "🔔",
+    "label": "What's New",
     "title": "What's New",
     "intro": "Scan your shows for new seasons (TMDB) and sequels (AniList) you don't have yet. Scan a single section for a quicker check.",
     "checkButton": "Check for updates",

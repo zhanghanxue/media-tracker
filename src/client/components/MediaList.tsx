@@ -310,11 +310,11 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
                     cover={collectionCoverFromRollup(col, rollupById.get(col.id))}
                     count={roll.count}
                     completed={roll.completed}
-                    // Hide the completion bar when the whole subtree is games —
-                    // a progress bar there reads as an episode bar, which games
-                    // lack (item-completion still makes sense, but the user asked
-                    // to scope this to anime/dramas).
-                    showProgress={roll.count > 0 && roll.games < roll.count}
+                    // Completion bar = completed items / total items in the
+                    // subtree, which is meaningful for every type including games
+                    // (completed games / total games). Shown for any non-empty
+                    // collection.
+                    showProgress={roll.count > 0}
                     status={rollupStatus(roll)}
                     childCount={childCollections(collections, col.id).length}
                     onOpen={() => {
