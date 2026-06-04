@@ -94,12 +94,17 @@ export function App() {
             >
               {t("recommend.button")}
             </button>
+            {/* Always visible. Icon-only on mobile to save header width; the
+                text label appears from sm up (Refresh/Enrich stay desktop-only). */}
             <button
               type="button"
               onClick={() => setShowWhatsNewModal(true)}
-              className="hidden rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 sm:block light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+              title={t("whatsNew.label")}
+              aria-label={t("whatsNew.label")}
+              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
             >
-              {t("whatsNew.button")}
+              <span aria-hidden="true">{t("whatsNew.icon")}</span>
+              <span className="hidden sm:inline"> {t("whatsNew.label")}</span>
             </button>
             <RefreshEpisodesButton />
             <EnrichChineseButton />

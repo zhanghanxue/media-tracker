@@ -47,8 +47,8 @@ export function CollectionCard({
   parts.push(t("collection.itemCount", { count }));
 
   // Completed-fraction for the bottom bar — mirrors MediaCard's watched bar, but
-  // counts finished items instead of watched episodes. Only when there's at least
-  // one item and the collection isn't all-games; clamps at 100%.
+  // counts finished items instead of watched episodes. Shown for any non-empty
+  // collection (including all-game ones); clamps at 100%.
   const progressPct =
     showProgress && count > 0
       ? Math.min(100, Math.round((completed / count) * 100))
