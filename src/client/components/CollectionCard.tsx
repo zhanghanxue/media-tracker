@@ -20,6 +20,8 @@ export function CollectionCard({
   name,
   cover,
   count,
+  completed,
+  showProgress,
   status,
   childCount,
   onOpen,
@@ -29,6 +31,11 @@ export function CollectionCard({
   name: string;
   cover: string | null;
   count: number;
+  // Completed items in the subtree, and whether to surface the completion bar
+  // (suppressed on all-game collections — see MediaList). When showProgress is
+  // false the card renders exactly as before.
+  completed: number;
+  showProgress: boolean;
   status: MediaStatus;
   childCount: number;
   onOpen: () => void;
@@ -38,6 +45,14 @@ export function CollectionCard({
   const parts: string[] = [];
   if (childCount > 0) parts.push(t("collection.subCount", { count: childCount }));
   parts.push(t("collection.itemCount", { count }));
+
+  // Completed-fraction for the bottom bar — mirrors MediaCard's watched bar, but
+  // counts finished items instead of watched episodes. Only when there's at least
+  // one item and the collection isn't all-games; clamps at 100%.
+  const progressPct =
+    showProgress && count > 0
+      ? Math.min(100, Math.round((completed / count) * 100))
+      : null;
 
   return (
     <article className="group relative overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-800 transition hover:ring-blue-500 light:bg-white light:ring-zinc-200 light:shadow-sm">
@@ -70,10 +85,28 @@ export function CollectionCard({
             {t(`status.${status}`)}
           </span>
           <span className="truncate text-zinc-400 light:text-zinc-500">
-            {t("collection.open")}
+            {progressPct != null
+              ? t("collection.itemsDone", { completed, total: count })
+              : t("collection.open")}
           </span>
         </div>
       </div>
+      {/* Completed-fraction bar pinned to the card's bottom edge (mirrors the
+          item card). Shown for non-empty, non-all-game collections. */}
+      {progressPct != null && (
+        <div
+          className="h-1 w-full bg-zinc-800 light:bg-zinc-200"
+          role="progressbar"
+          aria-valuenow={progressPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full bg-green-500 transition-[width]"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      )}
     </article>
   );
 }

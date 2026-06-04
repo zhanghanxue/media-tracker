@@ -249,6 +249,7 @@
     "subCount_other": "{{count}} subs",
     "itemCount_one": "{{count}} item",
     "itemCount_other": "{{count}} items",
+    "itemsDone": "{{completed}} / {{total}} done",
     "name": "Name",
     "namePlaceholder": "Collection name (blank = auto)",
     "nameHint": "Leave blank to auto-name from the contents.",

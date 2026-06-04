@@ -665,8 +665,59 @@ describe("PATCH /api/media/bulk", () => {
       const row = (await findById(env.DB, id))!;
       expect(row.collection_id).toBe("col:ac");
       expect(row.status).toBe("completed");
+      // Bulk "completed" fills progress to the total, just like the single-item
+      // edit (BASE_ROW: total_episodes 26, current_episode null).
+      expect(row.current_episode).toBe(26);
     }
     expect((await findById(env.DB, c.id))!.collection_id).toBeNull(); // untouched
+  });
+
+  it("fills progress to each row's own total on bulk completion (and leaves unknown totals alone)", async () => {
+    const known = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "f1", total_episodes: 12, current_episode: 3,
+    });
+    const noTotal = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "f2", total_episodes: null, current_episode: 5,
+    });
+    const manga = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "f3", type: "manga", total_episodes: null,
+      current_episode: null, total_chapters: 100, current_chapter: 40,
+    });
+
+    const res = await patch("/api/media/bulk", {
+      ids: [known.id, noTotal.id, manga.id],
+      patch: { status: "completed" },
+    });
+    expect(res.status).toBe(200);
+
+    expect((await findById(env.DB, known.id))!.current_episode).toBe(12); // filled to its own total
+    expect((await findById(env.DB, noTotal.id))!.current_episode).toBe(5); // unknown total → untouched
+    expect((await findById(env.DB, manga.id))!.current_chapter).toBe(100); // chapter dimension fills too
+  });
+
+  it("does not fill progress for a non-completed bulk status", async () => {
+    const a = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "f4", total_episodes: 26, current_episode: 4,
+    });
+    await patch("/api/media/bulk", { ids: [a.id], patch: { status: "paused" } });
+    expect((await findById(env.DB, a.id))!.current_episode).toBe(4); // unchanged
+  });
+
+  it("clears progress on bulk move back to planned (keeps totals)", async () => {
+    const ep = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "p1", total_episodes: 26, current_episode: 20,
+    });
+    const ch = await insertMedia(env.DB, {
+      ...BASE_ROW, external_id: "p2", type: "manga", total_episodes: null,
+      current_episode: null, total_chapters: 100, current_chapter: 55,
+    });
+    await patch("/api/media/bulk", { ids: [ep.id, ch.id], patch: { status: "planned" } });
+
+    const epRow = (await findById(env.DB, ep.id))!;
+    expect(epRow.status).toBe("planned");
+    expect(epRow.current_episode).toBeNull(); // cleared
+    expect(epRow.total_episodes).toBe(26); // total kept
+    expect((await findById(env.DB, ch.id))!.current_chapter).toBeNull(); // chapter cleared too
   });
 
   it("400s on empty ids, empty patch, or a missing collection", async () => {
@@ -735,6 +786,21 @@ describe("PATCH /api/media/:id", () => {
     });
     const row = (await res.json()) as { status: string };
     expect(row.status).toBe("paused");
+  });
+
+  it("clears recorded progress when moved back to planned", async () => {
+    const inserted = await insertMedia(env.DB, {
+      ...BASE_ROW, total_episodes: 26, current_episode: 14,
+    });
+    const res = await patch(`/api/media/${inserted.id}`, { status: "planned" });
+    const row = (await res.json()) as {
+      status: string;
+      current_episode: number | null;
+      total_episodes: number | null;
+    };
+    expect(row.status).toBe("planned");
+    expect(row.current_episode).toBeNull(); // progress cleared
+    expect(row.total_episodes).toBe(26); // show metadata kept
   });
 
   it("updates title_chinese (the Bangumi enricher write path)", async () => {

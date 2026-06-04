@@ -112,6 +112,9 @@ export interface CollectionRollup {
   direct_count: number;
   completed_count: number;
   planned_count: number;
+  // Direct items of type 'game' — used to hide the completion bar on all-game
+  // collections (a progress bar reads as an episode bar, which games lack).
+  game_count: number;
   latest_updated: string | null;
   earliest_release: string | null;
   sample_cover: string | null;
