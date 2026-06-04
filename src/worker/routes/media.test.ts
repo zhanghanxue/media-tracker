@@ -730,6 +730,47 @@ describe("PATCH /api/media/bulk", () => {
   });
 });
 
+describe("DELETE /api/media/bulk", () => {
+  const delBulk = (body: unknown) =>
+    app.request(
+      "/api/media/bulk",
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+
+  it("removes the selected rows, leaving the rest, and reports the count", async () => {
+    const a = await insertMedia(env.DB, { ...BASE_ROW, external_id: "d1" });
+    const b = await insertMedia(env.DB, { ...BASE_ROW, external_id: "d2" });
+    const c = await insertMedia(env.DB, { ...BASE_ROW, external_id: "d3" });
+
+    const res = await delBulk({ ids: [a.id, b.id] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ deleted: 2 });
+
+    expect(await findById(env.DB, a.id)).toBeNull();
+    expect(await findById(env.DB, b.id)).toBeNull();
+    expect(await findById(env.DB, c.id)).not.toBeNull(); // untouched
+  });
+
+  it("counts only rows that existed (ignores already-gone ids)", async () => {
+    const a = await insertMedia(env.DB, { ...BASE_ROW, external_id: "d4" });
+    const res = await delBulk({ ids: [a.id, 999999] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ deleted: 1 });
+  });
+
+  it("400s on empty or non-integer ids", async () => {
+    expect((await delBulk({ ids: [] })).status).toBe(400);
+    expect((await delBulk({ ids: [1.5] })).status).toBe(400);
+    expect((await delBulk({ ids: ["1"] })).status).toBe(400);
+    expect((await delBulk({})).status).toBe(400);
+  });
+});
+
 describe("PATCH /api/media/:id", () => {
   it("updates a field and bumps date_updated", async () => {
     const inserted = await insertMedia(env.DB, BASE_ROW);

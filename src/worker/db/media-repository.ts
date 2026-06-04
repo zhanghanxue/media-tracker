@@ -485,6 +485,26 @@ export async function bulkUpdateMedia(
 }
 
 /**
+ * Delete many rows at once (the selection bulk-delete action). Ids come from the
+ * client selection; the route validates them as positive integers, so the
+ * dynamic IN-list is injection-safe. Returns the number of rows actually
+ * removed (ids already gone don't count). R2 covers are left in place, same as
+ * the single-item delete.
+ */
+export async function bulkDeleteMedia(
+  db: D1Database,
+  ids: number[],
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await db
+    .prepare(`DELETE FROM media WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .run();
+  return result.meta.changes;
+}
+
+/**
  * Delete a row by id. Returns true if a row was removed, false if no row had
  * that id (→ 404). The R2 cover object is left in place — it's harmless, cheap,
  * and keyed by (source, external_id) so a future re-add reuses it.

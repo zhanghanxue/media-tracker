@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { MediaStatus } from "../../worker/db/schema";
+import { useBulkDeleteMedia } from "../hooks/useBulkDeleteMedia";
 import { useBulkUpdateMedia } from "../hooks/useBulkUpdateMedia";
 import { CollectionPicker } from "./CollectionPicker";
 
@@ -27,11 +28,19 @@ export function BulkActionBar({
 }) {
   const { t } = useTranslation();
   const bulk = useBulkUpdateMedia();
+  const del = useBulkDeleteMedia();
   const [showPicker, setShowPicker] = useState(false);
 
   const count = ids.length;
+  const busy = bulk.isPending || del.isPending;
   const apply = (patch: Parameters<typeof bulk.mutate>[0]["patch"]) => {
     bulk.mutate({ ids, patch }, { onSuccess: () => { setShowPicker(false); onClear(); } });
+  };
+  // Destructive — confirm first (matches the single-item / collection deletes).
+  const onDelete = () => {
+    if (count === 0) return;
+    if (!window.confirm(t("bulk.confirmDelete", { count }))) return;
+    del.mutate(ids, { onSuccess: () => { setShowPicker(false); onClear(); } });
   };
 
   return (
@@ -48,7 +57,7 @@ export function BulkActionBar({
 
         <button
           type="button"
-          disabled={count === 0 || bulk.isPending}
+          disabled={count === 0 || busy}
           onClick={() => setShowPicker((v) => !v)}
           className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
         >
@@ -58,7 +67,7 @@ export function BulkActionBar({
         <label className="flex items-center gap-1 text-xs text-zinc-400 light:text-zinc-500">
           {t("bulk.setStatus")}
           <select
-            disabled={count === 0 || bulk.isPending}
+            disabled={count === 0 || busy}
             value=""
             onChange={(e) => {
               if (e.target.value) apply({ status: e.target.value as MediaStatus });
@@ -73,6 +82,15 @@ export function BulkActionBar({
             ))}
           </select>
         </label>
+
+        <button
+          type="button"
+          disabled={count === 0 || busy}
+          onClick={onDelete}
+          className="rounded-md bg-red-600/90 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-40"
+        >
+          {t("bulk.delete")}
+        </button>
 
         <div className="ml-auto flex gap-2">
           {count > 0 && (

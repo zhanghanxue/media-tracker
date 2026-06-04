@@ -23,9 +23,12 @@ export function RefreshEpisodesButton() {
       onClick={() => m.mutate()}
       disabled={m.isPending}
       title={t("refresh.button")}
-      className="hidden rounded-md px-2 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 sm:block light:text-zinc-600 light:hover:bg-zinc-100"
+      aria-label={t("refresh.button")}
+      className="rounded-md px-2.5 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 sm:px-2 light:text-zinc-600 light:hover:bg-zinc-100"
     >
-      {label}
+      {/* Icon-only on mobile; the (state-dependent) label shows from sm up. */}
+      <span aria-hidden="true">{t("refresh.icon")}</span>
+      <span className="hidden sm:inline"> {label}</span>
     </button>
   );
 }

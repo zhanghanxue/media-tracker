@@ -77,31 +77,37 @@ export function App() {
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur light:border-zinc-200 light:bg-white/90">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-          <h1 className="text-lg font-semibold">{t("app.title")}</h1>
-          <div className="flex items-center gap-2">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4">
+          <h1 className="min-w-0 truncate text-lg font-semibold">{t("app.title")}</h1>
+          {/* Every control is icon-only below sm (the text label is hidden) so the
+              whole row fits a narrow phone; labels appear from sm up. */}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+              title={t("add.button")}
+              aria-label={t("add.button")}
+              className="rounded-md bg-blue-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-blue-500 sm:px-3"
             >
-              {t("add.button")}
+              <span aria-hidden="true">{t("add.icon")}</span>
+              <span className="hidden sm:inline"> {t("add.button")}</span>
             </button>
             <button
               type="button"
               onClick={() => setShowRecommendModal(true)}
-              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+              title={t("recommend.button")}
+              aria-label={t("recommend.button")}
+              className="rounded-md border border-zinc-700 px-2.5 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 sm:px-3 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
             >
-              {t("recommend.button")}
+              <span aria-hidden="true">{t("recommend.icon")}</span>
+              <span className="hidden sm:inline"> {t("recommend.button")}</span>
             </button>
-            {/* Always visible. Icon-only on mobile to save header width; the
-                text label appears from sm up (Refresh/Enrich stay desktop-only). */}
             <button
               type="button"
               onClick={() => setShowWhatsNewModal(true)}
               title={t("whatsNew.label")}
               aria-label={t("whatsNew.label")}
-              className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+              className="rounded-md border border-zinc-700 px-2.5 py-1.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 sm:px-3 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
             >
               <span aria-hidden="true">{t("whatsNew.icon")}</span>
               <span className="hidden sm:inline"> {t("whatsNew.label")}</span>
