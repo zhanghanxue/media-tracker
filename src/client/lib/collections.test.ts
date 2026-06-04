@@ -21,6 +21,7 @@ function rollup(id: string, over: Partial<CollectionRollup> = {}): CollectionRol
     direct_count: 0,
     completed_count: 0,
     planned_count: 0,
+    game_count: 0,
     latest_updated: null,
     earliest_release: null,
     sample_cover: null,
@@ -36,9 +37,9 @@ describe("subtreeRollup", () => {
   // MCU > Iron Man ; MCU > Thor ; Star Wars (separate)
   const collections = [col("mcu", null), col("im", "mcu"), col("thor", "mcu"), col("sw", null)];
   const rollups = new Map([
-    ["im", rollup("im", { direct_count: 3, completed_count: 3, planned_count: 0 })],
+    ["im", rollup("im", { direct_count: 3, completed_count: 3, planned_count: 0, game_count: 1 })],
     ["thor", rollup("thor", { direct_count: 2, completed_count: 0, planned_count: 2 })],
-    ["sw", rollup("sw", { direct_count: 5, completed_count: 1, planned_count: 4 })],
+    ["sw", rollup("sw", { direct_count: 5, completed_count: 1, planned_count: 4, game_count: 5 })],
   ]);
 
   it("sums direct counts across the whole subtree (incl. the root)", () => {
@@ -46,6 +47,7 @@ describe("subtreeRollup", () => {
     expect(r.count).toBe(5); // 3 (im) + 2 (thor); mcu itself has no direct items
     expect(r.completed).toBe(3);
     expect(r.planned).toBe(2);
+    expect(r.games).toBe(1); // 1 (im) + 0 (thor) — drives the all-game bar suppression
   });
 
   it("counts only the one collection when it has no children", () => {
@@ -53,6 +55,7 @@ describe("subtreeRollup", () => {
       count: 5,
       completed: 1,
       planned: 4,
+      games: 5, // all-game collection → MediaList suppresses the completion bar
       latestUpdated: null,
       earliestRelease: null,
     });

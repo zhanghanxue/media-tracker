@@ -5,6 +5,7 @@ import {
   applyAutoStart,
   applyCompletionFill,
   applyCompletionFillOnCreate,
+  applyPlannedReset,
   parsePatchMediaRequest,
 } from "./patch-media";
 import type { MediaInsert, MediaRow } from "../db/schema";
@@ -300,6 +301,49 @@ describe("applyCompletionFill", () => {
     const existing = row({ total_episodes: null, current_episode: 3 });
     const result = applyCompletionFill(existing, { status: "completed" });
     expect(result.current_episode).toBeUndefined();
+  });
+});
+
+describe("applyPlannedReset", () => {
+  it("clears current_episode when moved back to planned", () => {
+    const existing = row({ total_episodes: 26, current_episode: 12 });
+    const result = applyPlannedReset(existing, { status: "planned" });
+    expect(result.current_episode).toBeNull();
+  });
+
+  it("clears current_chapter for manga/light_novel", () => {
+    const existing = row({ type: "manga", total_chapters: 200, current_chapter: 40 });
+    const result = applyPlannedReset(existing, { status: "planned" });
+    expect(result.current_chapter).toBeNull();
+  });
+
+  it("leaves the totals (show metadata) untouched", () => {
+    const existing = row({ total_episodes: 26, current_episode: 12 });
+    const result = applyPlannedReset(existing, { status: "planned" });
+    expect("total_episodes" in result).toBe(false);
+  });
+
+  it("does nothing when the status isn't being set to planned", () => {
+    const existing = row({ total_episodes: 26, current_episode: 12 });
+    expect(applyPlannedReset(existing, { status: "paused" })).toEqual({
+      status: "paused",
+    });
+  });
+
+  it("respects an explicitly-set current in the same request", () => {
+    const existing = row({ current_episode: 12 });
+    const result = applyPlannedReset(existing, {
+      status: "planned",
+      current_episode: 3,
+    });
+    expect(result.current_episode).toBe(3);
+  });
+
+  it("adds nothing when there's no progress to clear", () => {
+    const existing = row({ current_episode: null, current_chapter: null });
+    expect(applyPlannedReset(existing, { status: "planned" })).toEqual({
+      status: "planned",
+    });
   });
 });
 

@@ -314,6 +314,32 @@ export function applyCompletionFill(
 }
 
 /**
+ * The reset twin of applyCompletionFill: when the caller moves an item back to
+ * "planned" (returning it to the backlog), clear its recorded progress — a
+ * planned item hasn't been started, so a leftover current_episode/current_chapter
+ * is stale. Clears whichever dimension currently holds a value; skips a dimension
+ * the same request set explicitly (manual override wins), and leaves the totals
+ * (show metadata, not progress) untouched. One-way: only fires for status "planned".
+ */
+export function applyPlannedReset(
+  existing: MediaRow,
+  patch: MediaPatch,
+): MediaPatch {
+  if (patch.status !== "planned") return patch;
+
+  const result = { ...patch };
+
+  if (!("current_episode" in patch) && existing.current_episode != null) {
+    result.current_episode = null;
+  }
+  if (!("current_chapter" in patch) && existing.current_chapter != null) {
+    result.current_chapter = null;
+  }
+
+  return result;
+}
+
+/**
  * The create-time twin of applyCompletionFill: when an item is ADDED with
  * status "completed", it's been fully consumed, so seed its progress to the
  * known total (the source mappers leave current_* null). Fills only the

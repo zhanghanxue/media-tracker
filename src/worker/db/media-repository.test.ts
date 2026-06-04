@@ -370,6 +370,7 @@ describe("selectCollectionRollups", () => {
     expect(s!.direct_count).toBe(2);
     expect(s!.planned_count).toBe(2); // ANIME_ROW defaults to "planned"
     expect(s!.completed_count).toBe(0);
+    expect(s!.game_count).toBe(0); // both items are animation
     expect(s!.earliest_release).toBe("2022-04-01"); // MIN across the two
     expect(s!.sample_cover).toBe("https://x/s1.jpg"); // first by sort_order
     expect(s!.sample_titles.map((t) => t.title_english)).toEqual([
@@ -378,6 +379,20 @@ describe("selectCollectionRollups", () => {
     ]);
     // Loose items form no rollup row.
     expect(rollups.some((r) => r.collection_id === null)).toBe(false);
+  });
+
+  it("counts direct game items into game_count (drives the all-game bar suppression)", async () => {
+    await insertCollection(env.DB, {
+      id: "col:g", name: null, parent_id: null, cover_url: null, sort_order: null,
+    });
+    await insertMedia(env.DB, makeRow({ external_id: "g1", collection_id: "col:g", type: "game" }));
+    await insertMedia(env.DB, makeRow({ external_id: "g2", collection_id: "col:g", type: "game" }));
+    await insertMedia(env.DB, makeRow({ external_id: "g3", collection_id: "col:g", type: "animation" }));
+
+    const rollups = await selectCollectionRollups(env.DB);
+    const g = rollups.find((r) => r.collection_id === "col:g")!;
+    expect(g.direct_count).toBe(3);
+    expect(g.game_count).toBe(2);
   });
 });
 

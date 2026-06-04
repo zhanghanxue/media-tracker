@@ -123,6 +123,10 @@ export interface CollectionRollup {
   // in-progress) by summing across the subtree.
   completed_count: number;
   planned_count: number;
+  // DIRECT items of type 'game' — lets the client suppress the completion bar on
+  // a collection whose whole subtree is games (item-completion is meaningful, but
+  // the user reads a progress bar there as an episode bar, which games lack).
+  game_count: number;
   latest_updated: string | null;
   earliest_release: string | null;
   sample_cover: string | null;
@@ -154,6 +158,7 @@ export async function selectCollectionRollups(
            COUNT(*)                                          AS direct_count,
            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
            SUM(CASE WHEN status = 'planned'   THEN 1 ELSE 0 END) AS planned_count,
+           SUM(CASE WHEN type = 'game'        THEN 1 ELSE 0 END) AS game_count,
            MAX(date_updated)                                 AS latest_updated,
            MIN(NULLIF(release_date, ''))                     AS earliest_release
     FROM media
@@ -185,6 +190,7 @@ export async function selectCollectionRollups(
         direct_count: number;
         completed_count: number;
         planned_count: number;
+        game_count: number;
         latest_updated: string | null;
         earliest_release: string | null;
       }>(),
@@ -208,6 +214,7 @@ export async function selectCollectionRollups(
       direct_count: r.direct_count,
       completed_count: r.completed_count,
       planned_count: r.planned_count,
+      game_count: r.game_count,
       latest_updated: r.latest_updated,
       earliest_release: r.earliest_release,
       sample_cover: null,
@@ -438,6 +445,37 @@ export async function bulkUpdateMedia(
   if (ids.length === 0 || keys.length === 0) return 0;
   const assignments = keys.map((k) => `${k} = ?`);
   const values = keys.map((k) => patch[k]);
+
+  // Per-row completion fill — the SQL twin of applyCompletionFill (patch-media.ts),
+  // which the single-item PATCH runs but bulk used to skip (so a bulk "set status →
+  // completed" left progress untouched, unlike editing one item). Each row has its
+  // own total, so the fill is a CASE expression rather than a precomputed value.
+  // Skip a dimension the caller set explicitly (manual override wins); CASE falls
+  // through to the existing current value when the total is unknown. These add no
+  // placeholders, so the bind order (`...values, ...ids`) is unchanged.
+  if (patch.status === "completed") {
+    if (!keys.includes("current_episode")) {
+      assignments.push(
+        "current_episode = CASE WHEN total_episodes IS NOT NULL THEN total_episodes ELSE current_episode END",
+      );
+    }
+    if (!keys.includes("current_chapter")) {
+      assignments.push(
+        "current_chapter = CASE WHEN total_chapters IS NOT NULL THEN total_chapters ELSE current_chapter END",
+      );
+    }
+  }
+
+  // Per-row planned reset — the SQL twin of applyPlannedReset (patch-media.ts):
+  // moving items back to "planned" clears their recorded progress (a planned item
+  // hasn't been started). Totals (show metadata) are left intact. Skip a dimension
+  // the caller set explicitly. Clearing an already-null value is a harmless no-op,
+  // so no CASE guard is needed.
+  if (patch.status === "planned") {
+    if (!keys.includes("current_episode")) assignments.push("current_episode = NULL");
+    if (!keys.includes("current_chapter")) assignments.push("current_chapter = NULL");
+  }
+
   const placeholders = ids.map(() => "?").join(", ");
   const result = await db
     .prepare(`UPDATE media SET ${assignments.join(", ")} WHERE id IN (${placeholders})`)

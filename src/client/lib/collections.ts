@@ -217,12 +217,14 @@ export function subtreeRollup(
   count: number;
   completed: number;
   planned: number;
+  games: number;
   latestUpdated: string | null;
   earliestRelease: string | null;
 } {
   let count = 0;
   let completed = 0;
   let planned = 0;
+  let games = 0;
   let latestUpdated: string | null = null;
   let earliestRelease: string | null = null;
   for (const id of subtreeCollectionIds(collections, rootId)) {
@@ -231,6 +233,7 @@ export function subtreeRollup(
     count += r.direct_count;
     completed += r.completed_count;
     planned += r.planned_count;
+    games += r.game_count;
     if (r.latest_updated && (!latestUpdated || r.latest_updated > latestUpdated)) {
       latestUpdated = r.latest_updated; // newest wins (ISO datetimes sort lexically)
     }
@@ -241,7 +244,7 @@ export function subtreeRollup(
       earliestRelease = r.earliest_release; // oldest release wins
     }
   }
-  return { count, completed, planned, latestUpdated, earliestRelease };
+  return { count, completed, planned, games, latestUpdated, earliestRelease };
 }
 
 /** Card status badge from subtree counts: all-done → completed, all-planned →

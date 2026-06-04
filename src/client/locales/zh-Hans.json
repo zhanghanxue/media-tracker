@@ -247,6 +247,7 @@
     "section": "合集",
     "subCount_other": "{{count}} 个子合集",
     "itemCount_other": "{{count}} 个条目",
+    "itemsDone": "已看完 {{completed}} / {{total}}",
     "name": "名称",
     "namePlaceholder": "合集名称（留空＝自动）",
     "nameHint": "留空则根据内容自动命名。",

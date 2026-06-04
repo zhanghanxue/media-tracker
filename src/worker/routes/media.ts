@@ -67,6 +67,7 @@ import {
   applyAutoStart,
   applyCompletionFill,
   applyCompletionFillOnCreate,
+  applyPlannedReset,
   parsePatchMediaRequest,
 } from "../api/patch-media";
 import { uploadCoverToR2 } from "../storage/covers";
@@ -363,13 +364,18 @@ mediaRoutes.patch("/:id", async (c) => {
     return c.json({ error: `no media with id ${idParam}` }, 404);
   }
 
-  // Status conveniences (each a no-op when status was set explicitly): reaching
-  // the total auto-completes; first progress on a planned item starts it; and
-  // marking completed fills the count up to the total. Order matters — complete
-  // is checked before start so hitting the total in one go completes (not starts).
-  const finalPatch = applyCompletionFill(
+  // Status conveniences (each a no-op unless its trigger status applies): reaching
+  // the total auto-completes; first progress on a planned item starts it; marking
+  // completed fills the count up to the total; and moving back to planned clears
+  // the recorded progress. Order matters — complete is checked before start so
+  // hitting the total in one go completes (not starts); fill/reset key off mutually
+  // exclusive statuses (completed vs planned), so their order is immaterial.
+  const finalPatch = applyPlannedReset(
     existing,
-    applyAutoStart(existing, applyAutoComplete(existing, parsed.value)),
+    applyCompletionFill(
+      existing,
+      applyAutoStart(existing, applyAutoComplete(existing, parsed.value)),
+    ),
   );
   const updated = await updateMedia(c.env.DB, id, finalPatch);
   if (updated === null) {
