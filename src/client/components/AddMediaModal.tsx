@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
+import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import { useAniListSearch } from "../hooks/useAniListSearch";
 import { useBangumiSearch } from "../hooks/useBangumiSearch";
 import { useTmdbSearch } from "../hooks/useTmdbSearch";
@@ -53,6 +54,8 @@ function metaLine(item: AniListSearchItem): string {
 
 export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
+  useCloseOnBack(onClose);
   const [source, setSource] = useState<Source>("anilist");
   const [searchType, setSearchType] = useState<SearchType>("ANIME");
   // Bangumi has its own sub-type: 2 anime/donghua · 1 book · 6 live-action (影视).

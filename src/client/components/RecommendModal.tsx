@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import {
   useRecommendations,
   useAddRecommendation,
@@ -14,6 +15,8 @@ const TYPES: RecommendType[] = ["animation", "movie", "drama", "variety", "game"
 
 export function RecommendModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
+  useCloseOnBack(onClose);
   const [type, setType] = useState<RecommendType | null>(null);
   const recs = useRecommendations(type);
 

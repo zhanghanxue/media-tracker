@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import { useWhatsNew } from "../hooks/useWhatsNew";
 import type { ScanScope, Suggestion } from "../lib/whatsNew";
 
@@ -14,6 +15,8 @@ const SCOPES: ScanScope[] = ["all", "animation", "drama", "variety"];
 // reuses the add flow via the hook. Mirrors the other modals' shell/styles.
 export function WhatsNewModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
+  useCloseOnBack(onClose);
   const { phase, progress, suggestions, checked, scan, add, dismiss } = useWhatsNew();
   // Remember which section is being scanned, to label its button "Scanning…".
   const [activeScope, setActiveScope] = useState<ScanScope | null>(null);

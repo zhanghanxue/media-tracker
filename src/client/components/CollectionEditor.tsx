@@ -7,6 +7,7 @@ import { splitGenres } from "../../worker/sources/genres";
 import { REGION_FACETS, TYPE_FACETS } from "../lib/facets";
 import { fetchMediaList, type MediaFilters } from "../lib/api";
 import { uiLangFromI18n } from "../lib/displayTitle";
+import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import { useCollections } from "../hooks/useCollections";
 import {
   collectionName,
@@ -50,6 +51,10 @@ export function CollectionEditor({
 }) {
   const { i18n } = useTranslation();
   const lang = uiLangFromI18n(i18n.language);
+  // Mobile back-swipe (history back) closes the editor instead of leaving the
+  // app. Lives on this wrapper (mounted = open), not the inner form, so the
+  // brief data-loading gap is covered too.
+  useCloseOnBack(onClose);
   const { data: allCollections } = useCollections();
   const { data: library } = useQuery({
     queryKey: ["media", ALL_FILTERS, null],

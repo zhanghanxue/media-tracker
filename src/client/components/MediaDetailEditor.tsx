@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
+import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
 import { useRefreshCover } from "../hooks/useRefreshCover";
@@ -72,6 +73,8 @@ export function MediaDetailEditor({
 }) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  // Mobile back-swipe (history back) closes the editor instead of leaving the app.
+  useCloseOnBack(onClose);
   const update = useUpdateMedia();
   const del = useDeleteMedia();
   const refreshCover = useRefreshCover();
