@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useLevelItems } from "../hooks/useLevelItems";
@@ -36,6 +36,27 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   // Where we are in the tree (null = Home). Filtering keeps the tree — it just
   // narrows it to collections (and loose items) that contain a match.
   const [currentId, setCurrentId] = useState<string | null>(null);
+
+  // Drill-down navigation goes through the History API so the browser's back
+  // gesture (mobile edge-swipe / hardware back) walks back out level by level
+  // instead of leaving the site. All in-app navigation (opening a collection,
+  // breadcrumb jumps) must use navigateTo, never setCurrentId directly.
+  const navigateTo = (id: string | null) => {
+    if (id === currentId) return;
+    window.history.pushState({ collectionId: id }, "");
+    setCurrentId(id);
+  };
+  useEffect(() => {
+    // Restores the level for BOTH directions (back and forward). Overlay
+    // entries (useCloseOnBack) spread the underlying state, so their
+    // collectionId matches the level they were opened from → no-op here.
+    const onPop = (e: PopStateEvent) => {
+      const state = e.state as { collectionId?: string | null } | null;
+      setCurrentId(state?.collectionId ?? null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [editing, setEditing] = useState<Collection | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -226,7 +247,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
           z below the header (z-10); opaque bg + a little vertical padding so
           cards don't show through when it's pinned. */}
       <div className="sticky top-14 z-[5] -mx-1 mb-4 flex items-center justify-between gap-2 bg-zinc-950/95 px-1 py-2 backdrop-blur light:bg-zinc-50/95">
-        <Breadcrumb path={path} onNavigate={setCurrentId} homeLabel={t("collection.home")} />
+        <Breadcrumb path={path} onNavigate={navigateTo} homeLabel={t("collection.home")} />
         <div className="flex shrink-0 gap-2">
           {!selectMode && (
             <button
@@ -321,7 +342,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
                       // Drill in but KEEP the active search — the collection
                       // then shows only its matching items (the reason you
                       // opened it), not its full contents.
-                      setCurrentId(col.id);
+                      navigateTo(col.id);
                     }}
                     onEdit={() => setEditing(col)}
                   />
@@ -368,7 +389,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
           onClose={() => setEditing(null)}
           onDeleted={() => {
             setEditing(null);
-            setCurrentId(null);
+            navigateTo(null);
           }}
         />
       )}
