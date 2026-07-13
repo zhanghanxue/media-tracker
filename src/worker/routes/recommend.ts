@@ -32,6 +32,7 @@ import {
   type TmdbSearchResultRaw,
 } from "../sources/tmdb";
 import { getIgdbSimilarGames, igdbCoverUrl } from "../sources/igdb";
+import { pickHanAlias } from "../sources/igdb-alias";
 import type { MediaRow } from "../db/schema";
 
 export const recommendRoutes = new Hono<{
@@ -39,10 +40,12 @@ export const recommendRoutes = new Hono<{
   Variables: AuthVariables;
 }>();
 
-// How many library items to seed from, and how many recs to return. Seeds are
-// capped so the external-call count stays bounded regardless of library size.
+// How many library items to seed from, and how deep a ranked pool to return.
+// Seeds are capped so the external-call count stays bounded regardless of
+// library size. The pool is several UI batches — the client shows 15 at a time
+// and its "show another batch" button rotates through the rest without a refetch.
 const SEED_LIMIT = 20;
-const RESULT_LIMIT = 15;
+const POOL_LIMIT = 60;
 
 // The worker-served types and the source each maps to. `animation` is absent on
 // purpose — it's browser-side (AniList). movie/drama/variety → TMDB (drama/variety
@@ -134,6 +137,9 @@ recommendRoutes.get("/", async (c) => {
             source: "igdb",
             id: String(g.id),
             title: g.name ?? `#${g.id}`,
+            titleChinese: pickHanAlias(
+              (g.alternative_names ?? []).map((a) => a.name),
+            ),
             coverUrl: igdbCoverUrl(g.cover?.image_id),
             score: g.rating ?? 0,
             seedTitle: seedTitle(seed),
@@ -155,7 +161,7 @@ recommendRoutes.get("/", async (c) => {
     excludedIds: new Set(keys),
     excludedTitles,
     normalize: normalizeTitle,
-    limit: RESULT_LIMIT,
+    limit: POOL_LIMIT,
   });
 
   return c.json({ recommendations });

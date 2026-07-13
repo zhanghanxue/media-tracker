@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getIgdbDetail,
+  getIgdbSimilarGames,
   igdbCoverUrl,
   resetIgdbTokenCache,
   searchIgdb,
@@ -91,6 +92,41 @@ describe("getIgdbDetail", () => {
   it("returns null when IGDB returns an empty array (no such id)", async () => {
     const fetchMock = makeFetch([]);
     expect(await getIgdbDetail(999, { ...CREDS, fetch: fetchMock })).toBeNull();
+  });
+});
+
+describe("getIgdbSimilarGames", () => {
+  it("expands similar_games and requests alternative_names (for Chinese display titles)", async () => {
+    const fetchMock = makeFetch([
+      {
+        id: 1942,
+        name: "The Witcher 3",
+        similar_games: [
+          {
+            id: 119171,
+            name: "Wandering Sword",
+            alternative_names: [{ name: "逸剑风云决" }],
+          },
+        ],
+      } as IgdbGame,
+    ]);
+
+    const similar = await getIgdbSimilarGames(1942, { ...CREDS, fetch: fetchMock });
+
+    expect(similar).toHaveLength(1);
+    expect(similar[0]!.alternative_names?.[0]?.name).toBe("逸剑风云决");
+
+    const gamesCall = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes("api.igdb.com"),
+    )!;
+    expect(String((gamesCall[1] as RequestInit).body)).toContain(
+      "similar_games.alternative_names.name",
+    );
+  });
+
+  it("returns [] when the game has no similar_games / isn't found", async () => {
+    const fetchMock = makeFetch([]);
+    expect(await getIgdbSimilarGames(1, { ...CREDS, fetch: fetchMock })).toEqual([]);
   });
 });
 

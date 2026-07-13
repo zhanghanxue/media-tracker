@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useCloseOnBack } from "../hooks/useCloseOnBack";
@@ -6,19 +6,47 @@ import {
   useRecommendations,
   useAddRecommendation,
 } from "../hooks/useRecommendations";
+import { useRecommendChineseTitles } from "../hooks/useRecommendChineseTitles";
+import { uiLangFromI18n } from "../lib/displayTitle";
 import type { Recommendation, RecommendType } from "../lib/recommend";
 
-// Feature B UI. A type row → "Recommend" → a grid of 10–15 cards (cover, title,
+// Feature B UI. A type row → "Recommend" → a grid of 15 cards (cover, title,
 // "because you have …", Add). Standalone (does NOT touch the Add modal); reuses
 // the add flow via useAddRecommendation. Mirrors AddMediaModal's shell/styles.
+// The fetch returns a ranked pool of up to 60; "换一批" rotates through it in
+// batches of 15 (wrapping) without refetching.
 const TYPES: RecommendType[] = ["animation", "movie", "drama", "variety", "game"];
+const BATCH = 15;
 
 export function RecommendModal({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Mobile back-swipe (history back) closes the modal instead of leaving the app.
   useCloseOnBack(onClose);
   const [type, setType] = useState<RecommendType | null>(null);
+  const [offset, setOffset] = useState(0);
   const recs = useRecommendations(type);
+
+  const pool = recs.data ?? [];
+  // The pool can shrink under the offset (adding a card refetches the exclusion).
+  const safeOffset = offset < pool.length ? offset : 0;
+  // Memoized (stable identity) so the Chinese-title effect doesn't refire per render.
+  const visible = useMemo(
+    () => (recs.data ?? []).slice(safeOffset, safeOffset + BATCH),
+    [recs.data, safeOffset],
+  );
+
+  // AniList cards get their Chinese titles resolved from Bangumi in the
+  // background (Chinese UI only); cards render native title until then.
+  const lang = uiLangFromI18n(i18n.language);
+  const resolvedCn = useRecommendChineseTitles(visible, lang === "zh");
+
+  const cardTitle = (rec: Recommendation): string =>
+    lang === "zh"
+      ? (resolvedCn[`${rec.source}:${rec.id}`] ??
+        rec.titleChinese ??
+        rec.titleNative ??
+        rec.title)
+      : rec.title;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -62,17 +90,34 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
           <p className="text-xs text-zinc-500">{t("recommend.intro")}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {TYPES.map((ty) => (
               <button
                 key={ty}
                 type="button"
-                onClick={() => setType(ty)}
+                onClick={() => {
+                  setType(ty);
+                  setOffset(0);
+                }}
                 className={tabClass(type === ty)}
               >
                 {t(`type.${ty}`)}
               </button>
             ))}
+            {pool.length > BATCH && (
+              <button
+                type="button"
+                onClick={() =>
+                  setOffset(
+                    safeOffset + BATCH >= pool.length ? 0 : safeOffset + BATCH,
+                  )
+                }
+                className="ml-auto rounded-md px-3 py-1.5 text-sm text-blue-400 hover:bg-zinc-800 light:text-blue-600 light:hover:bg-zinc-100"
+              >
+                {t("recommend.shuffle")} ({Math.floor(safeOffset / BATCH) + 1}/
+                {Math.ceil(pool.length / BATCH)})
+              </button>
+            )}
           </div>
         </div>
 
@@ -98,14 +143,18 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
                 {t("recommend.retry")}
               </button>
             </div>
-          ) : recs.data.length === 0 ? (
+          ) : pool.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
               {t("recommend.empty")}
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {recs.data.map((rec) => (
-                <RecommendCard key={`${rec.source}:${rec.id}`} rec={rec} />
+              {visible.map((rec) => (
+                <RecommendCard
+                  key={`${rec.source}:${rec.id}`}
+                  rec={rec}
+                  title={cardTitle(rec)}
+                />
               ))}
             </div>
           )}
@@ -115,7 +164,7 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function RecommendCard({ rec }: { rec: Recommendation }) {
+function RecommendCard({ rec, title }: { rec: Recommendation; title: string }) {
   const { t } = useTranslation();
   const add = useAddRecommendation();
   const [added, setAdded] = useState(false);
@@ -133,8 +182,8 @@ function RecommendCard({ rec }: { rec: Recommendation }) {
         )}
       </div>
       <div className="space-y-1 p-2">
-        <h3 className="line-clamp-2 text-sm font-medium leading-tight" title={rec.title}>
-          {rec.title}
+        <h3 className="line-clamp-2 text-sm font-medium leading-tight" title={title}>
+          {title}
         </h3>
         <p
           className="line-clamp-2 text-[11px] text-zinc-500"

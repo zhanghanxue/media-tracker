@@ -3,6 +3,7 @@
 // only { id, consumption_mode, platform } and the Worker fetches detail.
 
 import type { IgdbGame } from "../../worker/sources/igdb";
+import { pickHanAlias } from "../../worker/sources/igdb-alias";
 import type { MediaPlatform } from "../../worker/db/schema";
 
 export type { IgdbGame };
@@ -25,22 +26,11 @@ export function igdbYear(game: IgdbGame): number | null {
 
 /**
  * A CJK alternative title for the game (so a Chinese search result is
- * recognizable next to its English `name`), or null. Picks the first alt-name
- * that's predominantly CJK and isn't just the English name again.
+ * recognizable next to its English `name`), or null. Selection rules live in
+ * the shared pickHanAlias (the recommendation route uses it too).
  */
 export function igdbChineseAlias(game: IgdbGame): string | null {
-  const candidates = (game.alternative_names ?? [])
-    .map((a) => (a.name ?? "").trim())
-    // ≥2 Han ideographs and NO kana — kana means it's the Japanese title, not
-    // Chinese (饿殍：明末千里行 ✓ vs 飢えた子羊 ✗).
-    .filter(
-      (s) =>
-        (s.match(/[㐀-鿿]/g) ?? []).length >= 2 && !/[぀-ヿ]/.test(s),
-    );
-  if (candidates.length === 0) return null;
-  // Prefer the cleanest title — the shortest tends to be the bare name
-  // (逸剑风云决) over a descriptive variant (逸剑风云决 (中日英韩文版) - …).
-  return candidates.sort((a, b) => a.length - b.length)[0]!;
+  return pickHanAlias((game.alternative_names ?? []).map((a) => a.name));
 }
 
 /** The game's platforms as a short display string (e.g. "PC, PS5, Switch"). */

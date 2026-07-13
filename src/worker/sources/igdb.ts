@@ -180,15 +180,17 @@ export async function getIgdbDetail(
 }
 
 // Feature B: the games IGDB considers similar to `id`, as addable candidates
-// (id + name + cover + rating each). One request, expanding the similar_games
-// connection. Returns [] when the game has none / isn't found.
+// (id + name + cover + rating each, plus alternative_names so the panel can
+// show a Chinese title). One request, expanding the similar_games connection.
+// Returns [] when the game has none / isn't found.
 export async function getIgdbSimilarGames(
   id: number,
   options: IgdbClientOptions,
 ): Promise<IgdbGame[]> {
   const body =
     `fields similar_games.name,similar_games.cover.image_id,` +
-    `similar_games.first_release_date,similar_games.rating;` +
+    `similar_games.first_release_date,similar_games.rating,` +
+    `similar_games.alternative_names.name;` +
     ` where id = ${id};`;
   const results = await igdbRequest(body, options);
   return results[0]?.similar_games ?? [];

@@ -48,33 +48,40 @@ export function needsChineseTitle(row: MediaRow): boolean {
   );
 }
 
+/** The title variants a Bangumi lookup matches against. */
+export interface TitleVariants {
+  native: string | null;
+  romaji: string | null;
+  english: string | null;
+}
+
 /**
- * Look up a Simplified Chinese title for one row via Bangumi. Returns null when
- * no confident match is found — caller leaves the row as-is. Throws only on a
+ * Look up a Simplified Chinese title for a work by its title variants via
+ * Bangumi. Returns null when no confident match is found. Throws only on a
  * hard error (individual attempts that error are skipped).
  *
  * Strategy (the two Bangumi search endpoints are complementary): query v0 by
  * romaji/English first — it ranks the main title first and handles Latin
  * queries (incl. romaji of Japanese works) — then fall back to the legacy
  * endpoint by the native (kanji) title, which v0 can't search. Each result set
- * is matched against ALL the row's title variants (normalized + prefix).
+ * is matched against ALL the title variants (normalized + prefix).
  */
-export async function lookupChineseTitle(row: MediaRow): Promise<string | null> {
-  const bgmType = TYPE_TO_BANGUMI[row.type];
-  if (!bgmType) return null;
-
-  const variants = [row.title_native, row.title_romaji, row.title_english];
+export async function lookupChineseTitleByTitles(
+  titles: TitleVariants,
+  bgmType: BangumiType,
+): Promise<string | null> {
+  const variants = [titles.native, titles.romaji, titles.english];
 
   const attempts: Array<() => Promise<BangumiSubject[]>> = [];
-  if (row.title_romaji) {
-    attempts.push(() => searchBangumiV0(row.title_romaji!, bgmType, { max: 25 }));
+  if (titles.romaji) {
+    attempts.push(() => searchBangumiV0(titles.romaji!, bgmType, { max: 25 }));
   }
-  if (row.title_english && row.title_english !== row.title_romaji) {
-    attempts.push(() => searchBangumiV0(row.title_english!, bgmType, { max: 25 }));
+  if (titles.english && titles.english !== titles.romaji) {
+    attempts.push(() => searchBangumiV0(titles.english!, bgmType, { max: 25 }));
   }
-  if (row.title_native) {
+  if (titles.native) {
     attempts.push(() =>
-      searchBangumiLegacy(row.title_native!, bgmType, { max: 25 }),
+      searchBangumiLegacy(titles.native!, bgmType, { max: 25 }),
     );
   }
 
@@ -89,6 +96,20 @@ export async function lookupChineseTitle(row: MediaRow): Promise<string | null> 
     if (raw) return toSimplified(raw);
   }
   return null;
+}
+
+/** lookupChineseTitleByTitles for a library row (the enrich/backfill entry). */
+export async function lookupChineseTitle(row: MediaRow): Promise<string | null> {
+  const bgmType = TYPE_TO_BANGUMI[row.type];
+  if (!bgmType) return null;
+  return lookupChineseTitleByTitles(
+    {
+      native: row.title_native,
+      romaji: row.title_romaji,
+      english: row.title_english,
+    },
+    bgmType,
+  );
 }
 
 /** PATCH just the title_chinese field of a row. */

@@ -27,7 +27,8 @@
     "retry": "Try again",
     "empty": "No recommendations yet — add a few completed titles of this type first.",
     "because": "because you have {{title}}",
-    "added": "Added ✓"
+    "added": "Added ✓",
+    "shuffle": "Show more"
   },
   "whatsNew": {
     "icon": "🔔",
