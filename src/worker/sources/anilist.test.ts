@@ -4,6 +4,7 @@ import {
   AniListError,
   getAniListDetail,
   getAniListLatestEpisode,
+  getAniListRecommendations,
   getAniListRelations,
   searchAniList,
 } from "./anilist";
@@ -171,6 +172,71 @@ describe("getAniListRelations", () => {
       .mockResolvedValue(jsonResponse({ data: { Media: null } }));
 
     expect(await getAniListRelations(1, { fetch: fetchMock })).toEqual([]);
+  });
+});
+
+describe("getAniListRecommendations", () => {
+  const recommendationsResponse = {
+    data: {
+      Media: {
+        recommendations: {
+          edges: [
+            {
+              node: {
+                rating: 120,
+                mediaRecommendation: {
+                  id: 104578,
+                  type: "ANIME",
+                  format: "TV",
+                  title: { romaji: "Vinland Saga", english: "Vinland Saga", native: "ヴィンランド・サガ" },
+                  coverImage: { extraLarge: "https://s4.anilist.co/vinland.jpg" },
+                  averageScore: 86,
+                },
+              },
+            },
+            { node: { rating: null, mediaRecommendation: null } },
+          ],
+        },
+      },
+    },
+  };
+
+  it("returns the recommended media with the pairing rating, skipping null nodes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(recommendationsResponse));
+
+    const recs = await getAniListRecommendations(16498, { fetch: fetchMock });
+
+    expect(recs).toHaveLength(1);
+    expect(recs[0]!.media.id).toBe(104578);
+    expect(recs[0]!.rating).toBe(120);
+  });
+
+  it("requests the full media fields the add-flow mapper relies on (regression: a slim node made every recommendation add 400)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(recommendationsResponse));
+
+    await getAniListRecommendations(16498, { fetch: fetchMock });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    // aniListToMediaRow needs `format` to classify (undefined → throw → 400) and
+    // these to populate the row; the query must ask for all of them.
+    expect(body.query).toContain("format");
+    expect(body.query).toContain("countryOfOrigin");
+    expect(body.query).toContain("episodes");
+    expect(body.query).toContain("startDate");
+    expect(body.query).toContain("genres");
+    expect(body.query).toContain("coverImage");
+  });
+
+  it("returns [] when the Media is null / has no recommendations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: { Media: null } }));
+
+    expect(await getAniListRecommendations(1, { fetch: fetchMock })).toEqual([]);
   });
 });
 

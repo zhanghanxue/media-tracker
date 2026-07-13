@@ -156,6 +156,11 @@ function RecommendCard({ rec }: { rec: Recommendation }) {
               ? t("add.adding")
               : t("add.addButton")}
         </button>
+        {add.isError && !added && (
+          <p className="text-[11px] text-red-400 light:text-red-600">
+            {t("add.addFailed")}
+          </p>
+        )}
       </div>
     </div>
   );
