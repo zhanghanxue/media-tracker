@@ -82,6 +82,19 @@ describe("aggregateRecommendations", () => {
     const many = Array.from({ length: 20 }, (_, i) => cand({ id: `movie:${i}`, title: `T${i}` }));
     expect(aggregateRecommendations(many, { ...base, limit: 5 })).toHaveLength(5);
   });
+
+  it("passes titleChinese through (null when the candidate has none)", () => {
+    const out = aggregateRecommendations(
+      [
+        cand({ source: "igdb", id: "1", title: "Wandering Sword", titleChinese: "逸剑风云决" }),
+        cand({ source: "igdb", id: "2", title: "No Alias" }),
+      ],
+      base,
+    );
+    const byId = new Map(out.map((r) => [r.id, r.titleChinese]));
+    expect(byId.get("1")).toBe("逸剑风云决");
+    expect(byId.get("2")).toBeNull();
+  });
 });
 
 describe("sourceIdOf", () => {

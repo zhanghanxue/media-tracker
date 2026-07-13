@@ -12,6 +12,9 @@ export interface RecCandidate {
    *  library stores external_id, so library-exclusion compares like-for-like. */
   id: string;
   title: string;
+  /** Chinese display title when the source ships one (IGDB alt-name; possibly
+   *  Traditional — the browser normalizes). TMDB titles are already zh-CN. */
+  titleChinese?: string | null;
   coverUrl: string | null;
   /** Source-provided affinity (TMDB vote_average, IGDB/AniList rating). Tiebreak. */
   score: number;
@@ -23,6 +26,7 @@ export interface RankedRecommendation {
   source: string;
   id: string;
   title: string;
+  titleChinese?: string | null;
   coverUrl: string | null;
   /** How many distinct seeds surfaced this candidate — the primary ranking signal. */
   count: number;
@@ -88,6 +92,7 @@ export function aggregateRecommendations(
       source: g.sample.source,
       id: g.sample.id,
       title: g.sample.title,
+      titleChinese: g.sample.titleChinese ?? null,
       coverUrl: g.sample.coverUrl,
       count: g.count,
       becauseTitle: g.bestSeed,

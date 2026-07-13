@@ -27,7 +27,8 @@
     "retry": "重试",
     "empty": "暂无推荐 —— 先添加几部该类型的已完成作品。",
     "because": "因为你有《{{title}}》",
-    "added": "已添加 ✓"
+    "added": "已添加 ✓",
+    "shuffle": "换一批"
   },
   "whatsNew": {
     "icon": "🔔",

@@ -15,6 +15,7 @@ import {
   type RankedRecommendation,
 } from "../../worker/api/recommend";
 import { normalizeTitle } from "../../worker/sources/bangumi-mapper";
+import { toSimplified } from "./toSimplified";
 import type { MediaListResponse, MediaRow } from "./types";
 
 export type RecommendType = "animation" | "movie" | "drama" | "variety" | "game";
@@ -26,6 +27,13 @@ export interface Recommendation {
   /** Stable React key + dedup id (source-native; TMDB kind-prefixed). */
   id: string;
   title: string;
+  /** Chinese display title when the source ships one (IGDB alt-name, Simplified
+   *  by fetch time; TMDB titles are already zh so they stay in `title`). AniList
+   *  has none — the panel backfills those from Bangumi as they resolve. */
+  titleChinese: string | null;
+  /** Native (Japanese) title — the zh-UI fallback while no Chinese title is
+   *  known, mirroring displayTitle's chinese ?? native ?? english chain. */
+  titleNative: string | null;
   coverUrl: string | null;
   /** "because you have …" — the seed that surfaced it. */
   becauseTitle: string;
@@ -36,8 +44,10 @@ export interface Recommendation {
     | { source: "igdb"; id: number };
 }
 
+// Seeds capped to bound AniList calls; the ranked pool is several UI batches
+// (the panel shows 15 at a time and rotates without recomputing).
 const SEED_LIMIT = 20;
-const RESULT_LIMIT = 15;
+const POOL_LIMIT = 60;
 
 // How many top library items (completed first, then in_progress, newest within)
 // to seed anime recs from. Mirrors the Worker's selectRecommendationSeeds.
@@ -128,7 +138,7 @@ async function recommendAnime(): Promise<Recommendation[]> {
     excludedIds,
     excludedTitles,
     normalize: normalizeTitle,
-    limit: RESULT_LIMIT,
+    limit: POOL_LIMIT,
   });
 
   return ranked.map((r) => toRecommendation(r, mediaById));
@@ -145,6 +155,8 @@ function toRecommendation(
     source: "anilist",
     id: r.id,
     title: r.title,
+    titleChinese: null, // AniList ships none; the panel backfills from Bangumi.
+    titleNative: media.title.native,
     coverUrl: r.coverUrl,
     becauseTitle: r.becauseTitle,
     addRef: { source: "anilist", media },
@@ -156,11 +168,14 @@ function toRecommendation(
 function toWorkerRecommendation(r: RankedRecommendation): Recommendation {
   if (r.source === "tmdb") {
     // id is "movie:603" | "tv:1399" | "tv:1399:s2"; recs are whole shows/movies.
+    // TMDB titles arrive zh-CN-localized already, so `title` needs no variant.
     const [kind, num] = r.id.split(":");
     return {
       source: "tmdb",
       id: r.id,
       title: r.title,
+      titleChinese: null,
+      titleNative: null,
       coverUrl: r.coverUrl,
       becauseTitle: r.becauseTitle,
       addRef: { source: "tmdb", id: Number(num), kind: kind === "movie" ? "movie" : "tv" },
@@ -170,6 +185,8 @@ function toWorkerRecommendation(r: RankedRecommendation): Recommendation {
     source: "igdb",
     id: r.id,
     title: r.title,
+    titleChinese: r.titleChinese ?? null,
+    titleNative: null,
     coverUrl: r.coverUrl,
     becauseTitle: r.becauseTitle,
     addRef: { source: "igdb", id: Number(r.id) },
@@ -186,5 +203,13 @@ export async function fetchRecommendations(
   const { recommendations } = (await res.json()) as {
     recommendations: RankedRecommendation[];
   };
-  return recommendations.map(toWorkerRecommendation);
+  // IGDB alt-name titles can be Traditional; normalize to Simplified like every
+  // other title we display (OpenCC is browser-only, hence here not the Worker).
+  return Promise.all(
+    recommendations.map(toWorkerRecommendation).map(async (rec) =>
+      rec.titleChinese
+        ? { ...rec, titleChinese: await toSimplified(rec.titleChinese) }
+        : rec,
+    ),
+  );
 }
