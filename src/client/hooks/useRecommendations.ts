@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   fetchRecommendations,
+  removeFromRecommendationPools,
   type Recommendation,
   type RecommendType,
 } from "../lib/recommend";
@@ -44,16 +45,17 @@ function toAddInput(rec: Recommendation, status: MediaStatus): AddMediaInput {
   }
 }
 
-// Add a recommended item. Invalidates the library (new card appears) + the
-// recommendations cache (the added item drops off subsequent lists via the
-// library-exclusion filter).
+// Add a recommended item. Invalidates the library (new card appears) and drops
+// the item from the cached recommendation pools directly — NOT via invalidation,
+// which would refetch the whole animation pipeline (slow AniList fan-out) while
+// the stale pool keeps showing the added card. See removeFromRecommendationPools.
 export function useAddRecommendation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (rec: Recommendation) => addMedia(toAddInput(rec, "planned")),
-    onSuccess: () => {
+    onSuccess: (_inserted, rec) => {
       void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
-      void queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      removeFromRecommendationPools(queryClient, rec);
     },
   });
 }

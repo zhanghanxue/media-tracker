@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 
 import { lookupChineseTitleByTitles } from "../lib/enrich";
-import type { Recommendation } from "../lib/recommend";
+import { chineseLookupPlan, type Recommendation } from "../lib/recommend";
 
-// Chinese titles for AniList recommendation cards. AniList ships no Chinese
-// titles, so (like the library's enrich backfill) we resolve them from Bangumi —
+// Chinese titles for recommendation cards whose source ships none — AniList
+// (no Chinese titles at all) and IGDB (alternative_names cover almost no
+// long-tail games). Resolved from Bangumi like the library's enrich backfill,
 // but display-only: nothing is persisted, the add flow stays untouched (the
 // added row gets its real title_chinese from the add-time auto-fill).
+// chineseLookupPlan decides per card what to search.
 //
 // Lookups run SEQUENTIALLY over the visible cards (gentle on Bangumi, same
 // policy as useEnrichTitles) and fill in as they land; the card shows the
-// native title until then. Results — including misses, so a title with no
-// Bangumi match isn't retried every batch — are cached for the session.
+// native/English title until then. Results — including misses, so a title with
+// no Bangumi match isn't retried every batch — are cached for the session.
 const cache = new Map<string, string | null>();
 
 const recKey = (rec: Recommendation) => `${rec.source}:${rec.id}`;
@@ -33,24 +35,16 @@ export function useRecommendChineseTitles(
 
     void (async () => {
       for (const rec of recs) {
-        // Only AniList cards need this; the other sources ship Chinese already.
-        if (rec.addRef.source !== "anilist" || rec.titleChinese) continue;
+        const plan = chineseLookupPlan(rec);
+        if (!plan) continue; // has a Chinese title already, or TMDB (already zh)
         const key = recKey(rec);
 
         if (!cache.has(key)) {
-          const { title, type } = rec.addRef.media;
           let cn: string | null = null;
           try {
-            cn = await lookupChineseTitleByTitles(
-              {
-                native: title.native,
-                romaji: title.romaji,
-                english: title.english,
-              },
-              type === "MANGA" ? 1 : 2,
-            );
+            cn = await lookupChineseTitleByTitles(plan.titles, plan.bgmType);
           } catch {
-            cn = null; // Bangumi hiccup — the card keeps its native title
+            cn = null; // Bangumi hiccup — the card keeps its native/English title
           }
           cache.set(key, cn);
         }
