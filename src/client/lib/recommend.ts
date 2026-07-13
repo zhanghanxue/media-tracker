@@ -6,6 +6,8 @@
 //     TMDB / IGDB, which are key-bearing).
 // Both return the same Recommendation shape so the UI is source-agnostic.
 
+import type { QueryClient } from "@tanstack/react-query";
+
 import {
   getAniListRecommendations,
   type AniListMedia,
@@ -15,7 +17,9 @@ import {
   type RankedRecommendation,
 } from "../../worker/api/recommend";
 import { normalizeTitle } from "../../worker/sources/bangumi-mapper";
+import type { BangumiType } from "../../worker/sources/bangumi";
 import { toSimplified } from "./toSimplified";
+import type { TitleVariants } from "./enrich";
 import type { MediaListResponse, MediaRow } from "./types";
 
 export type RecommendType = "animation" | "movie" | "drama" | "variety" | "game";
@@ -191,6 +195,62 @@ function toWorkerRecommendation(r: RankedRecommendation): Recommendation {
     becauseTitle: r.becauseTitle,
     addRef: { source: "igdb", id: Number(r.id) },
   };
+}
+
+/** What a background Bangumi lookup for a card's Chinese title should search. */
+export interface ChineseLookupPlan {
+  titles: TitleVariants;
+  bgmType: BangumiType;
+}
+
+/**
+ * How to resolve a Chinese display title for a card that lacks one, or null
+ * when no lookup is needed/possible:
+ *   • AniList — search by its native/romaji/english variants (anime or manga).
+ *   • IGDB — search Bangumi's game type by the English name (IGDB's own
+ *     alternative_names cover almost none of the long-tail games in practice —
+ *     verified against the live pool, 0/48 had one).
+ *   • TMDB — null: titles arrive zh-CN-localized already.
+ */
+export function chineseLookupPlan(rec: Recommendation): ChineseLookupPlan | null {
+  if (rec.titleChinese) return null;
+  if (rec.addRef.source === "anilist") {
+    const { title, type } = rec.addRef.media;
+    return {
+      titles: {
+        native: title.native,
+        romaji: title.romaji,
+        english: title.english,
+      },
+      bgmType: type === "MANGA" ? 1 : 2,
+    };
+  }
+  if (rec.source === "igdb") {
+    return {
+      titles: { native: null, romaji: null, english: rec.title },
+      bgmType: 4,
+    };
+  }
+  return null;
+}
+
+/**
+ * Drop one (just-added) recommendation from every cached per-type pool. Used on
+ * add-success INSTEAD of invalidating ["recommendations"]: an invalidation
+ * refetches the whole animation pipeline (a 20-seed AniList fan-out — slow,
+ * rate-limited, and while it runs — or if it fails — the stale pool keeps
+ * showing the added card). Surgical removal is instant, and the next pool item
+ * backfills the visible batch. The pools go naturally stale via staleTime.
+ */
+export function removeFromRecommendationPools(
+  queryClient: QueryClient,
+  rec: Pick<Recommendation, "source" | "id">,
+): void {
+  queryClient.setQueriesData<Recommendation[]>(
+    { queryKey: ["recommendations"] },
+    (pool) =>
+      pool?.filter((r) => !(r.source === rec.source && r.id === rec.id)),
+  );
 }
 
 export async function fetchRecommendations(
