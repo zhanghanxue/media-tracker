@@ -197,10 +197,10 @@ export async function getAniListRelations(
 }
 
 // Feature B: AniList's own recommendations for a media id. Each edge's
-// mediaRecommendation is a full-ish Media node (id + titles + cover + averageScore)
-// we can surface as an addable candidate. `rating` is AniList's community
-// up/down score on the recommendation pairing (a relevance signal). Runs in the
-// browser like the other AniList calls.
+// mediaRecommendation is a full Media node (MEDIA_FIELDS — the Add button POSTs
+// it straight into the add flow, whose server-side mapper needs `format` etc.).
+// `rating` is AniList's community up/down score on the recommendation pairing
+// (a relevance signal). Runs in the browser like the other AniList calls.
 const RECOMMENDATIONS_QUERY = `
   query ($id: Int!, $perPage: Int!) {
     Media(id: $id) {
@@ -208,13 +208,7 @@ const RECOMMENDATIONS_QUERY = `
         edges {
           node {
             rating
-            mediaRecommendation {
-              id
-              type
-              title { romaji english native }
-              coverImage { extraLarge }
-              averageScore
-            }
+            mediaRecommendation {${MEDIA_FIELDS}}
           }
         }
       }
