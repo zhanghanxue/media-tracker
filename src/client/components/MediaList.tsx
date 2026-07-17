@@ -144,12 +144,16 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   }
 
   // The level's items (every loaded page), and the grand total at this level.
-  // Items already pinned (session adds) are dropped here so they don't render
-  // twice when they also match the level query.
+  // Items already pinned (session adds) are dropped from the grid so they don't
+  // render twice when they also match the level query — but the count keeps
+  // them, since the pinned card still shows the row.
   const pinnedIdSet = new Set(pinnedItems.map((i) => i.id));
-  const loadedItems: MediaRow[] = (levelData?.pages ?? [])
-    .flatMap((p) => p.items)
-    .filter((item) => !pinnedIdSet.has(item.id));
+  const levelPageItems: MediaRow[] = (levelData?.pages ?? []).flatMap(
+    (p) => p.items,
+  );
+  const loadedItems: MediaRow[] = levelPageItems.filter(
+    (item) => !pinnedIdSet.has(item.id),
+  );
   const levelTotal = levelData?.pages[0]?.total ?? 0;
 
   // While filtering, surface only collections with a matching item somewhere
@@ -362,7 +366,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
 
       {filtering && (
         <p className="mb-3 text-xs text-zinc-500 light:text-zinc-600">
-          {t("list.count", { shown: loadedItems.length, total: levelTotal })}
+          {t("list.count", { shown: levelPageItems.length, total: levelTotal })}
         </p>
       )}
 
