@@ -162,7 +162,7 @@ describe("PATCH /api/collections/:id — subtree bulk edit", () => {
       const m = (await findById(env.DB, id))!;
       expect(m.region).toBe("usa");
       expect(m.type).toBe("movie");
-      expect(m.genres).toBe("|Action|Sci-Fi|");
+      expect(m.genres).toBe("|动作|科幻|"); // canonicalized via joinGenres
     }
     expect((await findById(env.DB, outside.id))!.region).toBe("japan"); // untouched
   });

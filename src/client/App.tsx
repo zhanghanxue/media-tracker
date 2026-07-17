@@ -46,15 +46,17 @@ export function App() {
   const [showRecommendModal, setShowRecommendModal] = useState(false);
   const [showWhatsNewModal, setShowWhatsNewModal] = useState(false);
 
-  // Genre facet options, scoped to the selected types (so picking type=game
-  // shows only game genres, anime only anime genres). Only fetched once at least
+  // Genre + region facet options, scoped to the selected types (so picking
+  // type=game shows only game genres/regions). Only fetched once at least
   // one type is chosen — otherwise the genre list would be the whole library's
   // union, which is huge and mixes every type's genres together.
-  const { data: genreFacets = [] } = useQuery({
+  const { data: facets } = useQuery({
     queryKey: ["facets", filters.types],
     queryFn: () => fetchMediaFacets(filters.types),
     enabled: filters.types.length > 0,
   });
+  const genreFacets = facets?.genres ?? [];
+  const regionFacets = facets?.regions ?? [];
 
   const toggleFacet = (facet: FacetKey, value: string) => {
     setFilters((prev) => {
@@ -143,6 +145,7 @@ export function App() {
         <FilterSidebar
           filters={filters}
           genreFacets={genreFacets}
+          regionFacets={regionFacets}
           onToggle={toggleFacet}
           onSelectType={selectType}
           onBackToTypes={backToTypes}

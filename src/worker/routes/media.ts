@@ -37,12 +37,13 @@ import {
   listMedia,
   listVideoParts,
   selectGenresColumn,
+  selectRegionsColumn,
   selectMatchingCollectionIds,
   setCoverUrl,
   setTotalEpisodes,
   updateMedia,
 } from "../db/media-repository";
-import { tallyGenres } from "../api/facets";
+import { tallyGenres, tallyRegions } from "../api/facets";
 import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
 import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../sources/tmdb-mapper";
@@ -253,16 +254,24 @@ mediaRoutes.get("/", async (c) => {
   return c.json(page);
 });
 
-// GET /api/media/facets — the distinct genres present in the library, optionally
-// scoped to one or more media types (?type=game&type=animation). Powers the
-// dynamic genre filter: pick a type, see only that type's genres. Computed
-// server-side because the client only loads a slice and couldn't see them all.
+// GET /api/media/facets — the distinct genres AND regions present in the
+// library, optionally scoped to one or more media types
+// (?type=game&type=animation). Powers the dynamic filter options: pick a type,
+// see only that type's genres, plus any free-text "Other…" regions its rows
+// carry. Computed server-side because the client only loads a slice and
+// couldn't see them all.
 mediaRoutes.get("/facets", async (c) => {
   const types = (c.req.queries("type") ?? [])
     .map((t) => t.trim())
     .filter(Boolean);
-  const rows = await selectGenresColumn(c.env.DB, types);
-  return c.json({ genres: tallyGenres(rows) });
+  const [genreRows, regionRows] = await Promise.all([
+    selectGenresColumn(c.env.DB, types),
+    selectRegionsColumn(c.env.DB, types),
+  ]);
+  return c.json({
+    genres: tallyGenres(genreRows),
+    regions: tallyRegions(regionRows),
+  });
 });
 
 // GET /api/media/matching-collections — DISTINCT collection ids whose direct
