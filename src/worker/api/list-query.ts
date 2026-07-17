@@ -16,6 +16,9 @@ import { MEDIA_STATUSES, MEDIA_TYPES } from "./validation";
 // PRD-v2 Feature D adds the reverse directions: release_date_desc (newest first)
 // and title_desc / title_zh_desc (Z–A), so every sort has both directions.
 export const SORT_KEYS = [
+  // Groups by status priority (in progress → planned → completed → dropped →
+  // paused), newest activity first within each group. The client's default.
+  "status",
   "date_updated",
   "date_added",
   "release_date",
@@ -31,6 +34,17 @@ export const SORT_KEYS = [
 export type SortKey = (typeof SORT_KEYS)[number];
 
 export const DEFAULT_SORT: SortKey = "date_updated";
+
+// Rank order behind the `status` sort. Shared with the client (imported by
+// MediaList's interleave, same cross-import pattern as SortKey) so the
+// collection-card slotting always matches the server's ORDER BY.
+export const STATUS_SORT_PRIORITY: Record<MediaStatus, number> = {
+  in_progress: 0,
+  planned: 1,
+  completed: 2,
+  dropped: 3,
+  paused: 4,
+};
 export const DEFAULT_LIMIT = 50;
 // The client fetches the WHOLE library in one page (client-side pinyin collation
 // + series grouping both need every row). After the bulk import that's ~1.2k+
@@ -39,6 +53,10 @@ export const MAX_LIMIT = 5000;
 export const DEFAULT_OFFSET = 0;
 
 export interface ListFilters {
+  // Explicit row ids (repeatable `id` param). Used by the client to keep
+  // specific rows fresh (e.g. session-added pins) regardless of any other
+  // scope; empty = no id restriction.
+  ids: number[];
   types: MediaType[];
   // Open-ended (DESIGN: region accepts any ISO fallback string), so no enum
   // check — only emptiness filtering. The sentinel REGION_UNSET selects rows
@@ -68,6 +86,7 @@ export const COLLECTION_ROOT = "__root__";
 
 /** Raw, pre-validation shape the handler pulls off the request. */
 export interface RawListQuery {
+  id?: string[];
   type?: string[];
   region?: string[];
   status?: string[];
@@ -92,6 +111,13 @@ function parseInteger(raw: string, { min }: { min: number }): number | null {
 
 export function parseListQuery(raw: RawListQuery): ListQueryResult {
   const errors: string[] = [];
+
+  const rawIds = (raw.id ?? []).map((v) => v.trim()).filter(Boolean);
+  const badIds = rawIds.filter((v) => !/^[1-9][0-9]*$/.test(v));
+  if (badIds.length > 0) {
+    errors.push(`invalid id(s): ${badIds.join(", ")}`);
+  }
+  const ids = rawIds.map((v) => Number.parseInt(v, 10));
 
   const types = (raw.type ?? []).map((t) => t.trim()).filter(Boolean);
   const badTypes = types.filter((t) => !MEDIA_TYPES.includes(t as MediaType));
@@ -158,6 +184,7 @@ export function parseListQuery(raw: RawListQuery): ListQueryResult {
   return {
     ok: true,
     value: {
+      ids,
       types: types as MediaType[],
       regions,
       statuses: statuses as MediaStatus[],

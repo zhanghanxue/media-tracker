@@ -234,6 +234,7 @@ mediaRoutes.post("/", async (c) => {
 // Returns { items, total } where total ignores limit/offset.
 mediaRoutes.get("/", async (c) => {
   const parsed = parseListQuery({
+    id: c.req.queries("id"),
     type: c.req.queries("type"),
     region: c.req.queries("region"),
     status: c.req.queries("status"),

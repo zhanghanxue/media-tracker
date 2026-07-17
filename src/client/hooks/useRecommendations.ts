@@ -10,12 +10,15 @@ import { addMedia, type AddMediaInput } from "../lib/api";
 import type { MediaStatus } from "../../worker/db/schema";
 
 // Fetch recommendations for a type. Disabled until a type is chosen (the panel
-// passes null before the user picks one). Cached per type for the session so
-// re-opening a type doesn't re-hit the sources; the panel offers a manual
-// refetch. Long staleTime because the inputs (library + source recs) change slowly.
-export function useRecommendations(type: RecommendType | null) {
+// passes null before the user picks one). The nonce is part of the key: the
+// panel mints a fresh one per open (and when "换一批" wraps the pool), which
+// forces a real refetch — the server/browser pipelines randomize seeds, so a
+// new fetch means genuinely different recommendations. Within one nonce,
+// switching type tabs back and forth still reuses the cache (no gratuitous
+// AniList fan-outs).
+export function useRecommendations(type: RecommendType | null, nonce: number) {
   return useQuery({
-    queryKey: ["recommendations", type],
+    queryKey: ["recommendations", type, nonce],
     queryFn: () => fetchRecommendations(type!),
     enabled: type !== null,
     staleTime: 10 * 60 * 1000,

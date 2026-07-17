@@ -1,10 +1,24 @@
 import { describe, it, expect } from "vitest";
 import {
   aggregateRecommendations,
+  sampleSeeds,
+  shuffleRankedPool,
   sourceIdOf,
+  type RankedRecommendation,
   type RecCandidate,
   type SeedRefRow,
 } from "./recommend";
+
+// Tiny seeded PRNG (mulberry32) — tests need deterministic "randomness".
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // Trivial normalizer for tests (lowercase, strip spaces) — the real one is the
 // source mappers' normalizeTitle; aggregate only needs SOME canonicalizer.
@@ -94,6 +108,80 @@ describe("aggregateRecommendations", () => {
     const byId = new Map(out.map((r) => [r.id, r.titleChinese]));
     expect(byId.get("1")).toBe("逸剑风云决");
     expect(byId.get("2")).toBeNull();
+  });
+});
+
+describe("sampleSeeds", () => {
+  const pool = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+  it("returns `limit` distinct items from the pool", () => {
+    const out = sampleSeeds(pool, 3, mulberry32(1));
+    expect(out).toHaveLength(3);
+    expect(new Set(out).size).toBe(3);
+    for (const x of out) expect(pool).toContain(x);
+  });
+
+  it("returns the whole pool (shuffled) when pool <= limit", () => {
+    const out = sampleSeeds(pool, 20, mulberry32(1));
+    expect([...out].sort()).toEqual([...pool].sort());
+  });
+
+  it("does not mutate the input", () => {
+    const input = ["a", "b", "c"];
+    sampleSeeds(input, 2, mulberry32(1));
+    expect(input).toEqual(["a", "b", "c"]);
+  });
+
+  it("is deterministic for a given rng, and varies across rngs", () => {
+    expect(sampleSeeds(pool, 4, mulberry32(7))).toEqual(
+      sampleSeeds(pool, 4, mulberry32(7)),
+    );
+    // Different seeds — at least one of several draws must differ.
+    const draws = [1, 2, 3, 4, 5].map((s) =>
+      sampleSeeds(pool, 4, mulberry32(s)).join(""),
+    );
+    expect(new Set(draws).size).toBeGreaterThan(1);
+  });
+});
+
+describe("shuffleRankedPool", () => {
+  const rec = (id: string, count: number): RankedRecommendation => ({
+    source: "tmdb",
+    id,
+    title: id,
+    titleChinese: null,
+    coverUrl: null,
+    count,
+    becauseTitle: "Seed",
+  });
+
+  it("preserves tier order (all count=3 before count=2 before count=1)", () => {
+    const pool = [
+      rec("a", 3), rec("b", 3),
+      rec("c", 2), rec("d", 2), rec("e", 2),
+      rec("f", 1),
+    ];
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const out = shuffleRankedPool(pool, mulberry32(seed));
+      expect(out.map((r) => r.count)).toEqual([3, 3, 2, 2, 2, 1]);
+      expect(new Set(out.map((r) => r.id))).toEqual(
+        new Set(pool.map((r) => r.id)),
+      );
+    }
+  });
+
+  it("permutes within a tier (some rng produces a non-identity order)", () => {
+    const pool = [rec("a", 2), rec("b", 2), rec("c", 2), rec("d", 2)];
+    const orders = [1, 2, 3, 4, 5].map((s) =>
+      shuffleRankedPool(pool, mulberry32(s)).map((r) => r.id).join(""),
+    );
+    expect(new Set(orders).size).toBeGreaterThan(1);
+  });
+
+  it("is a no-op for empty and singleton pools", () => {
+    expect(shuffleRankedPool([], mulberry32(1))).toEqual([]);
+    const one = [rec("a", 1)];
+    expect(shuffleRankedPool(one, mulberry32(1))).toEqual(one);
   });
 });
 

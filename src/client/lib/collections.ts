@@ -217,6 +217,9 @@ export function subtreeRollup(
   count: number;
   completed: number;
   planned: number;
+  inProgress: number;
+  dropped: number;
+  paused: number;
   games: number;
   latestUpdated: string | null;
   earliestRelease: string | null;
@@ -224,6 +227,9 @@ export function subtreeRollup(
   let count = 0;
   let completed = 0;
   let planned = 0;
+  let inProgress = 0;
+  let dropped = 0;
+  let paused = 0;
   let games = 0;
   let latestUpdated: string | null = null;
   let earliestRelease: string | null = null;
@@ -233,6 +239,9 @@ export function subtreeRollup(
     count += r.direct_count;
     completed += r.completed_count;
     planned += r.planned_count;
+    inProgress += r.in_progress_count;
+    dropped += r.dropped_count;
+    paused += r.paused_count;
     games += r.game_count;
     if (r.latest_updated && (!latestUpdated || r.latest_updated > latestUpdated)) {
       latestUpdated = r.latest_updated; // newest wins (ISO datetimes sort lexically)
@@ -244,7 +253,39 @@ export function subtreeRollup(
       earliestRelease = r.earliest_release; // oldest release wins
     }
   }
-  return { count, completed, planned, games, latestUpdated, earliestRelease };
+  return {
+    count,
+    completed,
+    planned,
+    inProgress,
+    dropped,
+    paused,
+    games,
+    latestUpdated,
+    earliestRelease,
+  };
+}
+
+/**
+ * A collection's rank for the status-priority sort: the best (lowest) status
+ * present anywhere in its subtree, mirroring STATUS_SORT_PRIORITY on the
+ * server. Empty collections rank with `planned` (they hold nothing actionable
+ * yet, but shouldn't sink below completed work).
+ */
+export function subtreeStatusPriority(counts: {
+  count: number;
+  inProgress: number;
+  planned: number;
+  completed: number;
+  dropped: number;
+  paused: number;
+}): number {
+  if (counts.inProgress > 0) return 0;
+  if (counts.planned > 0) return 1;
+  if (counts.completed > 0) return 2;
+  if (counts.dropped > 0) return 3;
+  if (counts.paused > 0) return 4;
+  return 1; // empty → treat as planned
 }
 
 /** Card status badge from subtree counts: all-done → completed, all-planned →
