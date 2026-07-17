@@ -130,6 +130,7 @@ function makeRow(overrides: Partial<AniListMapperResult>): AniListMapperResult {
 
 function filters(overrides: Partial<ListFilters> = {}): ListFilters {
   return {
+    ids: [],
     types: [],
     regions: [],
     statuses: [],
@@ -370,6 +371,9 @@ describe("selectCollectionRollups", () => {
     expect(s!.direct_count).toBe(2);
     expect(s!.planned_count).toBe(2); // ANIME_ROW defaults to "planned"
     expect(s!.completed_count).toBe(0);
+    expect(s!.in_progress_count).toBe(0);
+    expect(s!.dropped_count).toBe(0);
+    expect(s!.paused_count).toBe(0);
     expect(s!.game_count).toBe(0); // both items are animation
     expect(s!.earliest_release).toBe("2022-04-01"); // MIN across the two
     expect(s!.sample_cover).toBe("https://x/s1.jpg"); // first by sort_order
@@ -393,6 +397,35 @@ describe("selectCollectionRollups", () => {
     const g = rollups.find((r) => r.collection_id === "col:g")!;
     expect(g.direct_count).toBe(3);
     expect(g.game_count).toBe(2);
+  });
+
+  it("breaks the full status histogram out per collection", async () => {
+    await insertCollection(env.DB, {
+      id: "col:h", name: null, parent_id: null, cover_url: null, sort_order: null,
+    });
+    const statuses: AniListMapperResult["status"][] = [
+      "in_progress",
+      "in_progress",
+      "planned",
+      "completed",
+      "dropped",
+      "paused",
+    ];
+    for (let i = 0; i < statuses.length; i++) {
+      await insertMedia(
+        env.DB,
+        makeRow({ external_id: `h${i}`, collection_id: "col:h", status: statuses[i] }),
+      );
+    }
+
+    const rollups = await selectCollectionRollups(env.DB);
+    const h = rollups.find((r) => r.collection_id === "col:h")!;
+    expect(h.direct_count).toBe(6);
+    expect(h.in_progress_count).toBe(2);
+    expect(h.planned_count).toBe(1);
+    expect(h.completed_count).toBe(1);
+    expect(h.dropped_count).toBe(1);
+    expect(h.paused_count).toBe(1);
   });
 });
 
@@ -544,6 +577,53 @@ describe("listMedia — ordering", () => {
       "30002", // Mar
       "50000", // Feb
       "101922", // Jan
+    ]);
+  });
+
+  it("sort=status groups by priority, newest-updated first within a group", async () => {
+    // One row per status, plus a SECOND in_progress row with an older
+    // date_updated to pin the within-group tiebreak.
+    const rows: [string, string][] = [
+      ["st_prog_new", "in_progress"],
+      ["st_prog_old", "in_progress"],
+      ["st_planned", "planned"],
+      ["st_completed", "completed"],
+      ["st_dropped", "dropped"],
+      ["st_paused", "paused"],
+    ];
+    for (const [ext, status] of rows) {
+      await insertMedia(
+        env.DB,
+        makeRow({
+          external_id: ext,
+          status: status as AniListMapperResult["status"],
+        }),
+      );
+    }
+    // Deliberately adversarial dates: the LOWER-priority statuses get the
+    // NEWEST timestamps, so a date-first sort would fail this test.
+    const dates: [string, string][] = [
+      ["st_prog_new", "2026-02-01 00:00:00"],
+      ["st_prog_old", "2026-01-01 00:00:00"],
+      ["st_planned", "2026-06-01 00:00:00"],
+      ["st_completed", "2026-07-01 00:00:00"],
+      ["st_dropped", "2026-08-01 00:00:00"],
+      ["st_paused", "2026-09-01 00:00:00"],
+    ];
+    for (const [ext, d] of dates) {
+      await env.DB.exec(
+        `UPDATE media SET date_updated = '${d}' WHERE external_id = '${ext}'`,
+      );
+    }
+
+    const { items } = await listMedia(env.DB, filters({ sort: "status" }));
+    expect(items.map((r) => r.external_id)).toEqual([
+      "st_prog_new", // in_progress, newer
+      "st_prog_old", // in_progress, older
+      "st_planned",
+      "st_completed",
+      "st_dropped",
+      "st_paused",
     ]);
   });
 });

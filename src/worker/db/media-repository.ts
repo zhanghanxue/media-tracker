@@ -119,10 +119,12 @@ export interface CollectionRollup {
   collection_id: string;
   direct_count: number;
   // Status breakdown of the DIRECT items, so the client can roll a subtree up to
-  // a single badge (all completed → completed, all planned → planned, else
-  // in-progress) by summing across the subtree.
+  // a single badge / a status-sort rank by summing across the subtree.
   completed_count: number;
   planned_count: number;
+  in_progress_count: number;
+  dropped_count: number;
+  paused_count: number;
   // DIRECT items of type 'game' — lets the client suppress the completion bar on
   // a collection whose whole subtree is games (item-completion is meaningful, but
   // the user reads a progress bar there as an episode bar, which games lack).
@@ -156,8 +158,11 @@ export async function selectCollectionRollups(
   const aggSql = `
     SELECT collection_id,
            COUNT(*)                                          AS direct_count,
-           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
-           SUM(CASE WHEN status = 'planned'   THEN 1 ELSE 0 END) AS planned_count,
+           SUM(CASE WHEN status = 'completed'   THEN 1 ELSE 0 END) AS completed_count,
+           SUM(CASE WHEN status = 'planned'     THEN 1 ELSE 0 END) AS planned_count,
+           SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
+           SUM(CASE WHEN status = 'dropped'     THEN 1 ELSE 0 END) AS dropped_count,
+           SUM(CASE WHEN status = 'paused'      THEN 1 ELSE 0 END) AS paused_count,
            SUM(CASE WHEN type = 'game'        THEN 1 ELSE 0 END) AS game_count,
            MAX(date_updated)                                 AS latest_updated,
            MIN(NULLIF(release_date, ''))                     AS earliest_release
@@ -190,6 +195,9 @@ export async function selectCollectionRollups(
         direct_count: number;
         completed_count: number;
         planned_count: number;
+        in_progress_count: number;
+        dropped_count: number;
+        paused_count: number;
         game_count: number;
         latest_updated: string | null;
         earliest_release: string | null;
@@ -214,6 +222,9 @@ export async function selectCollectionRollups(
       direct_count: r.direct_count,
       completed_count: r.completed_count,
       planned_count: r.planned_count,
+      in_progress_count: r.in_progress_count,
+      dropped_count: r.dropped_count,
+      paused_count: r.paused_count,
       game_count: r.game_count,
       latest_updated: r.latest_updated,
       earliest_release: r.earliest_release,

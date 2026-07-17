@@ -14,6 +14,9 @@ import {
 } from "../../worker/sources/anilist";
 import {
   aggregateRecommendations,
+  sampleSeeds,
+  shuffleRankedPool,
+  type Rng,
   type RankedRecommendation,
 } from "../../worker/api/recommend";
 import { normalizeTitle } from "../../worker/sources/bangumi-mapper";
@@ -49,13 +52,21 @@ export interface Recommendation {
 }
 
 // Seeds capped to bound AniList calls; the ranked pool is several UI batches
-// (the panel shows 15 at a time and rotates without recomputing).
+// (the panel shows 15 at a time and rotates, refetching once it wraps).
+// SEED_LIMIT seeds are randomly sampled from the top SEED_CANDIDATE_LIMIT
+// eligible rows so each fetch recommends off different seeds — mirrors the
+// Worker route's variety layer.
+const SEED_CANDIDATE_LIMIT = 100;
 const SEED_LIMIT = 20;
 const POOL_LIMIT = 60;
 
-// How many top library items (completed first, then in_progress, newest within)
-// to seed anime recs from. Mirrors the Worker's selectRecommendationSeeds.
-function pickAnimeSeeds(items: MediaRow[]): MediaRow[] {
+// Random SEED_LIMIT-sample of the top library items (completed first, then
+// in_progress, newest within). Exported for tests; rng injected so they stay
+// deterministic. Mirrors the Worker's selectRecommendationSeeds + sampleSeeds.
+export function pickAnimeSeeds(
+  items: MediaRow[],
+  rng: Rng = Math.random,
+): MediaRow[] {
   const anime = items.filter(
     (r) =>
       r.type === "animation" &&
@@ -66,7 +77,8 @@ function pickAnimeSeeds(items: MediaRow[]): MediaRow[] {
   const rank = (r: MediaRow) =>
     (r.status === "completed" ? 0 : 1) * 1e15 -
     new Date(r.date_updated).getTime();
-  return anime.sort((a, b) => rank(a) - rank(b)).slice(0, SEED_LIMIT);
+  const eligible = anime.sort((a, b) => rank(a) - rank(b)).slice(0, SEED_CANDIDATE_LIMIT);
+  return sampleSeeds(eligible, SEED_LIMIT, rng);
 }
 
 function anilistIdOf(row: MediaRow): number | null {
@@ -88,12 +100,12 @@ function seedTitle(row: MediaRow): string {
 // Browser-side anime recommendations. Seeds from the library, fans out AniList
 // recs per seed, then reuses the SAME pure aggregator the Worker uses, excluding
 // everything already owned (by AniList id and by normalized title).
-async function recommendAnime(): Promise<Recommendation[]> {
+async function recommendAnime(rng: Rng = Math.random): Promise<Recommendation[]> {
   const res = await fetch("/api/media?limit=5000");
   if (!res.ok) throw new Error(`Failed to load library (HTTP ${res.status})`);
   const { items } = (await res.json()) as MediaListResponse;
 
-  const seeds = pickAnimeSeeds(items);
+  const seeds = pickAnimeSeeds(items, rng);
   if (seeds.length === 0) return [];
 
   // Keep the picked AniList media around so the Add button can POST the full
@@ -145,7 +157,8 @@ async function recommendAnime(): Promise<Recommendation[]> {
     limit: POOL_LIMIT,
   });
 
-  return ranked.map((r) => toRecommendation(r, mediaById));
+  // Shuffle within count tiers so equal-strength candidates vary per fetch.
+  return shuffleRankedPool(ranked, rng).map((r) => toRecommendation(r, mediaById));
 }
 
 // Map a ranked AniList result back to a Recommendation, attaching the saved media

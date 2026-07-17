@@ -7,6 +7,7 @@
   },
   "sort": {
     "label": "排序",
+    "status": "进行中优先",
     "date_updated": "最近更新",
     "date_added": "最近添加",
     "release_date": "发行时间（最早）",
@@ -52,6 +53,7 @@
   },
   "filters": {
     "heading": "筛选",
+    "allTypes": "全部类型",
     "type": "类型",
     "region": "地区",
     "genre": "题材",
@@ -62,6 +64,8 @@
   "list": {
     "loading": "加载中…",
     "empty": "没有符合筛选条件的内容。",
+    "emptyHome": "当前没有进行中的条目。",
+    "homeHint": "仅显示进行中的条目——选择类型或使用筛选可浏览全部。",
     "error": "无法加载你的收藏。",
     "count": "{{total}} 项中的 {{shown}} 项",
     "loadMore": "加载更多"

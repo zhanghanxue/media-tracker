@@ -21,6 +21,7 @@ describe("parseListQuery — defaults", () => {
         sort: "date_updated",
         limit: 50,
         offset: 0,
+        ids: [],
       },
     });
   });
@@ -94,6 +95,28 @@ describe("parseListQuery — q", () => {
   });
 });
 
+describe("parseListQuery — id", () => {
+  it("parses repeated ids as integers", () => {
+    const result = parse({ id: ["3", "17"] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.ids).toEqual([3, 17]);
+  });
+
+  it("defaults to no id restriction", () => {
+    const result = parse({});
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.ids).toEqual([]);
+  });
+
+  it("rejects non-numeric and non-positive ids", () => {
+    for (const bad of ["abc", "0", "-1", "1.5"]) {
+      const result = parse({ id: [bad] });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors[0]).toContain("invalid id(s)");
+    }
+  });
+});
+
 describe("parseListQuery — sort", () => {
   it("accepts the Feature D reverse sort keys", () => {
     for (const s of ["release_date_desc", "title_desc", "title_zh_desc"]) {
@@ -107,6 +130,12 @@ describe("parseListQuery — sort", () => {
     const result = parse({ sort: "date_added" });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.sort).toBe("date_added");
+  });
+
+  it("accepts the status-priority sort", () => {
+    const result = parse({ sort: "status" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.sort).toBe("status");
   });
 
   it("rejects an unknown sort", () => {

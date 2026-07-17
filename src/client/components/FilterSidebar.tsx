@@ -3,13 +3,17 @@ import { useTranslation } from "react-i18next";
 import type { GenreFacet, MediaFilters } from "../lib/api";
 import { REGION_FILTER_FACETS, STATUS_FACETS, TYPE_FACETS } from "../lib/facets";
 
-export type FacetKey = "types" | "regions" | "statuses" | "genres";
+// Types are no longer checkbox facets — the sidebar drills INTO a type
+// (level 1 = type list, level 2 = that type's region/genre/status facets).
+export type FacetKey = "regions" | "statuses" | "genres";
 
 interface FilterSidebarProps {
   filters: MediaFilters;
-  // Dynamic genre options (server-computed, scoped to the selected types).
+  // Dynamic genre options (server-computed, scoped to the selected type).
   genreFacets: GenreFacet[];
   onToggle: (facet: FacetKey, value: string) => void;
+  onSelectType: (type: string) => void;
+  onBackToTypes: () => void;
   onClear: () => void;
 }
 
@@ -62,22 +66,25 @@ function CheckboxGroup({
 
 // CSS-only responsive drawer: on < md the panel is hidden behind a toggle
 // (a label + peer checkbox); on >= md it's always visible. No JS state.
+//
+// Two-level navigation, derived from filters.types (no separate view state to
+// desync): no type selected → the type list; a type selected → that type's
+// facet groups plus a back button.
 export function FilterSidebar({
   filters,
   genreFacets,
   onToggle,
+  onSelectType,
+  onBackToTypes,
   onClear,
 }: FilterSidebarProps) {
   const { t } = useTranslation();
-  const hasAny =
-    filters.types.length +
-      filters.regions.length +
-      filters.statuses.length +
-      filters.genres.length >
-    0;
+  const activeType = filters.types[0] ?? null;
+  const hasFacets =
+    filters.regions.length + filters.statuses.length + filters.genres.length > 0;
   // Show whatever's selected even if it dropped out of the current facet list
-  // (e.g. you picked a genre, then narrowed the type filter) so it stays
-  // un-checkable-away-able and visible.
+  // (e.g. you picked a genre, then the facet list refreshed) so it stays
+  // visible and un-checkable-away-able.
   const genreValues = [
     ...new Set([...genreFacets.map((g) => g.value), ...filters.genres]),
   ];
@@ -93,51 +100,73 @@ export function FilterSidebar({
       </label>
 
       <aside className="hidden shrink-0 space-y-6 peer-checked:block md:block md:w-56">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
-            {t("filters.heading")}
-          </h2>
-          {hasAny && (
+        {activeType === null ? (
+          <>
+            <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
+              {t("filters.type")}
+            </h2>
+            <nav className="space-y-1">
+              {TYPE_FACETS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onSelectType(value)}
+                  className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 light:text-zinc-700 light:hover:bg-zinc-100"
+                >
+                  {t(`type.${value}`)}
+                </button>
+              ))}
+            </nav>
+          </>
+        ) : (
+          <>
             <button
               type="button"
-              onClick={onClear}
-              className="text-xs text-blue-400 hover:underline light:text-blue-600"
+              onClick={onBackToTypes}
+              className="text-sm text-blue-400 hover:underline light:text-blue-600"
             >
-              {t("filters.clear")}
+              ← {t("filters.allTypes")}
             </button>
-          )}
-        </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
+                {t(`type.${activeType}`)}
+              </h2>
+              {hasFacets && (
+                <button
+                  type="button"
+                  onClick={onClear}
+                  className="text-xs text-blue-400 hover:underline light:text-blue-600"
+                >
+                  {t("filters.clear")}
+                </button>
+              )}
+            </div>
 
-        <CheckboxGroup
-          legendKey="filters.type"
-          labelPrefix="type"
-          values={TYPE_FACETS}
-          selected={filters.types}
-          onToggle={(v) => onToggle("types", v)}
-        />
-        <CheckboxGroup
-          legendKey="filters.region"
-          labelPrefix="region"
-          values={REGION_FILTER_FACETS}
-          selected={filters.regions}
-          onToggle={(v) => onToggle("regions", v)}
-        />
-        {genreValues.length > 0 && (
-          <CheckboxGroup
-            legendKey="filters.genre"
-            renderLabel={(v) => v}
-            values={genreValues}
-            selected={filters.genres}
-            onToggle={(v) => onToggle("genres", v)}
-          />
+            <CheckboxGroup
+              legendKey="filters.region"
+              labelPrefix="region"
+              values={REGION_FILTER_FACETS}
+              selected={filters.regions}
+              onToggle={(v) => onToggle("regions", v)}
+            />
+            {genreValues.length > 0 && (
+              <CheckboxGroup
+                legendKey="filters.genre"
+                renderLabel={(v) => v}
+                values={genreValues}
+                selected={filters.genres}
+                onToggle={(v) => onToggle("genres", v)}
+              />
+            )}
+            <CheckboxGroup
+              legendKey="filters.status"
+              labelPrefix="status"
+              values={STATUS_FACETS}
+              selected={filters.statuses}
+              onToggle={(v) => onToggle("statuses", v)}
+            />
+          </>
         )}
-        <CheckboxGroup
-          legendKey="filters.status"
-          labelPrefix="status"
-          values={STATUS_FACETS}
-          selected={filters.statuses}
-          onToggle={(v) => onToggle("statuses", v)}
-        />
       </aside>
     </>
   );

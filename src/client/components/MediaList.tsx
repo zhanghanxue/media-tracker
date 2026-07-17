@@ -5,6 +5,7 @@ import { useLevelItems } from "../hooks/useLevelItems";
 import { useCollections } from "../hooks/useCollections";
 import { useCollectionRollups } from "../hooks/useCollectionRollups";
 import { useMatchingCollections } from "../hooks/useMatchingCollections";
+import { useSessionAddedItems } from "../hooks/useSessionAdded";
 import { useCreateCollection } from "../hooks/useCollectionMutations";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import {
@@ -14,20 +15,16 @@ import {
   collectionPath,
   rollupStatus,
   subtreeRollup,
+  subtreeStatusPriority,
 } from "../lib/collections";
+import { STATUS_SORT_PRIORITY } from "../../worker/api/list-query";
 import { COLLECTION_ROOT, type CollectionRollup, type MediaFilters } from "../lib/api";
+import { effectiveLevelFilters, isExplicitFiltering } from "../lib/homeFilter";
 import type { Collection, MediaRow } from "../lib/types";
 import { MediaCard } from "./MediaCard";
 import { CollectionCard } from "./CollectionCard";
 import { CollectionEditor } from "./CollectionEditor";
 import { BulkActionBar } from "./BulkActionBar";
-
-function isFiltering(f: MediaFilters): boolean {
-  return (
-    f.q.trim() !== "" ||
-    f.types.length + f.regions.length + f.statuses.length + f.genres.length > 0
-  );
-}
 
 export function MediaList({ filters }: { filters: MediaFilters }) {
   const { t, i18n } = useTranslation();
@@ -61,16 +58,23 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  const filtering = isFiltering(filters);
+  const filtering = isExplicitFiltering(filters);
+  // Home default = in-progress only (implicit — cleared by any drill-down,
+  // facet, or search). `effective` is what the level/match queries actually run.
+  const { filters: effective, implicitHome } = effectiveLevelFilters(
+    filters,
+    currentId,
+  );
   const q = filters.q.trim().toLowerCase();
   const scope = currentId ?? COLLECTION_ROOT;
 
   // Drill-down data — all bounded, none load the whole library:
   //   • collections: the (small) tree   • rollups: per-collection summaries
-  //   • level items: THIS level's items, paginated   • matches: while filtering
+  //   • level items: THIS level's items, paginated
+  //   • matches: while filtering (incl. the implicit home filter)
   const { data: collections = [] } = useCollections();
   const { data: rollups = [], isPending: rollupsPending } = useCollectionRollups();
-  const matchingIds = useMatchingCollections(filters, filtering);
+  const matchingIds = useMatchingCollections(effective, filtering || implicitHome);
   const {
     data: levelData,
     isPending: levelPending,
@@ -78,7 +82,10 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useLevelItems(filters, scope);
+  } = useLevelItems(effective, scope);
+  // Session-added items, pinned to the front of the (implicit) Home view until
+  // the page is refreshed — whatever their status.
+  const pinnedItems = useSessionAddedItems(implicitHome);
 
   const rollupById = new Map<string, CollectionRollup>(
     rollups.map((r) => [r.collection_id, r]),
@@ -131,7 +138,12 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   }
 
   // The level's items (every loaded page), and the grand total at this level.
-  const loadedItems: MediaRow[] = (levelData?.pages ?? []).flatMap((p) => p.items);
+  // Items already pinned (session adds) are dropped here so they don't render
+  // twice when they also match the level query.
+  const pinnedIdSet = new Set(pinnedItems.map((i) => i.id));
+  const loadedItems: MediaRow[] = (levelData?.pages ?? [])
+    .flatMap((p) => p.items)
+    .filter((item) => !pinnedIdSet.has(item.id));
   const levelTotal = levelData?.pages[0]?.total ?? 0;
 
   // While filtering, surface only collections with a matching item somewhere
@@ -139,7 +151,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   // every ancestor of either, so they stay reachable from Home.
   const byId = new Map(collections.map((c) => [c.id, c]));
   const withMatches: Set<string> | null = (() => {
-    if (!filtering) return null;
+    if (!filtering && !implicitHome) return null;
     const set = new Set<string>();
     const addWithAncestors = (id: string) => {
       let cur: Collection | undefined = byId.get(id);
@@ -178,6 +190,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   });
   // Feature D: each sort has both directions. Recognize the reverse keys here so
   // the client interleave matches the server's ORDER BY for the paginated items.
+  const statusSort = filters.sort === "status";
   const titleSort = filters.sort === "title" || filters.sort === "title_desc";
   const releaseSort =
     filters.sort === "release_date" || filters.sort === "release_date_desc";
@@ -204,11 +217,26 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   };
   const cellName = (cell: Cell): string =>
     cell.kind === "item" ? displayTitle(cell.item, lang) : nameOf(cell.col);
+  // Status-sort rank, mirroring the server's CASE: items by their own status,
+  // collections by the best status anywhere in their subtree.
+  const cellStatusPriority = (cell: Cell): number =>
+    cell.kind === "item"
+      ? STATUS_SORT_PRIORITY[cell.item.status]
+      : subtreeStatusPriority(
+          subtreeRollup(rollupById, collections, cell.col.id),
+        );
 
-  const cells: Cell[] = [
+  const sortedCells: Cell[] = [
     ...childCols.map((col): Cell => ({ kind: "col", col })),
     ...loadedItems.map((item): Cell => ({ kind: "item", item })),
   ].sort((a, b) => {
+    if (statusSort) {
+      const pa = cellStatusPriority(a);
+      const pb = cellStatusPriority(b);
+      if (pa !== pb) return pa - pb;
+      // Ties fall through to the date compare below (newest updated first),
+      // matching the server's `…, date_updated DESC`.
+    }
     if (titleSort) {
       const cmp = collator.compare(cellName(a), cellName(b));
       return descTitle ? -cmp : cmp;
@@ -236,6 +264,12 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
     // date_updated / date_added: newest first.
     return da < db ? 1 : da > db ? -1 : 0;
   });
+
+  // Session adds bypass the sort entirely: newest add first, ahead of the list.
+  const cells: Cell[] = [
+    ...pinnedItems.map((item): Cell => ({ kind: "item", item })),
+    ...sortedCells,
+  ];
 
   const isEmpty = cells.length === 0;
 
@@ -314,8 +348,16 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
         </p>
       )}
 
+      {implicitHome && (
+        <p className="mb-3 text-xs text-zinc-500 light:text-zinc-600">
+          {t("list.homeHint")}
+        </p>
+      )}
+
       {isEmpty ? (
-        <p className="py-8 text-zinc-400 light:text-zinc-500">{t("list.empty")}</p>
+        <p className="py-8 text-zinc-400 light:text-zinc-500">
+          {implicitHome ? t("list.emptyHome") : t("list.empty")}
+        </p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">

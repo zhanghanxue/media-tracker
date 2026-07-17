@@ -74,6 +74,10 @@ describe("GET /api/recommendations — validation", () => {
 });
 
 describe("GET /api/recommendations — movie (TMDB)", () => {
+  // NOTE: the route randomly samples seeds and shuffles the ranked pool
+  // (Math.random). This test stays deterministic only because it has ONE seed
+  // and ONE surviving recommendation. Any future multi-rec assertion must
+  // check set membership, not order.
   it("fans out per seed, excludes owned + dedups, attributes the why", async () => {
     // Library: one completed seed movie (id 100), plus movie 603 already owned but
     // `planned` so it's NOT a seed (only completed/in_progress seed) — it should

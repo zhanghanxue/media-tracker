@@ -10,6 +10,7 @@ import type { BangumiSubject } from "../../worker/sources/bangumi";
 import type { TmdbAddRef, IgdbAddRef } from "../../worker/api/validation";
 import type { SortKey } from "../../worker/api/list-query";
 import type { MediaStatus } from "../../worker/db/schema";
+import { recordSessionAdd } from "./sessionAdds";
 import type { MediaListResponse, MediaRow } from "./types";
 
 export type { SortKey };
@@ -98,6 +99,21 @@ export async function fetchMediaPage(
   return (await res.json()) as MediaListResponse;
 }
 
+/** Fetch specific rows by id (repeatable `id` param) — status/collection
+ *  unscoped, so pinned session-adds stay visible whatever their state. */
+export async function fetchMediaByIds(ids: number[]): Promise<MediaRow[]> {
+  if (ids.length === 0) return [];
+  const params = new URLSearchParams();
+  for (const id of ids) params.append("id", String(id));
+  params.set("limit", String(ids.length));
+  const res = await fetch(`/api/media?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`Failed to load media (HTTP ${res.status})`);
+  }
+  const { items } = (await res.json()) as MediaListResponse;
+  return items;
+}
+
 // --- Drill-down support (collection rollups + filtered match set) -----------
 
 export interface CollectionRollupTitles {
@@ -112,6 +128,9 @@ export interface CollectionRollup {
   direct_count: number;
   completed_count: number;
   planned_count: number;
+  in_progress_count: number;
+  dropped_count: number;
+  paused_count: number;
   // Direct items of type 'game' in this collection (rolled up into the subtree
   // `games` aggregate). Informational — the completion bar is shown for all
   // collection types including all-game ones.
@@ -208,5 +227,9 @@ export async function addMedia(input: AddMediaInput): Promise<MediaRow> {
   if (!res.ok && res.status !== 409) {
     throw new Error(`Add failed (HTTP ${res.status})`);
   }
-  return (await res.json()) as MediaRow;
+  const row = (await res.json()) as MediaRow;
+  // Every add path (modal, Chinese add, recommendations, What's New) funnels
+  // through here — pin the row on the Home view for the rest of the session.
+  recordSessionAdd(row.id);
+  return row;
 }
