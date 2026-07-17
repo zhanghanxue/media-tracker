@@ -21,13 +21,14 @@ const EMPTY_FILTERS: MediaFilters = {
   statuses: [],
   genres: [],
   q: "",
-  sort: "date_updated",
+  sort: "status",
 };
 
 // Dropdown order (PRD-v2 Feature D adds the reverse directions). title_zh /
 // title_zh_desc are NOT listed: the grid collates titles client-side by UI
 // language anyway, so one "Title A–Z / Z–A" pair covers both languages.
 const SORT_OPTIONS: SortKey[] = [
+  "status",
   "date_updated",
   "date_added",
   "release_date",
@@ -45,34 +46,54 @@ export function App() {
   const [showRecommendModal, setShowRecommendModal] = useState(false);
   const [showWhatsNewModal, setShowWhatsNewModal] = useState(false);
 
-  // Genre facet options, scoped to the selected types (so picking type=game
-  // shows only game genres, anime only anime genres). Only fetched once at least
+  // Genre + region facet options, scoped to the selected types (so picking
+  // type=game shows only game genres/regions). Only fetched once at least
   // one type is chosen — otherwise the genre list would be the whole library's
   // union, which is huge and mixes every type's genres together.
-  const { data: genreFacets = [] } = useQuery({
+  const { data: facets } = useQuery({
     queryKey: ["facets", filters.types],
     queryFn: () => fetchMediaFacets(filters.types),
     enabled: filters.types.length > 0,
   });
+  const genreFacets = facets?.genres ?? [];
+  const regionFacets = facets?.regions ?? [];
 
   const toggleFacet = (facet: FacetKey, value: string) => {
     setFilters((prev) => {
       const next = new Set(prev[facet]);
       if (next.has(value)) next.delete(value);
       else next.add(value);
-      const updated = { ...prev, [facet]: [...next] };
-      // Genres are scoped to the selected type(s) — a "game" RPG means nothing
-      // under "movie". So changing the TYPE selection clears the genre choices,
-      // and the genre list repopulates for the new type (no stale cross-type
-      // genres left checked in the sidebar).
-      if (facet === "types") updated.genres = [];
-      return updated;
+      return { ...prev, [facet]: [...next] };
     });
   };
 
+  // Sidebar level 1 → 2: drill into ONE type. All type-scoped facets reset so
+  // no stale cross-type region/genre/status lingers (a "game" RPG genre means
+  // nothing under "movie"). Search + sort are kept.
+  const selectType = (type: string) =>
+    setFilters((prev) => ({
+      ...prev,
+      types: [type],
+      regions: [],
+      statuses: [],
+      genres: [],
+    }));
+  // Back to level 1 (and, with nothing else active, back to the implicit
+  // in-progress Home view).
+  const backToTypes = () =>
+    setFilters((prev) => ({
+      ...prev,
+      types: [],
+      regions: [],
+      statuses: [],
+      genres: [],
+    }));
+  // "Clear all" inside a type: drop the facets, stay on the type.
+  const clearFacets = () =>
+    setFilters((prev) => ({ ...prev, regions: [], statuses: [], genres: [] }));
+
   const setQuery = (q: string) => setFilters((prev) => ({ ...prev, q }));
   const setSort = (sort: SortKey) => setFilters((prev) => ({ ...prev, sort }));
-  const clearAll = () => setFilters(EMPTY_FILTERS);
 
   return (
     <div className="min-h-full">
@@ -124,8 +145,11 @@ export function App() {
         <FilterSidebar
           filters={filters}
           genreFacets={genreFacets}
+          regionFacets={regionFacets}
           onToggle={toggleFacet}
-          onClear={clearAll}
+          onSelectType={selectType}
+          onBackToTypes={backToTypes}
+          onClear={clearFacets}
         />
         <main className="mt-4 min-w-0 flex-1 md:mt-0">
           <div className="mb-4 flex items-center gap-2">

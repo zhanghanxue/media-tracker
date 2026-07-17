@@ -20,6 +20,8 @@ import {
 } from "../db/media-repository";
 import {
   aggregateRecommendations,
+  sampleSeeds,
+  shuffleRankedPool,
   sourceIdOf,
   type RankedRecommendation,
   type RecCandidate,
@@ -43,7 +45,14 @@ export const recommendRoutes = new Hono<{
 // How many library items to seed from, and how deep a ranked pool to return.
 // Seeds are capped so the external-call count stays bounded regardless of
 // library size. The pool is several UI batches — the client shows 15 at a time
-// and its "show another batch" button rotates through the rest without a refetch.
+// and its "show another batch" button rotates through the rest, refetching a
+// fresh pool once it wraps.
+//
+// Variety: the SEED_LIMIT seeds are RANDOMLY SAMPLED from the top
+// SEED_CANDIDATE_LIMIT eligible rows (still deterministic eligibility order —
+// completed first, newest within), so consecutive requests fan out from
+// different seeds and return genuinely different pools.
+const SEED_CANDIDATE_LIMIT = 100;
 const SEED_LIMIT = 20;
 const POOL_LIMIT = 60;
 
@@ -103,7 +112,12 @@ recommendRoutes.get("/", async (c) => {
     return c.json({ error: "IGDB integration is not configured" }, 503);
   }
 
-  const seeds = await selectRecommendationSeeds(c.env.DB, type, SEED_LIMIT);
+  const eligible = await selectRecommendationSeeds(
+    c.env.DB,
+    type,
+    SEED_CANDIDATE_LIMIT,
+  );
+  const seeds = sampleSeeds(eligible, SEED_LIMIT, Math.random);
   if (seeds.length === 0) {
     return c.json({ recommendations: [] satisfies RankedRecommendation[] });
   }
@@ -157,12 +171,14 @@ recommendRoutes.get("/", async (c) => {
   const excludedTitles = new Set(
     titles.filter((t): t is string => !!t).map(normalizeTitle),
   );
-  const recommendations = aggregateRecommendations(candidates, {
+  const ranked = aggregateRecommendations(candidates, {
     excludedIds: new Set(keys),
     excludedTitles,
     normalize: normalizeTitle,
     limit: POOL_LIMIT,
   });
+  // Shuffle within count tiers so equal-strength candidates vary per request.
+  const recommendations = shuffleRankedPool(ranked, Math.random);
 
   return c.json({ recommendations });
 });

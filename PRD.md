@@ -68,6 +68,16 @@ Single-user, gated behind Cloudflare Access (Zero Trust). Both devices read/writ
 18. As a user, I want the list sorted by `date_updated DESC` by default, so that recently-active items surface first.
 19. As a user, I want to see a count of items currently matching the view, so that I know how big my filtered list is.
 
+> **v2 decision — Home defaults to in-progress-first (supersedes 16 & 18 at the root view).**
+> The unfiltered Home view no longer shows *all* items sorted by `date_updated`.
+> It applies an implicit `status = in_progress` filter (plus session-pinned
+> just-added / just-created items) and defaults the sort to status-priority
+> ("In progress first"), so Home answers "what am I currently on?" at a glance;
+> picking any type or filter drops the implicit filter and browses everything.
+> Stories 16 & 18 stay as the v1 record; the browse-everything behavior they
+> describe is one type/filter click away. Policy lives in
+> `src/client/lib/homeFilter.ts`.
+
 ### Filtering
 
 20. As a user, I want to filter by one or more media types, so that I can focus on (e.g.) just `animation` + `manga`.
@@ -191,7 +201,7 @@ See DESIGN.md § "Proposed schema (v1)" for full SQL. High-level shape:
 
 ### Filter UI
 
-Faceted sidebar with checkbox groups per facet (type, region, status, game platform). **AND across facets, OR within.** Counts shown per option. Matches the Letterboxd / AniList / MAL convention.
+Faceted sidebar, **AND across facets, OR within**, counts shown per option — see DESIGN.md § 14 for the facet set and current control style. Matches the Letterboxd / AniList / MAL convention.
 
 ### Search
 
@@ -243,7 +253,7 @@ Explicitly NOT in v1:
 | IGDB integration (games metadata) | v2 — next up |
 | Bangumi integration (Chinese title enrichment + donghua metadata) | v2 enricher |
 | Offline-first / device-local data + sync | Not planned; server-of-record is the architectural choice |
-| Genre / tag filtering | API returns genres for free, but exposing as filters deferred |
+| ~~Genre / tag filtering~~ | ✅ DONE — per-type genre facets; canonical Chinese genre names (see DESIGN.md open-items note) |
 | Watch history / timeline of progress events | v1 stores only current state |
 | Notes / reviews / ratings beyond a free-text `notes` field | v2 if desired |
 | Touch gestures (swipe to mark complete, etc.) | v1 uses taps only |

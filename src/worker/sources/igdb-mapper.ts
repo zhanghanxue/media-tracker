@@ -16,15 +16,24 @@ import type {
   MediaRegion,
   MediaStatus,
 } from "../db/schema";
-import { extractIgdbGenres, igdbCoverUrl, type IgdbGame } from "./igdb";
+import {
+  extractIgdbGenres,
+  igdbCoverUrl,
+  type IgdbGame,
+  type IgdbInvolvedCompany,
+} from "./igdb";
 import { joinGenres } from "./genres";
 import { isoFromUnixSeconds } from "./release-date";
 import { ratingFrom100 } from "./rating";
 
 export type IgdbMapperResult = MediaInsert;
 
-// ISO 3166-1 numeric country codes → our region buckets (IGDB stores
-// company.country this way). Only the regions we surface; anything else → null.
+// ISO 3166-1 numeric country codes → region slugs (IGDB stores company.country
+// this way). The first block is the curated REGION_FACETS set; the rest are
+// open-ended slugs (the region column accepts any string, and the sidebar +
+// editor surface non-curated values via the dynamic facets / "Other…" path) —
+// so a CDPR game correctly gets "poland" instead of null. Codes not listed
+// still → null (editor sets one by hand).
 const COUNTRY_NUM_TO_REGION: Record<number, MediaRegion> = {
   392: "japan",
   156: "china",
@@ -34,27 +43,90 @@ const COUNTRY_NUM_TO_REGION: Record<number, MediaRegion> = {
   840: "usa",
   826: "uk",
   764: "thailand",
+  // Common game-dev countries beyond the curated set
+  616: "poland",
+  250: "france",
+  276: "germany",
+  124: "canada",
+  752: "sweden",
+  246: "finland",
+  208: "denmark",
+  578: "norway",
+  352: "iceland",
+  528: "netherlands",
+  56: "belgium",
+  40: "austria",
+  756: "switzerland",
+  203: "czech_republic",
+  703: "slovakia",
+  348: "hungary",
+  642: "romania",
+  100: "bulgaria",
+  191: "croatia",
+  688: "serbia",
+  705: "slovenia",
+  804: "ukraine",
+  643: "russia",
+  112: "belarus",
+  233: "estonia",
+  428: "latvia",
+  440: "lithuania",
+  724: "spain",
+  380: "italy",
+  620: "portugal",
+  372: "ireland",
+  300: "greece",
+  792: "turkey",
+  376: "israel",
+  36: "australia",
+  554: "new_zealand",
+  702: "singapore",
+  458: "malaysia",
+  360: "indonesia",
+  704: "vietnam",
+  608: "philippines",
+  356: "india",
+  76: "brazil",
+  32: "argentina",
+  484: "mexico",
+  152: "chile",
+  710: "south_africa",
 };
 
 // A game's region = the developer's country (best origin signal), falling back
 // to the publisher's, then any involved company with a known country. Null when
-// IGDB has no usable country — the editor can set one.
-function igdbRegion(game: IgdbGame): MediaRegion | null {
-  const companies = game.involved_companies ?? [];
-  const pick = (filter: (c: (typeof companies)[number]) => boolean) => {
-    for (const c of companies) {
-      const code = c.company?.country;
-      if (filter(c) && typeof code === "number" && COUNTRY_NUM_TO_REGION[code]) {
-        return COUNTRY_NUM_TO_REGION[code];
-      }
-    }
-    return null;
-  };
+// IGDB has no usable country — the editor can set one. Exported for the
+// backfill script (scripts/backfill-game-regions.ts), which re-derives regions
+// for rows added before the country map covered non-curated regions.
+export function igdbRegion(game: IgdbGame): MediaRegion | null {
   return (
-    pick((c) => c.developer === true) ??
-    pick((c) => c.publisher === true) ??
-    pick(() => true)
+    igdbDeveloperRegion(game) ??
+    pickCompanyRegion(game, (c) => c.publisher === true) ??
+    pickCompanyRegion(game, () => true)
   );
+}
+
+/**
+ * The DEVELOPER's country only — no publisher fallback. The backfill script
+ * uses this to decide whether an already-set region may be OVERWRITTEN: a
+ * publisher's country is a weak origin signal (e.g. miHoYo games publish via a
+ * Singapore entity), so it may only fill blanks, never replace a set value.
+ */
+export function igdbDeveloperRegion(game: IgdbGame): MediaRegion | null {
+  return pickCompanyRegion(game, (c) => c.developer === true);
+}
+
+function pickCompanyRegion(
+  game: IgdbGame,
+  filter: (c: IgdbInvolvedCompany) => boolean,
+): MediaRegion | null {
+  for (const c of game.involved_companies ?? []) {
+    const code = c.company?.country;
+    if (filter(c) && typeof code === "number" && COUNTRY_NUM_TO_REGION[code]) {
+      return COUNTRY_NUM_TO_REGION[code];
+    }
+  }
+  return null;
 }
 
 export interface IgdbMapOptions {

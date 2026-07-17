@@ -9,14 +9,24 @@ import {
 } from "./genres";
 
 describe("cleanupGenre", () => {
-  it("collapses IGDB's parenthetical RPG label", () => {
-    expect(cleanupGenre("Role-playing (RPG)")).toBe("RPG");
+  it("collapses IGDB's parenthetical RPG label, then canonicalizes to Chinese", () => {
+    expect(cleanupGenre("Role-playing (RPG)")).toBe("角色扮演");
   });
-  it("normalizes Science Fiction → Sci-Fi", () => {
-    expect(cleanupGenre("Science Fiction")).toBe("Sci-Fi");
+  it("chains cleanup then canonical: Science Fiction → Sci-Fi → 科幻 (both TMDB and IGDB casings)", () => {
+    expect(cleanupGenre("Science Fiction")).toBe("科幻");
+    expect(cleanupGenre("Science fiction")).toBe("科幻");
   });
-  it("trims and passes through unmapped names", () => {
-    expect(cleanupGenre("  Slice of Life ")).toBe("Slice of Life");
+  it("translates plain English names to the canonical Chinese form", () => {
+    expect(cleanupGenre("Action")).toBe("动作");
+    expect(cleanupGenre("  Slice of Life ")).toBe("日常");
+  });
+  it("keeps Chinese (Bangumi) names as-is — they ARE the canonical form", () => {
+    expect(cleanupGenre("武侠")).toBe("武侠");
+    expect(cleanupGenre("动作")).toBe("动作");
+  });
+  it("passes through English names with no Chinese counterpart", () => {
+    expect(cleanupGenre("MOBA")).toBe("MOBA");
+    expect(cleanupGenre("4X")).toBe("4X");
   });
 });
 
@@ -24,7 +34,13 @@ describe("normalizeGenres", () => {
   it("cleans, de-dupes, preserves order, drops blanks", () => {
     expect(
       normalizeGenres(["Action", "", "Action", "Role-playing (RPG)", "  "]),
-    ).toEqual(["Action", "RPG"]);
+    ).toEqual(["动作", "角色扮演"]);
+  });
+  it("de-dupes AFTER canonicalization (English + Chinese variants collapse)", () => {
+    expect(normalizeGenres(["Action", "动作", "War", "Warfare"])).toEqual([
+      "动作",
+      "战争",
+    ]);
   });
   it("drops names containing the sentinel (would corrupt encoding)", () => {
     expect(normalizeGenres(["Good", "Ba|d"])).toEqual(["Good"]);
@@ -32,10 +48,10 @@ describe("normalizeGenres", () => {
 });
 
 describe("joinGenres / splitGenres round-trip", () => {
-  it("wraps with sentinels and round-trips", () => {
+  it("wraps with sentinels (canonicalized) and round-trips", () => {
     const stored = joinGenres(["RPG", "Action"]);
-    expect(stored).toBe("|RPG|Action|");
-    expect(splitGenres(stored)).toEqual(["RPG", "Action"]);
+    expect(stored).toBe("|角色扮演|动作|");
+    expect(splitGenres(stored)).toEqual(["角色扮演", "动作"]);
   });
   it("returns null for an empty / all-blank list", () => {
     expect(joinGenres([])).toBeNull();

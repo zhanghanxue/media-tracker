@@ -7,6 +7,7 @@ import {
   deriveName,
   rollupStatus,
   subtreeRollup,
+  subtreeStatusPriority,
 } from "./collections";
 import type { CollectionRollup } from "./api";
 import type { Collection, MediaRow } from "./types";
@@ -21,6 +22,9 @@ function rollup(id: string, over: Partial<CollectionRollup> = {}): CollectionRol
     direct_count: 0,
     completed_count: 0,
     planned_count: 0,
+    in_progress_count: 0,
+    dropped_count: 0,
+    paused_count: 0,
     game_count: 0,
     latest_updated: null,
     earliest_release: null,
@@ -55,10 +59,32 @@ describe("subtreeRollup", () => {
       count: 5,
       completed: 1,
       planned: 4,
+      inProgress: 0,
+      dropped: 0,
+      paused: 0,
       games: 5, // all-game collection → completion bar still shown by MediaList
       latestUpdated: null,
       earliestRelease: null,
     });
+  });
+
+  it("sums the full status histogram across the subtree", () => {
+    const mixed = new Map([
+      [
+        "im",
+        rollup("im", {
+          direct_count: 3,
+          in_progress_count: 1,
+          dropped_count: 1,
+          paused_count: 1,
+        }),
+      ],
+      ["thor", rollup("thor", { direct_count: 1, in_progress_count: 1 })],
+    ]);
+    const r = subtreeRollup(mixed, collections, "mcu");
+    expect(r.inProgress).toBe(2);
+    expect(r.dropped).toBe(1);
+    expect(r.paused).toBe(1);
   });
 
   it("rolls the newest update + earliest release across the subtree", () => {
@@ -69,6 +95,31 @@ describe("subtreeRollup", () => {
     const r = subtreeRollup(dated, collections, "mcu");
     expect(r.latestUpdated).toBe("2026-05-31 09:00:00"); // newest across subtree
     expect(r.earliestRelease).toBe("2008-05-02"); // oldest release across subtree
+  });
+});
+
+describe("subtreeStatusPriority", () => {
+  const counts = (over: Partial<Parameters<typeof subtreeStatusPriority>[0]>) => ({
+    count: 1,
+    inProgress: 0,
+    planned: 0,
+    completed: 0,
+    dropped: 0,
+    paused: 0,
+    ...over,
+  });
+
+  it("ranks by the best status present (server priority order)", () => {
+    // Any in-progress wins, even alongside lower statuses.
+    expect(subtreeStatusPriority(counts({ inProgress: 1, completed: 5 }))).toBe(0);
+    expect(subtreeStatusPriority(counts({ planned: 1, completed: 5 }))).toBe(1);
+    expect(subtreeStatusPriority(counts({ completed: 2 }))).toBe(2);
+    expect(subtreeStatusPriority(counts({ dropped: 1, paused: 1 }))).toBe(3);
+    expect(subtreeStatusPriority(counts({ paused: 3 }))).toBe(4);
+  });
+
+  it("ranks an empty collection with planned", () => {
+    expect(subtreeStatusPriority(counts({ count: 0 }))).toBe(1);
   });
 });
 

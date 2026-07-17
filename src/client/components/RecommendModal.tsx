@@ -14,7 +14,9 @@ import type { Recommendation, RecommendType } from "../lib/recommend";
 // "because you have …", Add). Standalone (does NOT touch the Add modal); reuses
 // the add flow via useAddRecommendation. Mirrors AddMediaModal's shell/styles.
 // The fetch returns a ranked pool of up to 60; "换一批" rotates through it in
-// batches of 15 (wrapping) without refetching.
+// batches of 15, and once the pool wraps it refetches a FRESH pool (new nonce →
+// new seeds → different recommendations). Every modal open also starts with a
+// fresh nonce, so recommendations vary visit to visit.
 const TYPES: RecommendType[] = ["animation", "movie", "drama", "variety", "game"];
 const BATCH = 15;
 
@@ -24,7 +26,10 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
   useCloseOnBack(onClose);
   const [type, setType] = useState<RecommendType | null>(null);
   const [offset, setOffset] = useState(0);
-  const recs = useRecommendations(type);
+  // Mount-unique → each modal open bypasses the react-query cache; bumped when
+  // 换一批 exhausts the current pool.
+  const [nonce, setNonce] = useState(() => Date.now());
+  const recs = useRecommendations(type, nonce);
 
   const pool = recs.data ?? [];
   // The pool can shrink under the offset (adding a card refetches the exclusion).
@@ -104,14 +109,19 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
                 {t(`type.${ty}`)}
               </button>
             ))}
-            {pool.length > BATCH && (
+            {pool.length > 0 && (
               <button
                 type="button"
-                onClick={() =>
-                  setOffset(
-                    safeOffset + BATCH >= pool.length ? 0 : safeOffset + BATCH,
-                  )
-                }
+                onClick={() => {
+                  if (safeOffset + BATCH >= pool.length) {
+                    // Pool exhausted — refetch a genuinely new one (new nonce
+                    // → new random seeds server/browser side).
+                    setNonce(Date.now());
+                    setOffset(0);
+                  } else {
+                    setOffset(safeOffset + BATCH);
+                  }
+                }}
                 className="ml-auto rounded-md px-3 py-1.5 text-sm text-blue-400 hover:bg-zinc-800 light:text-blue-600 light:hover:bg-zinc-100"
               >
                 {t("recommend.shuffle")} ({Math.floor(safeOffset / BATCH) + 1}/

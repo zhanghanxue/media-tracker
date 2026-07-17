@@ -78,7 +78,7 @@ describe("igdbToMediaRow", () => {
 });
 
 describe("igdbToMediaRow — genres", () => {
-  it("merges genres + themes and cleans the RPG label into the row", () => {
+  it("merges genres + themes and canonicalizes names into the row", () => {
     const game: IgdbGame = {
       ...GAME,
       genres: [{ name: "Role-playing (RPG)" }, { name: "Adventure" }],
@@ -94,7 +94,7 @@ describe("igdbToMediaRow — genres", () => {
       consumptionMode: "playing",
       platform: null,
     });
-    expect(row.genres).toBe("|RPG|Adventure|Fantasy|");
+    expect(row.genres).toBe("|角色扮演|冒险|奇幻|");
   });
 
   it("leaves genres null when IGDB returns none", () => {
@@ -177,6 +177,18 @@ describe("igdbToMediaRow — region from developer country", () => {
       opts,
     );
     expect(row.region).toBe("china");
+  });
+
+  it("maps non-curated countries to open-ended slugs (616 → poland)", () => {
+    const row = igdbToMediaRow(
+      {
+        id: 5,
+        name: "Cyberpunk 2077",
+        involved_companies: [{ developer: true, company: { id: 12, country: 616 } }], // CDPR
+      },
+      opts,
+    );
+    expect(row.region).toBe("poland");
   });
 
   it("is null when IGDB has no usable country", () => {

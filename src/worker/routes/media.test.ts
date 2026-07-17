@@ -611,6 +611,44 @@ describe("GET /api/media — list", () => {
     expect(body.items[0]!.external_id).toBe("101922");
   });
 
+  it("returns exactly the requested ids, ignoring status/collection scope", async () => {
+    // One row inside a collection with a non-in_progress status — the id fetch
+    // must still return it (session-added pins are scope-unscoped).
+    await insertCollection(env.DB, {
+      id: "col:pin",
+      name: null,
+      parent_id: null,
+      cover_url: null,
+      sort_order: null,
+    });
+    const a = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      external_id: "pin1",
+      status: "planned",
+      collection_id: "col:pin",
+    });
+    const b = await insertMedia(env.DB, {
+      ...BASE_ROW,
+      external_id: "pin2",
+      status: "dropped",
+    });
+    await insertMedia(env.DB, { ...BASE_ROW, external_id: "other" });
+
+    const res = await get(`/api/media?id=${a.id}&id=${b.id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: { id: number }[];
+      total: number;
+    };
+    expect(body.total).toBe(2);
+    expect(body.items.map((i) => i.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it("returns 400 on a non-numeric id", async () => {
+    const res = await get("/api/media?id=abc");
+    expect(res.status).toBe(400);
+  });
+
   it("returns 400 with details on an invalid status filter", async () => {
     const res = await get("/api/media?status=banana");
     expect(res.status).toBe(400);

@@ -7,6 +7,7 @@
   },
   "sort": {
     "label": "Sort",
+    "status": "In progress first",
     "date_updated": "Recently updated",
     "date_added": "Recently added",
     "release_date": "Release date (oldest)",
@@ -51,7 +52,7 @@
     "dismiss": "Dismiss"
   },
   "filters": {
-    "heading": "Filters",
+    "allTypes": "All types",
     "type": "Type",
     "region": "Region",
     "genre": "Genre",
@@ -62,6 +63,8 @@
   "list": {
     "loading": "Loading…",
     "empty": "No media match your filters.",
+    "emptyHome": "Nothing in progress right now.",
+    "homeHint": "Showing what you're currently on — pick a type or filter to browse everything.",
     "error": "Couldn't load your library.",
     "count": "{{shown}} of {{total}}",
     "loadMore": "Load more"
@@ -208,6 +211,8 @@
     "type": "Type",
     "region": "Region",
     "regionNone": "—",
+    "regionOther": "Other…",
+    "regionOtherPlaceholder": "e.g. Poland",
     "consumptionMode": "Mode",
     "playing": "Playing",
     "watching": "Watching",

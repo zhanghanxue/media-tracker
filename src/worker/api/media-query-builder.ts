@@ -11,6 +11,7 @@ import { genreLikePattern } from "../sources/genres";
 import {
   COLLECTION_ROOT,
   REGION_UNSET,
+  STATUS_SORT_PRIORITY,
   type ListFilters,
   type SortKey,
 } from "./list-query";
@@ -27,7 +28,15 @@ export interface MediaListQuery {
 // Whitelist: maps the validated SortKey to a fixed, injection-safe clause.
 // Title sort COALESCE order mirrors the display-title fallback (displayTitle.ts)
 // for each language, so the list orders by the title the user actually sees.
+// Status-priority CASE, built from the shared server-controlled constant map
+// (statuses and ranks only — no user text), so it stays injection-safe.
+const STATUS_CASE = `CASE status ${Object.entries(STATUS_SORT_PRIORITY)
+  .map(([status, rank]) => `WHEN '${status}' THEN ${rank}`)
+  .join(" ")} ELSE 99 END`;
+
 const SORT_CLAUSES: Record<SortKey, string> = {
+  // Group by status priority, newest activity first within each group.
+  status: `${STATUS_CASE} ASC, date_updated DESC`,
   date_updated: "date_updated DESC",
   date_added: "date_added DESC",
   // Chronological by the work's actual air/release date, oldest first (so a
@@ -74,6 +83,11 @@ const TITLE_COLUMNS = [
 export function buildMediaListQuery(filters: ListFilters): MediaListQuery {
   const clauses: string[] = [];
   const params: unknown[] = [];
+
+  if (filters.ids.length > 0) {
+    clauses.push(`id IN (${placeholders(filters.ids.length)})`);
+    params.push(...filters.ids);
+  }
 
   if (filters.types.length > 0) {
     clauses.push(`type IN (${placeholders(filters.types.length)})`);
