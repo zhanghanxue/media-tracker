@@ -25,7 +25,7 @@ export const STATUS_FACETS: readonly MediaStatus[] = [
 // Sentinel region facet for rows with no region set (mirrors REGION_UNSET in
 // worker/api/list-query.ts) — the "fix these by hand" bucket. The server maps it
 // to `region IS NULL OR region = ''`. FILTER-ONLY: it's a query concept, not a
-// real region, so it lives in REGION_FILTER_FACETS (the sidebar) but NOT in
+// real region, so the sidebar appends it to its region list but it is NOT in
 // REGION_FACETS (the editor dropdowns, which set a real region value).
 export const REGION_UNSET = "__unset__";
 
@@ -40,10 +40,4 @@ export const REGION_FACETS: readonly string[] = [
   "usa",
   "uk",
   "thailand",
-];
-
-// What the FILTER sidebar shows: the real regions plus the "unset" sentinel.
-export const REGION_FILTER_FACETS: readonly string[] = [
-  ...REGION_FACETS,
-  REGION_UNSET,
 ];

@@ -99,6 +99,49 @@ export function aggregateRecommendations(
     }));
 }
 
+// --- Variation layer (pure, RNG injected so tests stay deterministic) -------
+// aggregateRecommendations above is deliberately untouched/deterministic; the
+// per-request variety comes from (a) sampling WHICH seeds fan out and
+// (b) shuffling the ranked pool within its count tiers.
+
+export type Rng = () => number;
+
+/**
+ * Random sample of `limit` items (order randomized too) — a partial
+ * Fisher–Yates on a copy, so the input is never mutated. With
+ * pool.length <= limit it degrades to a full shuffle of the pool.
+ */
+export function sampleSeeds<T>(pool: T[], limit: number, rng: Rng): T[] {
+  const copy = [...pool];
+  const n = Math.min(limit, copy.length);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(rng() * (copy.length - i));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+  }
+  return copy.slice(0, n);
+}
+
+/**
+ * Shuffle a ranked pool WITHIN its `count` tiers: the tier order (the real
+ * ranking signal) is preserved, but equal-count candidates — where the
+ * deterministic score/title tiebreaks are mostly noise — come back in a
+ * different order each call.
+ */
+export function shuffleRankedPool(
+  recs: RankedRecommendation[],
+  rng: Rng,
+): RankedRecommendation[] {
+  const out: RankedRecommendation[] = [];
+  let tierStart = 0;
+  for (let i = 1; i <= recs.length; i++) {
+    if (i === recs.length || recs[i]!.count !== recs[tierStart]!.count) {
+      out.push(...sampleSeeds(recs.slice(tierStart, i), i - tierStart, rng));
+      tierStart = i;
+    }
+  }
+  return out;
+}
+
 // A library row's identity in `source`: the primary external_id when that source
 // IS the row's source of record, else the cross-reference column (migration 0008).
 // Returns null when the row has no id for that source (→ can't seed from it).

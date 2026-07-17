@@ -30,8 +30,8 @@ describe("needsGenres", () => {
 });
 
 describe("encodeGenres", () => {
-  it("encodes to the sentinel form, null when empty", () => {
-    expect(encodeGenres(["RPG", "Action"])).toBe("|RPG|Action|");
+  it("encodes to the sentinel form (canonicalized), null when empty", () => {
+    expect(encodeGenres(["RPG", "Action"])).toBe("|角色扮演|动作|");
     expect(encodeGenres([])).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import type { ListFilters } from "./list-query";
 
 // Base = "no filters". Each test overrides only what it exercises.
 const BASE: ListFilters = {
+  ids: [],
   types: [],
   regions: [],
   statuses: [],
@@ -126,6 +127,20 @@ describe("buildMediaListQuery — region __unset__ sentinel", () => {
   });
 });
 
+describe("buildMediaListQuery — explicit ids", () => {
+  it("emits an id IN list with bound params", () => {
+    const { where, params } = build({ ids: [3, 17] });
+    expect(where).toBe("WHERE id IN (?, ?)");
+    expect(params).toEqual([3, 17]);
+  });
+
+  it("ANDs ids with other facets, params in clause order", () => {
+    const { where, params } = build({ ids: [5], types: ["manga"] });
+    expect(where).toBe("WHERE id IN (?) AND type IN (?)");
+    expect(params).toEqual([5, "manga"]);
+  });
+});
+
 describe("buildMediaListQuery — collection scope", () => {
   it("scopes to a named collection by id (parameterized)", () => {
     const { where, params } = build({ collection: "col:abc" });
@@ -156,6 +171,12 @@ describe("buildMediaListQuery — collection scope", () => {
 describe("buildMediaListQuery — sort whitelist", () => {
   it("maps date_added", () => {
     expect(build({ sort: "date_added" }).orderBy).toBe("date_added DESC");
+  });
+
+  it("maps status to a priority CASE, newest activity within each group", () => {
+    expect(build({ sort: "status" }).orderBy).toBe(
+      "CASE status WHEN 'in_progress' THEN 0 WHEN 'planned' THEN 1 WHEN 'completed' THEN 2 WHEN 'dropped' THEN 3 WHEN 'paused' THEN 4 ELSE 99 END ASC, date_updated DESC",
+    );
   });
 
   it("maps title to a COALESCE NOCASE clause (English-first)", () => {
