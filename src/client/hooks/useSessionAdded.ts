@@ -2,12 +2,25 @@ import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchMediaByIds } from "../lib/api";
-import { getSessionAddedIds, subscribeSessionAdds } from "../lib/sessionAdds";
+import {
+  getSessionAddedCollectionIds,
+  getSessionAddedIds,
+  subscribeSessionAdds,
+  subscribeSessionCollectionAdds,
+} from "../lib/sessionAdds";
 import type { MediaRow } from "../lib/types";
 
 /** Ids added this session, newest first (reactive). */
 export function useSessionAddedIds(): number[] {
   return useSyncExternalStore(subscribeSessionAdds, getSessionAddedIds);
+}
+
+/** Collection ids created this session, newest first (reactive). */
+export function useSessionAddedCollectionIds(): string[] {
+  return useSyncExternalStore(
+    subscribeSessionCollectionAdds,
+    getSessionAddedCollectionIds,
+  );
 }
 
 /**

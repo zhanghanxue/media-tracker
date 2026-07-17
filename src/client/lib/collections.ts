@@ -7,6 +7,7 @@ import type { Collection, MediaRow, UiLang } from "./types";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { CollectionRollup, CollectionRollupTitles } from "./api";
 import { displayTitle } from "./displayTitle";
+import { recordSessionCollectionAdd } from "./sessionAdds";
 
 // --- API ------------------------------------------------------------------
 
@@ -38,7 +39,9 @@ export async function createCollectionApi(
     body: JSON.stringify({ name, parent_id: parentId }),
   });
   if (!res.ok) throw new Error(`Create collection failed (HTTP ${res.status})`);
-  return (await res.json()) as Collection;
+  const collection = (await res.json()) as Collection;
+  recordSessionCollectionAdd(collection.id);
+  return collection;
 }
 
 export async function updateCollectionApi(

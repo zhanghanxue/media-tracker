@@ -5,7 +5,10 @@ import { useLevelItems } from "../hooks/useLevelItems";
 import { useCollections } from "../hooks/useCollections";
 import { useCollectionRollups } from "../hooks/useCollectionRollups";
 import { useMatchingCollections } from "../hooks/useMatchingCollections";
-import { useSessionAddedItems } from "../hooks/useSessionAdded";
+import {
+  useSessionAddedCollectionIds,
+  useSessionAddedItems,
+} from "../hooks/useSessionAdded";
 import { useCreateCollection } from "../hooks/useCollectionMutations";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
 import {
@@ -86,6 +89,9 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   // Session-added items, pinned to the front of the (implicit) Home view until
   // the page is refreshed — whatever their status.
   const pinnedItems = useSessionAddedItems(implicitHome);
+  // Same for collections created this session: without a pin, a freshly-created
+  // (empty) collection has no in-progress matches and would vanish at Home.
+  const sessionColIds = useSessionAddedCollectionIds();
 
   const rollupById = new Map<string, CollectionRollup>(
     rollups.map((r) => [r.collection_id, r]),
@@ -161,6 +167,9 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
       }
     };
     for (const id of matchingIds) addWithAncestors(id);
+    if (implicitHome) {
+      for (const id of sessionColIds) addWithAncestors(id);
+    }
     if (q) {
       for (const c of collections) {
         if (nameOf(c).toLowerCase().includes(q)) addWithAncestors(c.id);
@@ -173,9 +182,17 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
     id: c.id,
     label: nameOf(c),
   }));
-  const childCols = childCollections(collections, currentId).filter(
+  const levelCols = childCollections(collections, currentId).filter(
     (c) => !withMatches || withMatches.has(c.id),
   );
+  // Session-created collections at this level bypass the sort like session-added
+  // items do: pinned to the front (newest first), the rest interleave as usual.
+  const pinnedColIds = implicitHome ? sessionColIds : [];
+  const pinnedColIdSet = new Set(pinnedColIds);
+  const pinnedCols = pinnedColIds
+    .map((id) => levelCols.find((c) => c.id === id))
+    .filter((c): c is Collection => c !== undefined);
+  const childCols = levelCols.filter((c) => !pinnedColIdSet.has(c.id));
   const current = currentId ? collections.find((c) => c.id === currentId) : null;
 
   // Interleave collection cards and items by the ACTIVE sort, so a freshly-added
@@ -268,6 +285,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   // Session adds bypass the sort entirely: newest add first, ahead of the list.
   const cells: Cell[] = [
     ...pinnedItems.map((item): Cell => ({ kind: "item", item })),
+    ...pinnedCols.map((col): Cell => ({ kind: "col", col })),
     ...sortedCells,
   ];
 
