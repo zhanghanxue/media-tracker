@@ -238,6 +238,19 @@ CREATE TABLE media (
   -- scripts/backfill-release-dates.ts. Migration 0007.
   release_date    TEXT,
 
+  -- Cross-reference IDs to other sources (migration 0008): a row keeps its
+  -- primary source in external_source/external_id, and links to the same work
+  -- on other services here (e.g. a Bangumi-primary anime also carrying its
+  -- anilist_id). Set by the detail editor's "Find on …" pickers.
+  anilist_id      TEXT,
+  tmdb_id         TEXT,           -- kind-prefixed, e.g. "tv:1399"
+  igdb_id         TEXT,
+  bangumi_id      TEXT,
+
+  -- The source's own rating, normalized to 0–10 (migration 0009). Sort key for
+  -- the list / collection views.
+  source_rating   REAL,
+
   date_added      TEXT NOT NULL DEFAULT (datetime('now')),
   date_updated    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -247,6 +260,7 @@ CREATE INDEX idx_media_region           ON media(region);
 CREATE INDEX idx_media_date_updated     ON media(date_updated DESC);
 CREATE INDEX idx_media_platform         ON media(platform);
 CREATE INDEX idx_media_release_date     ON media(release_date);  -- migration 0007
+CREATE INDEX idx_media_source_rating    ON media(source_rating);  -- migration 0009
 
 -- Used only for games in watching mode (URL-as-content); other watching types use episode numbers
 CREATE TABLE media_video_parts (
@@ -259,7 +273,23 @@ CREATE TABLE media_video_parts (
 );
 
 CREATE INDEX idx_media_video_parts_media_id ON media_video_parts(media_id);
+
+-- Suggestions the user has dismissed (migration 0010), keyed by the suggested
+-- work's source + id + kind (e.g. a "new season" or "sequel" card from the
+-- What's New / Recommend flows) so it doesn't resurface.
+CREATE TABLE dismissed_suggestions (
+  source       TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  dismissed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (source, external_id)
+);
 ```
+
+> **Schema block currency:** the block above is kept in sync through migration
+> 0010. Migration 0011 is data-only (genre canonicalization) and adds no schema.
+> The `genres`, `collection_id`, and `sort_order` columns (migrations 0004/0005)
+> pre-date this note and are documented in their own migration files.
 
 ---
 
