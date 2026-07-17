@@ -212,6 +212,8 @@
     "type": "Type",
     "region": "Region",
     "regionNone": "—",
+    "regionOther": "Other…",
+    "regionOtherPlaceholder": "e.g. Poland",
     "consumptionMode": "Mode",
     "playing": "Playing",
     "watching": "Watching",

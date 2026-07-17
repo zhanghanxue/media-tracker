@@ -101,6 +101,27 @@ export async function selectGenresColumn(
   return result.results.map((r) => r.genres);
 }
 
+/**
+ * Read just the `region` column for rows matching an optional type filter —
+ * the raw input to the region facet tally (api/facets.ts § tallyRegions),
+ * which surfaces free-text "Other…" regions in the sidebar. Same shape and
+ * caveats as selectGenresColumn above.
+ */
+export async function selectRegionsColumn(
+  db: D1Database,
+  types: string[],
+): Promise<(string | null)[]> {
+  const where =
+    types.length > 0
+      ? `WHERE type IN (${types.map(() => "?").join(", ")})`
+      : "";
+  const result = await db
+    .prepare(`SELECT region FROM media ${where}`)
+    .bind(...types)
+    .all<{ region: string | null }>();
+  return result.results.map((r) => r.region);
+}
+
 export interface MediaListPage {
   items: MediaRow[];
   // Total rows matching the filters, ignoring limit/offset — lets the UI render

@@ -1,7 +1,16 @@
 import { useTranslation } from "react-i18next";
 
 import type { GenreFacet, MediaFilters } from "../lib/api";
-import { REGION_FILTER_FACETS, STATUS_FACETS, TYPE_FACETS } from "../lib/facets";
+import { uiLangFromI18n } from "../lib/displayTitle";
+import { genreLabel } from "../lib/genreLabel";
+import {
+  REGION_FACETS,
+  REGION_UNSET,
+  STATUS_FACETS,
+  TYPE_FACETS,
+} from "../lib/facets";
+import { regionLabel } from "../lib/region";
+import { ChipGroup } from "./Chips";
 
 // Types are no longer checkbox facets — the sidebar drills INTO a type
 // (level 1 = type list, level 2 = that type's region/genre/status facets).
@@ -9,59 +18,15 @@ export type FacetKey = "regions" | "statuses" | "genres";
 
 interface FilterSidebarProps {
   filters: MediaFilters;
-  // Dynamic genre options (server-computed, scoped to the selected type).
+  // Dynamic facet options (server-computed, scoped to the selected type):
+  // the type's genres, and the region slugs its rows actually store (so
+  // free-text "Other…" regions show up as filter chips too).
   genreFacets: GenreFacet[];
+  regionFacets: GenreFacet[];
   onToggle: (facet: FacetKey, value: string) => void;
   onSelectType: (type: string) => void;
   onBackToTypes: () => void;
   onClear: () => void;
-}
-
-interface CheckboxGroupProps {
-  legendKey: string;
-  values: readonly string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  // How to render each value's label. Facet enums use an i18n prefix
-  // (`type.animation`); genres are source-native strings shown verbatim.
-  labelPrefix?: string;
-  renderLabel?: (value: string) => string;
-}
-
-function CheckboxGroup({
-  legendKey,
-  labelPrefix,
-  renderLabel,
-  values,
-  selected,
-  onToggle,
-}: CheckboxGroupProps) {
-  const { t } = useTranslation();
-  const label = (value: string) =>
-    renderLabel ? renderLabel(value) : t(`${labelPrefix}.${value}`);
-  return (
-    <fieldset>
-      <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 light:text-zinc-500">
-        {t(legendKey)}
-      </legend>
-      <div className="space-y-1.5">
-        {values.map((value) => (
-          <label
-            key={value}
-            className="flex cursor-pointer items-center gap-2 text-sm text-zinc-200 light:text-zinc-700"
-          >
-            <input
-              type="checkbox"
-              checked={selected.includes(value)}
-              onChange={() => onToggle(value)}
-              className="h-4 w-4 accent-blue-500"
-            />
-            {label(value)}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
 }
 
 // CSS-only responsive drawer: on < md the panel is hidden behind a toggle
@@ -73,20 +38,37 @@ function CheckboxGroup({
 export function FilterSidebar({
   filters,
   genreFacets,
+  regionFacets,
   onToggle,
   onSelectType,
   onBackToTypes,
   onClear,
 }: FilterSidebarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = uiLangFromI18n(i18n.language);
   const activeType = filters.types[0] ?? null;
   const hasFacets =
     filters.regions.length + filters.statuses.length + filters.genres.length > 0;
+
   // Show whatever's selected even if it dropped out of the current facet list
   // (e.g. you picked a genre, then the facet list refreshed) so it stays
   // visible and un-checkable-away-able.
+  const genreCounts = new Map(genreFacets.map((g) => [g.value, g.count]));
   const genreValues = [
     ...new Set([...genreFacets.map((g) => g.value), ...filters.genres]),
+  ];
+
+  // Regions: the curated set always shows; any extra slug the library actually
+  // stores (free-text "Other…" values like "poland") is appended before the
+  // trailing `__unset__` bucket, plus any selected-but-now-absent value.
+  const regionCounts = new Map(regionFacets.map((r) => [r.value, r.count]));
+  const regionValues = [
+    ...new Set([
+      ...REGION_FACETS, // curated real regions first
+      ...regionFacets.map((r) => r.value),
+      ...filters.regions.filter((r) => r !== REGION_UNSET),
+      REGION_UNSET, // the "no region set" bucket stays last
+    ]),
   ];
 
   return (
@@ -111,9 +93,12 @@ export function FilterSidebar({
                   key={value}
                   type="button"
                   onClick={() => onSelectType(value)}
-                  className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-200 hover:bg-zinc-800 light:text-zinc-700 light:hover:bg-zinc-100"
+                  className="flex w-full items-center justify-between rounded-lg border border-transparent px-2.5 py-2 text-left text-sm text-zinc-200 transition-colors hover:border-zinc-700 hover:bg-zinc-800/60 light:text-zinc-700 light:hover:border-zinc-200 light:hover:bg-zinc-100"
                 >
                   {t(`type.${value}`)}
+                  <span aria-hidden="true" className="text-zinc-500">
+                    ›
+                  </span>
                 </button>
               ))}
             </nav>
@@ -142,26 +127,36 @@ export function FilterSidebar({
               )}
             </div>
 
-            <CheckboxGroup
-              legendKey="filters.region"
-              labelPrefix="region"
-              values={REGION_FILTER_FACETS}
+            <ChipGroup
+              legend={t("filters.region")}
+              options={regionValues.map((v) => ({
+                value: v,
+                label: regionLabel(t, v),
+                count: regionCounts.get(v),
+              }))}
               selected={filters.regions}
               onToggle={(v) => onToggle("regions", v)}
             />
             {genreValues.length > 0 && (
-              <CheckboxGroup
-                legendKey="filters.genre"
-                renderLabel={(v) => v}
-                values={genreValues}
+              <ChipGroup
+                legend={t("filters.genre")}
+                options={genreValues.map((v) => ({
+                  value: v,
+                  // Stored values are canonical Chinese; English mode maps
+                  // them to English labels (filtering still uses the value).
+                  label: genreLabel(v, lang),
+                  count: genreCounts.get(v),
+                }))}
                 selected={filters.genres}
                 onToggle={(v) => onToggle("genres", v)}
               />
             )}
-            <CheckboxGroup
-              legendKey="filters.status"
-              labelPrefix="status"
-              values={STATUS_FACETS}
+            <ChipGroup
+              legend={t("filters.status")}
+              options={STATUS_FACETS.map((v) => ({
+                value: v,
+                label: t(`status.${v}`),
+              }))}
               selected={filters.statuses}
               onToggle={(v) => onToggle("statuses", v)}
             />

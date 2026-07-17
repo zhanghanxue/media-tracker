@@ -14,8 +14,10 @@ import { TmdbLinkPicker, type PickedTmdbItem } from "./TmdbLinkPicker";
 import { VideoPartsEditor } from "./VideoPartsEditor";
 import { CollectionEditor } from "./CollectionEditor";
 import { CollectionPicker } from "./CollectionPicker";
+import { ChipSelect } from "./Chips";
 import { mediaProgress } from "../lib/progress";
 import { REGION_FACETS, TYPE_FACETS } from "../lib/facets";
+import { normalizeRegionSlug } from "../lib/region";
 import { fetchMediaList, type MediaFilters } from "../lib/api";
 import {
   childCollections,
@@ -164,6 +166,14 @@ export function MediaDetailEditor({
   const [titleEnglish, setTitleEnglish] = useState(media.title_english ?? "");
   const [titleRomaji, setTitleRomaji] = useState(media.title_romaji ?? "");
   const [region, setRegion] = useState(media.region ?? "");
+  // "Other…" free-text region path (the column is open-ended; the chips only
+  // cover the curated set). Starts open when the stored region is non-curated
+  // — e.g. "poland" for a CDPR game.
+  const [customRegion, setCustomRegion] = useState(
+    media.region != null &&
+      media.region !== "" &&
+      !REGION_FACETS.includes(media.region),
+  );
   const [showPicker, setShowPicker] = useState(false);
   // One toggle for the English-title-row picker; which SOURCE it shows depends on
   // the media type (AniList for anime/manga/LN, TMDB for drama/movie/variety,
@@ -234,11 +244,26 @@ export function MediaDetailEditor({
   // TMDB search needs a kind: tv for drama/variety, movie for movie.
   const tmdbKind = media.type === "movie" ? "movie" : "tv";
 
-  // If the current region isn't one of the curated facets, keep it selectable.
-  const regionOptions =
-    region && !REGION_FACETS.includes(region)
-      ? [region, ...REGION_FACETS]
-      : REGION_FACETS;
+  // The region chip row: none, the curated set, then "Other…" which opens the
+  // free-text input for anything else.
+  const REGION_OTHER = "__other__";
+  const regionChipValue = customRegion ? REGION_OTHER : region;
+  const regionChipOptions = [
+    { value: "", label: t("editor.regionNone") },
+    ...REGION_FACETS.map((r) => ({ value: r, label: t(`region.${r}`) })),
+    { value: REGION_OTHER, label: t("editor.regionOther") },
+  ];
+  const pickRegionChip = (v: string) => {
+    if (v === REGION_OTHER) {
+      // Entering the free-text path: drop any curated pick so the input
+      // starts from the stored custom value (or blank), never from "japan".
+      if (region === "" || REGION_FACETS.includes(region)) setRegion("");
+      setCustomRegion(true);
+    } else {
+      setRegion(v);
+      setCustomRegion(false);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -262,8 +287,11 @@ export function MediaDetailEditor({
     if (titleRomaji !== (media.title_romaji ?? "")) {
       patch.title_romaji = titleRomaji.trim() === "" ? null : titleRomaji.trim();
     }
-    if (region !== (media.region ?? "")) {
-      patch.region = region === "" ? null : region;
+    // Free-text regions are normalized to the curated slug style on save
+    // ("Poland" → "poland"); chip picks are already slugs.
+    const stagedRegion = customRegion ? normalizeRegionSlug(region) : region;
+    if (stagedRegion !== (media.region ?? "")) {
+      patch.region = stagedRegion === "" ? null : stagedRegion;
     }
 
     // Cross-reference links (Issue A / Feature C) — included only when changed.
@@ -319,6 +347,10 @@ export function MediaDetailEditor({
           // in-place update would otherwise leave a filtered list stale).
           if (patch.type) {
             void queryClient.invalidateQueries({ queryKey: ["media"] });
+            void queryClient.invalidateQueries({ queryKey: ["facets"] });
+          } else if (patch.region !== undefined) {
+            // A region change shifts the sidebar's region facet chips (counts,
+            // and any free-text "Other…" region appearing/disappearing).
             void queryClient.invalidateQueries({ queryKey: ["facets"] });
           }
           onClose();
@@ -391,22 +423,16 @@ export function MediaDetailEditor({
           )}
         </div>
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+        <div className="text-sm">
+          <span className="mb-1.5 block text-zinc-400 light:text-zinc-500">
             {t("editor.status")}
           </span>
-          <select
+          <ChipSelect
+            options={STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) }))}
             value={status}
-            onChange={(e) => setStatus(e.target.value as MediaStatus)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {t(`status.${s}`)}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={(v) => setStatus(v as MediaStatus)}
+          />
+        </div>
 
         {isGame && (
           <div className="grid grid-cols-2 gap-2 text-sm">
@@ -642,40 +668,39 @@ export function MediaDetailEditor({
           )}
         </div>
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+        <div className="text-sm">
+          <span className="mb-1.5 block text-zinc-400 light:text-zinc-500">
             {t("editor.type")}
           </span>
-          <select
+          <ChipSelect
+            options={TYPE_FACETS.map((ty) => ({
+              value: ty,
+              label: t(`type.${ty}`),
+            }))}
             value={type}
-            onChange={(e) => setType(e.target.value as MediaType)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
-          >
-            {TYPE_FACETS.map((ty) => (
-              <option key={ty} value={ty}>
-                {t(`type.${ty}`)}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={(v) => setType(v as MediaType)}
+          />
+        </div>
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-zinc-400 light:text-zinc-500">
+        <div className="text-sm">
+          <span className="mb-1.5 block text-zinc-400 light:text-zinc-500">
             {t("editor.region")}
           </span>
-          <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
-          >
-            <option value="">{t("editor.regionNone")}</option>
-            {regionOptions.map((r) => (
-              <option key={r} value={r}>
-                {t(`region.${r}`, r)}
-              </option>
-            ))}
-          </select>
-        </label>
+          <ChipSelect
+            options={regionChipOptions}
+            value={regionChipValue}
+            onChange={pickRegionChip}
+          />
+          {customRegion && (
+            <input
+              type="text"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              placeholder={t("editor.regionOtherPlaceholder")}
+              className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white"
+            />
+          )}
+        </div>
 
         {/* Collection placement — applies immediately (not via Save). */}
         <div className="text-sm">

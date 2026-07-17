@@ -211,6 +211,8 @@
     "type": "类型",
     "region": "地区",
     "regionNone": "—",
+    "regionOther": "其他…",
+    "regionOtherPlaceholder": "例如：波兰",
     "consumptionMode": "模式",
     "playing": "在玩",
     "watching": "观看",
