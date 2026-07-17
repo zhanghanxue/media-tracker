@@ -25,15 +25,19 @@ function Chip({
   option,
   selected,
   onClick,
+  radio = false,
 }: {
   option: ChipOption;
   selected: boolean;
   onClick: () => void;
+  radio?: boolean;
 }) {
   return (
     <button
       type="button"
-      aria-pressed={selected}
+      role={radio ? "radio" : undefined}
+      aria-checked={radio ? selected : undefined}
+      aria-pressed={radio ? undefined : selected}
       onClick={onClick}
       className={`${CHIP_BASE} ${selected ? CHIP_ON : CHIP_OFF}`}
     >
@@ -102,6 +106,7 @@ export function ChipSelect({
           option={o}
           selected={o.value === value}
           onClick={() => onChange(o.value)}
+          radio
         />
       ))}
     </div>
