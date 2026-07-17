@@ -56,6 +56,7 @@ One table holds every media type. Type-specific fields (`current_episode`, `curr
 `region` is a column on every row, normalized at write-time (in each API mapping layer). Starter set:
 `japan, china, korea, taiwan, hong_kong, usa, uk` — extend on demand.
 
+- The column is open-ended (2026-07): the curated facet set covers the common cases, and the editor's region "Other…" free-text path stores anything else — normalized to the same slug style (`normalizeRegionSlug` in `src/client/lib/region.ts`, e.g. "Hong Kong" → `hong_kong`) so hand-entered values stay consistent with mapper-written ones. For games, `region` is derived from IGDB's developer country (`igdb-mapper.ts`; backfill via `scripts/backfill-game-regions.ts`).
 - For `animation` + `donghua` + Chinese-origin works, this is also the primary discriminator between sub-genres (C/K/J-drama, anime/donghua/cartoon).
 - **Anti-pattern avoided:** free-text without normalization (the "japan" / "Japan" / "JP" / "Japanese" data-quality bug).
 
@@ -166,9 +167,9 @@ The child table handles both single-URL (one row) and multi-URL (many rows) walk
 
 Mirrors AniList's well-tested set. Rewatching/replaying handled as a separate `is_rewatching` boolean flag, not a status — avoids enum bloat.
 
-## 14. Filter UI — Faceted sidebar checkboxes
+## 14. Filter UI — Faceted sidebar
 
-Sidebar with checkbox groups per facet (type, region, status). **AND across facets, OR within.**
+Sidebar with a multi-select group per facet (type, region, status, genre). **AND across facets, OR within.** Rendered as pill chips since 2026-07 (`ChipGroup` in `src/client/components/Chips.tsx`, replacing the original native checkboxes) — the selection semantics are unchanged.
 
 Example: selecting `[animation, manga]` + `[japan, korea]` + `[in_progress]` produces
 `type IN ('animation','manga') AND region IN ('japan','korea') AND status='in_progress'`.
@@ -296,7 +297,7 @@ CREATE INDEX idx_media_video_parts_media_id ON media_video_parts(media_id);
 
 - Exact filter/sort options beyond type, region, status (e.g. sort by date added vs date updated vs alphabetical)
 - Whether to track watch history (timeline of progress events) or only current state
-- Genre / tag support (genres come from APIs for free; question is whether to expose as filters)
+- ~~Genre / tag support~~ — ✅ DONE 2026-07: exposed as per-type filter facets; stored as ONE canonical Chinese name per concept (`src/worker/sources/genres.ts` § CANONICAL_ZH; migration 0011 rewrote existing rows)
 - Notes / review / rating fields beyond `notes` text
 - Mobile-specific UX (gesture-driven episode increment? swipe to mark complete?)
 
