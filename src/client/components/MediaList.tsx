@@ -8,6 +8,7 @@ import { useMatchingCollections } from "../hooks/useMatchingCollections";
 import {
   useSessionAddedCollectionIds,
   useSessionAddedItems,
+  useSessionMovedCollectionIds,
 } from "../hooks/useSessionAdded";
 import { useCreateCollection } from "../hooks/useCollectionMutations";
 import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
@@ -91,7 +92,12 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   const pinnedItems = useSessionAddedItems(implicitHome);
   // Same for collections created this session: without a pin, a freshly-created
   // (empty) collection has no in-progress matches and would vanish at Home.
-  const sessionColIds = useSessionAddedCollectionIds();
+  // Plus collections a session-added item was just moved INTO — surfaced for the
+  // same reason (so the moved item stays reachable at Home). Both get pinned to
+  // the front of the implicit-Home view; the merged list dedupes an overlap.
+  const createdColIds = useSessionAddedCollectionIds();
+  const movedColIds = useSessionMovedCollectionIds(implicitHome);
+  const sessionColIds = [...new Set([...movedColIds, ...createdColIds])];
 
   const rollupById = new Map<string, CollectionRollup>(
     rollups.map((r) => [r.collection_id, r]),

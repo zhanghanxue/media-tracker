@@ -10,6 +10,8 @@
 // The snapshot array is stable between changes (same reference), as required
 // by useSyncExternalStore.
 
+import type { MediaRow } from "./types";
+
 function createSessionStore<T>() {
   let ids: T[] = [];
   const listeners = new Set<() => void>();
@@ -66,4 +68,46 @@ export function subscribeSessionCollectionAdds(cb: () => void): () => void {
 export function resetSessionAdds(): void {
   mediaAdds.reset();
   collectionAdds.reset();
+}
+
+/**
+ * The session-added rows to pin at the (implicit) Home view, in add order
+ * (newest first). `ids` is the recorded add order; `rows` is their CURRENT
+ * server state (fetched unscoped by id). A pin is dropped when its row is:
+ *   - absent from `rows` — it was deleted; or
+ *   - inside a collection now (`collection_id != null`) — it belongs under its
+ *     collection card at Home, not loose at the root level.
+ * Pure so the pin logic is unit-testable without React Query / the DOM.
+ */
+export function selectSessionPins(ids: number[], rows: MediaRow[]): MediaRow[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter(
+      (row): row is MediaRow => row !== undefined && row.collection_id === null,
+    );
+}
+
+/**
+ * The distinct collections that session-added rows have since been moved INTO,
+ * newest-move first. Counterpart to selectSessionPins: when a pin is dropped for
+ * having a collection_id, that collection is surfaced at Home so the item stays
+ * reachable — without this, moving a non-in-progress add into a pre-existing
+ * (no-in-progress) collection would make it vanish from Home entirely.
+ */
+export function selectSessionMovedCollectionIds(
+  ids: number[],
+  rows: MediaRow[],
+): string[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    const cid = byId.get(id)?.collection_id;
+    if (cid && !seen.has(cid)) {
+      seen.add(cid);
+      out.push(cid);
+    }
+  }
+  return out;
 }
