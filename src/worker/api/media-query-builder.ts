@@ -52,10 +52,14 @@ const SORT_CLAUSES: Record<SortKey, string> = {
   // Feature D: Z–A, same COALESCE fallback as `title`.
   title_desc:
     "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE DESC",
+  // Chinese title sort: order by the precomputed pinyin key (migration 0012) so
+  // CJK sorts by pinyin (火影 < 死神), not by code point. COALESCE falls back to
+  // the raw title columns for any pre-0012 row not yet backfilled (those trail
+  // the keyed rows until the backfill fills them). See sources/titleSortKey.ts.
   title_zh:
-    "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
+    "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
   title_zh_desc:
-    "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
+    "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
   // Feature D: by the source's 0–10 rating. `source_rating IS NULL` first keeps
   // unrated rows LAST in both directions (same NULLs-last pattern as release_date).
   rating_desc: "source_rating IS NULL, source_rating DESC",

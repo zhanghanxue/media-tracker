@@ -48,6 +48,10 @@ export interface MediaPatch {
   title_chinese?: string | null;
   title_english?: string | null;
   title_romaji?: string | null;
+  // DERIVED, server-only (migration 0012): recomputed by the PATCH route when a
+  // title field changes — deliberately absent from ALLOWED_FIELDS so a client
+  // can never set it directly. See routes/media.ts.
+  title_sort_zh?: string | null;
   region?: string | null;
   // Padded ISO `YYYY-MM-DD` air/release date (set by the backfill script or a
   // manual edit). Format-checked below; stored as-is.

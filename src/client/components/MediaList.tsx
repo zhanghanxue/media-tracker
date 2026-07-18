@@ -13,6 +13,8 @@ import {
 import { useCreateCollection } from "../hooks/useCollectionMutations";
 import { uiLangFromI18n } from "../lib/displayTitle";
 import { compareTitleKeys, levelTitleKey } from "../lib/levelSort";
+import { pinyinKey, resolveTitleSort, zhSortTitle } from "../lib/pinyinSort";
+import { usePinyinReady } from "../hooks/usePinyinReady";
 import {
   childCollections,
   collectionCoverFromRollup,
@@ -66,10 +68,25 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   const filtering = isExplicitFiltering(filters);
   // Home default = in-progress only (implicit — cleared by any drill-down,
   // facet, or search). `effective` is what the level/match queries actually run.
-  const { filters: effective, implicitHome } = effectiveLevelFilters(
+  const { filters: baseEffective, implicitHome } = effectiveLevelFilters(
     filters,
     currentId,
   );
+  // In a zh UI the single "Title A–Z/Z–A" option sorts by the pinyin-keyed
+  // title_zh (issue #3); en keeps the English-first `title`. Resolve here so the
+  // server AND the client interleave below use the SAME sort key.
+  const effective = {
+    ...baseEffective,
+    sort: resolveTitleSort(baseEffective.sort, lang),
+  };
+  const activeSort = effective.sort;
+  // Load pinyin-pro (dynamic) only when a zh title sort is active — the client
+  // interleave keys collection cards + items by pinyin to match the server's
+  // paginated order. Called unconditionally (before the early returns below) to
+  // respect the rules of hooks.
+  const wantsPinyinSort =
+    activeSort === "title_zh" || activeSort === "title_zh_desc";
+  const pinyinReady = usePinyinReady(wantsPinyinSort);
   const q = filters.q.trim().toLowerCase();
   const scope = currentId ?? COLLECTION_ROOT;
 
@@ -214,15 +231,18 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   type Cell = { kind: "col"; col: Collection } | { kind: "item"; item: MediaRow };
   // Feature D: each sort has both directions. Recognize the reverse keys here so
   // the client interleave matches the server's ORDER BY for the paginated items.
-  const statusSort = filters.sort === "status";
-  const titleSort = filters.sort === "title" || filters.sort === "title_desc";
+  const statusSort = activeSort === "status";
+  const titleSortEn = activeSort === "title" || activeSort === "title_desc";
+  const titleSortZh =
+    activeSort === "title_zh" || activeSort === "title_zh_desc";
+  const titleSort = titleSortEn || titleSortZh;
   const releaseSort =
-    filters.sort === "release_date" || filters.sort === "release_date_desc";
+    activeSort === "release_date" || activeSort === "release_date_desc";
   const ratingSort =
-    filters.sort === "rating_desc" || filters.sort === "rating_asc";
-  const descRelease = filters.sort === "release_date_desc";
-  const descTitle = filters.sort === "title_desc";
-  const descRating = filters.sort === "rating_desc";
+    activeSort === "rating_desc" || activeSort === "rating_asc";
+  const descRelease = activeSort === "release_date_desc";
+  const descTitle = activeSort === "title_desc" || activeSort === "title_zh_desc";
+  const descRating = activeSort === "rating_desc";
   // A cell's rating for the rating sort: items use source_rating; collections
   // have none, so they're treated as unrated and pushed to the end (NULLs last),
   // matching the server's `source_rating IS NULL` ordering for items.
@@ -231,7 +251,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   const cellDate = (cell: Cell): string => {
     if (cell.kind === "item") {
       const it = cell.item;
-      if (filters.sort === "date_added") return it.date_added ?? "";
+      if (activeSort === "date_added") return it.date_added ?? "";
       if (releaseSort) return it.release_date ?? "";
       return it.date_updated ?? "";
     }
@@ -239,12 +259,28 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
     // date_added has no per-collection rollup → use latestUpdated (≈ equal at add).
     return releaseSort ? (roll.earliestRelease ?? "") : (roll.latestUpdated ?? "");
   };
-  // Title-sort key: items mirror the server's title COALESCE + NOCASE order so
-  // the paginated items keep server order across page boundaries (see
-  // levelSort.ts); collections aren't paginated, so they interleave by their
-  // (lowercased) display name.
-  const cellTitleKey = (cell: Cell): string =>
-    cell.kind === "item" ? levelTitleKey(cell.item) : nameOf(cell.col).toLowerCase();
+  // Title-sort key, mirroring the server's ORDER BY for the paginated items so
+  // they keep server order across page boundaries. EN sort: the English-first
+  // COALESCE + NOCASE key (levelSort.ts). ZH sort: the pinyin key — items use the
+  // server-stored title_sort_zh (falling back to a client-computed one for a not-
+  // yet-backfilled row), collections use client pinyin of their display name.
+  // Both zh keys use the same pinyin transform as the server (pinyinSort.ts).
+  const zhItemKey = (item: MediaRow): string =>
+    item.title_sort_zh ?? pinyinKey(zhSortTitle(item));
+  const cellTitleKey = (cell: Cell): string => {
+    if (titleSortZh) {
+      if (cell.kind === "item") return zhItemKey(cell.item);
+      // Collection cards: pinyin of the display name once pinyin-pro has loaded
+      // (pinyinReady) — until then a plain-lowercase fallback that self-corrects
+      // on the re-render. Items are unaffected (they carry the server key).
+      return pinyinReady
+        ? pinyinKey(nameOf(cell.col))
+        : nameOf(cell.col).toLowerCase();
+    }
+    return cell.kind === "item"
+      ? levelTitleKey(cell.item)
+      : nameOf(cell.col).toLowerCase();
+  };
   // Status-sort rank, mirroring the server's CASE: items by their own status,
   // collections by the best status anywhere in their subtree.
   const cellStatusPriority = (cell: Cell): number =>

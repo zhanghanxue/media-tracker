@@ -185,9 +185,9 @@ describe("buildMediaListQuery — sort whitelist", () => {
     );
   });
 
-  it("maps title_zh to a Chinese-first COALESCE clause", () => {
+  it("maps title_zh to the pinyin key, falling back to the Chinese-first COALESCE", () => {
     expect(build({ sort: "title_zh" }).orderBy).toBe(
-      "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
+      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
     );
   });
 
@@ -210,9 +210,9 @@ describe("buildMediaListQuery — sort whitelist", () => {
     );
   });
 
-  it("maps title_zh_desc to a Chinese-first COALESCE DESC clause", () => {
+  it("maps title_zh_desc to the pinyin key, falling back to the Chinese-first COALESCE", () => {
     expect(build({ sort: "title_zh_desc" }).orderBy).toBe(
-      "COALESCE(title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
+      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
     );
   });
 });
