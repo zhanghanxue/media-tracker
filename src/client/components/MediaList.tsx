@@ -11,7 +11,8 @@ import {
   useSessionMovedCollectionIds,
 } from "../hooks/useSessionAdded";
 import { useCreateCollection } from "../hooks/useCollectionMutations";
-import { displayTitle, uiLangFromI18n } from "../lib/displayTitle";
+import { uiLangFromI18n } from "../lib/displayTitle";
+import { compareTitleKeys, levelTitleKey } from "../lib/levelSort";
 import {
   childCollections,
   collectionCoverFromRollup,
@@ -211,10 +212,6 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
   // sorts) or earliest release. Items keep the server's order among themselves;
   // collections slot in by date relative to the loaded items.
   type Cell = { kind: "col"; col: Collection } | { kind: "item"; item: MediaRow };
-  const collator = new Intl.Collator(lang === "zh" ? "zh-Hans" : undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
   // Feature D: each sort has both directions. Recognize the reverse keys here so
   // the client interleave matches the server's ORDER BY for the paginated items.
   const statusSort = filters.sort === "status";
@@ -242,8 +239,12 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
     // date_added has no per-collection rollup → use latestUpdated (≈ equal at add).
     return releaseSort ? (roll.earliestRelease ?? "") : (roll.latestUpdated ?? "");
   };
-  const cellName = (cell: Cell): string =>
-    cell.kind === "item" ? displayTitle(cell.item, lang) : nameOf(cell.col);
+  // Title-sort key: items mirror the server's title COALESCE + NOCASE order so
+  // the paginated items keep server order across page boundaries (see
+  // levelSort.ts); collections aren't paginated, so they interleave by their
+  // (lowercased) display name.
+  const cellTitleKey = (cell: Cell): string =>
+    cell.kind === "item" ? levelTitleKey(cell.item) : nameOf(cell.col).toLowerCase();
   // Status-sort rank, mirroring the server's CASE: items by their own status,
   // collections by the best status anywhere in their subtree.
   const cellStatusPriority = (cell: Cell): number =>
@@ -265,7 +266,7 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
       // matching the server's `…, date_updated DESC`.
     }
     if (titleSort) {
-      const cmp = collator.compare(cellName(a), cellName(b));
+      const cmp = compareTitleKeys(cellTitleKey(a), cellTitleKey(b));
       return descTitle ? -cmp : cmp;
     }
     if (ratingSort) {
