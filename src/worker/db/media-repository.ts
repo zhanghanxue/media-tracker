@@ -10,6 +10,7 @@
 import type { ListFilters } from "../api/list-query";
 import type { MediaPatch } from "../api/patch-media";
 import { buildMediaListQuery } from "../api/media-query-builder";
+import { titleSortZh } from "../sources/titleSortKey";
 import type {
   Collection,
   CollectionInsert,
@@ -39,6 +40,7 @@ const INSERT_COLUMNS = [
   "release_date",
   "source_rating",
   "genres",
+  "title_sort_zh",
   "platform",
   "consumption_mode",
   "collection_id",
@@ -884,6 +886,9 @@ export async function insertMedia(
       row.release_date,
       row.source_rating,
       row.genres,
+      // Derived, not carried on MediaInsert: pinyin key for the zh title sort,
+      // computed from the mapper's title fields so EVERY add path gets it.
+      titleSortZh(row),
       row.platform,
       row.consumption_mode,
       row.collection_id,

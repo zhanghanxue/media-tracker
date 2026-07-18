@@ -104,6 +104,13 @@ export interface MediaRow {
   // yet backfilled). This is the SOURCE's score — there is no user rating field.
   source_rating: number | null;
 
+  // Precomputed pinyin sort key for the zh title sort (migration 0012). Toneless
+  // pinyin of the zh-display title (COALESCE(title_chinese, title_native,
+  // title_english, title_romaji)); the server ORDER BYs it for title_zh so CJK
+  // sorts by pinyin under pagination. NULL = a pre-0012 row not yet backfilled
+  // (the ORDER BY COALESCEs back to the raw titles). See sources/titleSortKey.ts.
+  title_sort_zh: string | null;
+
   date_added: string;
   date_updated: string;
 
