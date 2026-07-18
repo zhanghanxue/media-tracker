@@ -176,6 +176,7 @@ function row(overrides: Partial<MediaRow>): MediaRow {
     runtime_minutes: null,
     release_date: null,
     source_rating: null,
+    title_sort_zh: null,
     collection_id: null,
     sort_order: null,
     date_added: "2026-01-01",

@@ -48,6 +48,7 @@ import { aniListToMediaRow } from "../sources/anilist-mapper";
 import { bangumiToMediaRow } from "../sources/bangumi-mapper";
 import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../sources/tmdb-mapper";
 import { igdbToMediaRow } from "../sources/igdb-mapper";
+import { withTitleSortKey } from "../sources/titleSortKey";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
 import {
@@ -381,11 +382,14 @@ mediaRoutes.patch("/:id", async (c) => {
   // the recorded progress. Order matters — complete is checked before start so
   // hitting the total in one go completes (not starts); fill/reset key off mutually
   // exclusive statuses (completed vs planned), so their order is immaterial.
-  const finalPatch = applyPlannedReset(
+  const finalPatch = withTitleSortKey(
     existing,
-    applyCompletionFill(
+    applyPlannedReset(
       existing,
-      applyAutoStart(existing, applyAutoComplete(existing, parsed.value)),
+      applyCompletionFill(
+        existing,
+        applyAutoStart(existing, applyAutoComplete(existing, parsed.value)),
+      ),
     ),
   );
   const updated = await updateMedia(c.env.DB, id, finalPatch);
