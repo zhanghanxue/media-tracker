@@ -6,9 +6,16 @@ import {
   recordSessionAdd,
   recordSessionCollectionAdd,
   resetSessionAdds,
+  selectSessionMovedCollectionIds,
+  selectSessionPins,
   subscribeSessionAdds,
   subscribeSessionCollectionAdds,
 } from "./sessionAdds";
+import type { MediaRow } from "./types";
+
+function item(id: number, collectionId: string | null): MediaRow {
+  return { id, collection_id: collectionId } as MediaRow;
+}
 
 beforeEach(() => {
   resetSessionAdds();
@@ -90,5 +97,76 @@ describe("sessionAdds collection store", () => {
     resetSessionAdds();
     expect(getSessionAddedIds()).toEqual([]);
     expect(getSessionAddedCollectionIds()).toEqual([]);
+  });
+});
+
+describe("selectSessionPins", () => {
+  it("returns pins in add order (newest first), not fetch order", () => {
+    // ids are recorded newest-first; the server returns them in its own order.
+    const ids = [3, 2, 1];
+    const rows = [item(1, null), item(2, null), item(3, null)];
+    expect(selectSessionPins(ids, rows).map((r) => r.id)).toEqual([3, 2, 1]);
+  });
+
+  it("drops a pin whose row moved INTO a collection", () => {
+    // The regression: item 2 was added loose, then assigned to a collection.
+    // Its refetched row now has a collection_id, so it must NOT pin at root —
+    // it belongs under its collection card instead.
+    const ids = [2, 1];
+    const rows = [item(1, null), item(2, "col:mcu")];
+    expect(selectSessionPins(ids, rows).map((r) => r.id)).toEqual([1]);
+  });
+
+  it("drops a pin whose row is absent (deleted since add)", () => {
+    const ids = [2, 1];
+    const rows = [item(1, null)]; // row 2 was deleted, so it isn't returned
+    expect(selectSessionPins(ids, rows).map((r) => r.id)).toEqual([1]);
+  });
+
+  it("keeps only loose rows when some moved and some were deleted", () => {
+    const ids = [4, 3, 2, 1];
+    const rows = [
+      item(1, null), // loose → keep
+      item(2, "col:x"), // moved → drop
+      // row 3 deleted → absent → drop
+      item(4, null), // loose → keep
+    ];
+    expect(selectSessionPins(ids, rows).map((r) => r.id)).toEqual([4, 1]);
+  });
+
+  it("returns [] for no ids", () => {
+    expect(selectSessionPins([], [item(1, null)])).toEqual([]);
+  });
+});
+
+describe("selectSessionMovedCollectionIds", () => {
+  it("surfaces the collection a session-added item was moved into", () => {
+    // The completing half of the fix: item 1 was dropped from the pins because
+    // it now has a collection_id, so that collection must appear at Home instead.
+    const ids = [1];
+    const rows = [item(1, "col:mcu")];
+    expect(selectSessionMovedCollectionIds(ids, rows)).toEqual(["col:mcu"]);
+  });
+
+  it("ignores loose rows and absent (deleted) rows", () => {
+    const ids = [3, 2, 1];
+    const rows = [item(1, "col:a"), item(2, null)]; // 3 deleted, 2 loose
+    expect(selectSessionMovedCollectionIds(ids, rows)).toEqual(["col:a"]);
+  });
+
+  it("dedupes when several session items share one collection, newest-move first", () => {
+    const ids = [3, 2, 1];
+    const rows = [item(1, "col:a"), item(2, "col:b"), item(3, "col:a")];
+    // id order is 3,2,1 → col:a (from 3), col:b (from 2), then 1's col:a is a dup
+    expect(selectSessionMovedCollectionIds(ids, rows)).toEqual([
+      "col:a",
+      "col:b",
+    ]);
+  });
+
+  it("returns [] when nothing has moved into a collection", () => {
+    expect(
+      selectSessionMovedCollectionIds([2, 1], [item(1, null), item(2, null)]),
+    ).toEqual([]);
   });
 });
