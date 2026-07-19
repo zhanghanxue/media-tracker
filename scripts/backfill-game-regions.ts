@@ -139,7 +139,7 @@ async function main() {
         `non-JSON response (HTTP ${res.status}) from ${path} — likely the Access login page; check the service token + policy.`,
       );
     }
-    const json = await res.json().catch(() => null);
+    const json: any = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(`${method} ${path} → HTTP ${res.status} ${JSON.stringify(json)}`);
     }
