@@ -384,6 +384,9 @@ collections to name (${renames.length}):`);
         (renames.length
           ? ` and name ${renames.length} existing collection(s)`
           : "") +
+        (normalizations.length
+          ? ` and normalize ${normalizations.length} stored name(s)`
+          : "") +
         `.`,
     );
     return;
