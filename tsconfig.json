@@ -17,6 +17,12 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "vite.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "vite.config.ts"
+  ],
   "exclude": ["node_modules", "dist", ".wrangler"]
 }

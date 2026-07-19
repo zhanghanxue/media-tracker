@@ -21,13 +21,13 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import {
-import { fetchAllMedia } from "./lib/fetch-all-media";
   encodeGenres,
   fetchGenresFor,
   needsGenres,
   type GenreCreds,
   type LibRow,
 } from "./import/genres";
+import { fetchAllMedia } from "./lib/fetch-all-media";
 
 interface Args {
   base: string;
@@ -120,7 +120,7 @@ async function main() {
         `non-JSON response (HTTP ${res.status}) from ${path} — likely the Access login page; check the service token + policy.`,
       );
     }
-    const json = await res.json().catch(() => null);
+    const json: any = await res.json().catch(() => null);
     if (!res.ok && res.status !== 409) {
       throw new Error(`${method} ${path} → HTTP ${res.status} ${JSON.stringify(json)}`);
     }
