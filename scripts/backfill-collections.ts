@@ -14,6 +14,12 @@
 // (or when the group already exists, e.g. a recent add made it — then a lone
 // straggler joins it). A one-film "collection" is noise, not grouping.
 //
+// REQUIRES the target Worker to support explicit source-derived ids on
+// POST /api/collections (added on this branch). An older deployment ignores the
+// `id` and mints a col:<uuid>, which would scatter each franchise into a
+// throwaway group — so --commit probes the first create, undoes it, and aborts
+// if the target is behind. Deploy first, then backfill.
+//
 // Auth: a Cloudflare Access SERVICE TOKEN (CF_ACCESS_CLIENT_ID/SECRET) to reach
 // the gated app (not needed for a localhost --base), plus TMDB_API_KEY and
 // TWITCH_CLIENT_ID/SECRET for the metadata lookups. Read from .dev.vars, same
@@ -284,7 +290,37 @@ async function main() {
       // tree is built from real collection rows). Idempotent: an existing id
       // comes back 200. Name left null so the client derives it from members,
       // matching what the add path produces.
-      await request("POST", "/api/collections", { id: key, name: null });
+      const { json: created } = await request("POST", "/api/collections", {
+        id: key,
+        name: null,
+      });
+      // An OLDER deployed Worker ignores the `id` field and mints a col:<uuid>
+      // instead, which would silently scatter each franchise into a throwaway
+      // group. Undo that row and stop: the target needs the explicit-id support
+      // from this branch deployed first.
+      const madeId = (created as { id?: string } | null)?.id;
+      if (madeId !== key) {
+        // Report what actually happened — never claim a cleanup that failed.
+        let cleanup = "no stray row was created";
+        if (madeId) {
+          try {
+            await request(
+              "DELETE",
+              `/api/collections/${encodeURIComponent(madeId)}`,
+            );
+            cleanup = `the stray collection ${madeId} was removed`;
+          } catch (e) {
+            cleanup = `WARNING: could not remove the stray collection ${madeId} (${(e as Error).message}) — delete it by hand`;
+          }
+        }
+        console.error(
+          `\nABORTED — ${args.base} ignored the explicit collection id (got ${madeId ?? "nothing"} for ${key}).\n` +
+            `That Worker predates explicit source-derived ids on POST /api/collections; deploy this branch first, then re-run.\n` +
+            `Nothing was filed; ${cleanup}.`,
+        );
+        process.exitCode = 1;
+        return;
+      }
       // Bulk PATCH re-checks the FK server-side, so a failed create can't
       // silently orphan the items.
       await request("PATCH", "/api/media/bulk", {
