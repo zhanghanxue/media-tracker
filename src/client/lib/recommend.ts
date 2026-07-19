@@ -23,7 +23,8 @@ import { normalizeTitle } from "../../worker/sources/bangumi-mapper";
 import type { BangumiType } from "../../worker/sources/bangumi";
 import { toSimplified } from "./toSimplified";
 import type { TitleVariants } from "./enrich";
-import type { MediaListResponse, MediaRow } from "./types";
+import { fetchAllMedia } from "./api";
+import type { MediaRow } from "./types";
 
 export type RecommendType = "animation" | "movie" | "drama" | "variety" | "game";
 
@@ -101,9 +102,7 @@ function seedTitle(row: MediaRow): string {
 // recs per seed, then reuses the SAME pure aggregator the Worker uses, excluding
 // everything already owned (by AniList id and by normalized title).
 async function recommendAnime(rng: Rng = Math.random): Promise<Recommendation[]> {
-  const res = await fetch("/api/media?limit=5000");
-  if (!res.ok) throw new Error(`Failed to load library (HTTP ${res.status})`);
-  const { items } = (await res.json()) as MediaListResponse;
+  const items = await fetchAllMedia();
 
   const seeds = pickAnimeSeeds(items, rng);
   if (seeds.length === 0) return [];

@@ -34,6 +34,7 @@ import {
   type TmdbDetail,
 } from "../src/worker/sources/tmdb";
 import {
+import { fetchAllMedia } from "./lib/fetch-all-media";
   tmdbToMediaRow,
   tmdbSeasonToMediaRow,
 } from "../src/worker/sources/tmdb-mapper";
@@ -240,8 +241,7 @@ async function main() {
     return;
   }
 
-  const { json: page } = await request("GET", "/api/media?limit=5000");
-  const all = (page?.items ?? []) as LibRow[];
+  const all = await fetchAllMedia<LibRow>(request);
   let pending = all.filter(
     (r) =>
       !!r.external_source &&

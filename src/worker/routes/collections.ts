@@ -34,6 +34,10 @@ export const collectionsRoutes = new Hono<{
   Variables: AuthVariables;
 }>();
 
+// The deterministic collection keys the mappers mint on add (tmdb:tv:<id> for
+// whole-show season groups; tmdb/igdb:collection:<id> for franchises).
+const SOURCE_COLLECTION_ID = /^(?:tmdb|igdb):collection:\d+$/;
+
 function asObject(body: unknown): Record<string, unknown> {
   return typeof body === "object" && body !== null && !Array.isArray(body)
     ? (body as Record<string, unknown>)
@@ -84,6 +88,34 @@ collectionsRoutes.post("/", async (c) => {
 
   if (parentId !== null && !(await getCollection(c.env.DB, parentId))) {
     return c.json({ error: `parent collection ${parentId} not found` }, 400);
+  }
+
+  // An explicit id is allowed ONLY for the deterministic source-derived
+  // namespaces the mappers mint on add ("tmdb:collection:<id>", …). That lets
+  // the franchise backfill create the very same group a future add would land
+  // in, instead of a col:<uuid> that would split the franchise in two. Free-form
+  // ids stay server-minted so clients can't squat arbitrary keys.
+  if ("id" in obj && obj.id !== null && obj.id !== undefined) {
+    if (typeof obj.id !== "string" || !SOURCE_COLLECTION_ID.test(obj.id)) {
+      return c.json(
+        {
+          error:
+            "id must be a source-derived collection key, e.g. tmdb:collection:1575",
+        },
+        400,
+      );
+    }
+    // Idempotent: re-running the backfill re-uses the existing group.
+    const existing = await getCollection(c.env.DB, obj.id);
+    if (existing) return c.json(existing, 200);
+    const made = await insertCollection(c.env.DB, {
+      id: obj.id,
+      name,
+      parent_id: parentId,
+      cover_url: null,
+      sort_order: null,
+    });
+    return c.json(made, 201);
   }
 
   const id = `col:${crypto.randomUUID()}`;

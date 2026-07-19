@@ -54,6 +54,61 @@ describe("tmdbToMediaRow — movie", () => {
   it("derives release_date from release_date", () => {
     expect(row.release_date).toBe("2019-05-30");
   });
+
+  it("leaves a standalone movie ungrouped", () => {
+    // Parasite is in no TMDB collection, so the captured fixture carries no
+    // belongs_to_collection — the row stays loose, as before this feature.
+    expect(row.collection_id).toBeNull();
+    expect(row.sort_order).toBeNull();
+  });
+});
+
+describe("tmdbToMediaRow — franchise grouping", () => {
+  // belongs_to_collection hand-authored to TMDB's documented movie-detail shape
+  // (the captured Parasite fixture has none, being a standalone film).
+  const rocky: TmdbDetail = {
+    ...movie,
+    id: 1366,
+    belongs_to_collection: { id: 1575, name: "Rocky Collection" },
+  };
+
+  it("groups a movie into its TMDB franchise collection", () => {
+    const row = tmdbToMediaRow(rocky, "movie", "completed");
+    expect(row.collection_id).toBe("tmdb:collection:1575");
+  });
+
+  it("leaves sort_order null — belongs_to_collection carries no ordinal", () => {
+    expect(tmdbToMediaRow(rocky, "movie", "completed").sort_order).toBeNull();
+  });
+
+  it("groups sequels of the same franchise under one id", () => {
+    const rockyII = tmdbToMediaRow(
+      { ...rocky, id: 1367 },
+      "movie",
+      "completed",
+    );
+    const rockyIII = tmdbToMediaRow(
+      { ...rocky, id: 1368 },
+      "movie",
+      "planned",
+    );
+    expect(rockyII.collection_id).toBe(rockyIII.collection_id);
+    expect(rockyII.external_id).not.toBe(rockyIII.external_id);
+  });
+
+  it("ignores belongs_to_collection for tv (whole shows group by tmdb:tv)", () => {
+    const row = tmdbToMediaRow({ ...tv, ...rocky, id: 93405 }, "tv", "planned");
+    expect(row.collection_id).toBeNull();
+  });
+
+  it("stays ungrouped when belongs_to_collection is explicitly null", () => {
+    const row = tmdbToMediaRow(
+      { ...movie, belongs_to_collection: null },
+      "movie",
+      "planned",
+    );
+    expect(row.collection_id).toBeNull();
+  });
 });
 
 describe("tmdbToMediaRow — tv", () => {

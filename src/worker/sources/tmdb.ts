@@ -83,6 +83,10 @@ export interface TmdbDetail {
   runtime?: number | null;
   release_date?: string;
   production_countries?: TmdbProductionCountry[];
+  // The franchise a movie belongs to (Rocky, Alien, …); null for standalones.
+  // Present on the /movie/{id} detail response only — never on search rows or
+  // tv detail. The mapper turns it into a "tmdb:collection:<id>" group.
+  belongs_to_collection?: { id: number; name?: string } | null;
 
   // tv
   name?: string;

@@ -156,5 +156,11 @@ export function buildMediaListQuery(filters: ListFilters): MediaListQuery {
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
-  return { where, params, orderBy: SORT_CLAUSES[filters.sort] };
+  // Every clause above can TIE (two rows added the same second, two identical
+  // titles, a shared release date — or `release_date IS NULL` alone for the
+  // whole undated tail). SQLite gives no ordering guarantee among tied rows, so
+  // without a unique final key the same row can appear on two pages, or on
+  // none, as the caller walks LIMIT/OFFSET. `id` is the primary key, so
+  // appending it makes every sort a total order and pagination stable.
+  return { where, params, orderBy: `${SORT_CLAUSES[filters.sort]}, id ASC` };
 }

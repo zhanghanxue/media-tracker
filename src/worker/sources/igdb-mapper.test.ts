@@ -29,6 +29,53 @@ describe("igdbToMediaRow", () => {
     expect(row.status).toBe("in_progress");
   });
 
+  it("leaves a game with no IGDB collection ungrouped", () => {
+    const row = igdbToMediaRow(GAME, {
+      status: "planned",
+      consumptionMode: "playing",
+      platform: "pc",
+    });
+    expect(row.collection_id).toBeNull();
+    expect(row.sort_order).toBeNull();
+  });
+
+  it("groups a game into its IGDB series collection", () => {
+    const row = igdbToMediaRow(
+      { ...GAME, collections: [{ id: 671, name: "The Witcher" }] },
+      { status: "planned", consumptionMode: "playing", platform: "pc" },
+    );
+    expect(row.collection_id).toBe("igdb:collection:671");
+    // IGDB gives no in-series ordinal.
+    expect(row.sort_order).toBeNull();
+  });
+
+  it("groups sequels of the same series under one id", () => {
+    const opts = {
+      status: "planned",
+      consumptionMode: "playing",
+      platform: "pc",
+    } as const;
+    const series = [{ id: 671, name: "The Witcher" }];
+    const w2 = igdbToMediaRow({ ...GAME, id: 1, collections: series }, opts);
+    const w3 = igdbToMediaRow({ ...GAME, id: 2, collections: series }, opts);
+    expect(w2.collection_id).toBe(w3.collection_id);
+    expect(w2.external_id).not.toBe(w3.external_id);
+  });
+
+  it("takes the first collection when IGDB lists several", () => {
+    const row = igdbToMediaRow(
+      {
+        ...GAME,
+        collections: [
+          { id: 671, name: "The Witcher" },
+          { id: 999, name: "CDPR Bundles" },
+        ],
+      },
+      { status: "planned", consumptionMode: "playing", platform: "pc" },
+    );
+    expect(row.collection_id).toBe("igdb:collection:671");
+  });
+
   it("derives release_date from first_release_date (Unix seconds → ISO)", () => {
     const row = igdbToMediaRow(GAME, {
       status: "planned",

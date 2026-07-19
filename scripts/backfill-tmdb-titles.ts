@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { getTmdbDetail, getTmdbSeason, type TmdbDetail } from "../src/worker/sources/tmdb";
 import { tmdbToMediaRow, tmdbSeasonToMediaRow } from "../src/worker/sources/tmdb-mapper";
+import { fetchAllMedia } from "./lib/fetch-all-media";
 
 interface Args {
   base: string;
@@ -174,8 +175,7 @@ async function main() {
     return;
   }
 
-  const { json: page } = await request("GET", "/api/media?limit=5000");
-  const all = (page?.items ?? []) as LibRow[];
+  const all = await fetchAllMedia<LibRow>(request);
   let pending = all.filter(
     (r) =>
       r.external_source === "tmdb" &&

@@ -108,6 +108,34 @@ export async function fetchMediaPage(
   return (await res.json()) as MediaListResponse;
 }
 
+/**
+ * Every row in the library, paged.
+ *
+ * The whole-library consumers (auto-link, recommendations, What's New) used to
+ * ask for `?limit=5000` and assume one response held everything. The server
+ * clamps `limit` to MAX_LIMIT (5000), so past that the tail was silently
+ * dropped — the caller couldn't tell a full library from a truncated one.
+ * This walks `offset` until it has the `total` the server reports.
+ *
+ * Safe to page because every sort ends in a unique `id` tiebreak (see
+ * media-query-builder), so a row can't straddle or slip between pages.
+ */
+export async function fetchAllMedia(pageSize = 1000): Promise<MediaRow[]> {
+  const out: MediaRow[] = [];
+  let total = Infinity;
+  for (let offset = 0; out.length < total; offset += pageSize) {
+    const res = await fetch(`/api/media?limit=${pageSize}&offset=${offset}`);
+    if (!res.ok) throw new Error(`Failed to load library (HTTP ${res.status})`);
+    const body = (await res.json()) as MediaListResponse;
+    total = body.total;
+    out.push(...body.items);
+    // Defensive: a short/empty page means the server has nothing more to give,
+    // so stop rather than spin forever if `total` and `items` ever disagree.
+    if (body.items.length < pageSize) break;
+  }
+  return out;
+}
+
 /** Fetch specific rows by id (repeatable `id` param) — status/collection
  *  unscoped, so pinned session-adds stay visible whatever their state. */
 export async function fetchMediaByIds(ids: number[]): Promise<MediaRow[]> {
