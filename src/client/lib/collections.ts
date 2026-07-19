@@ -173,10 +173,33 @@ export function collectionPath(
 }
 
 /**
- * The collection's display name: the stored name, else auto-derived from its
- * direct items' titles in the current language (longest common prefix — the
+ * The stored name for a language, or null when none is set.
+ *
+ * A zh UI prefers name_zh and then falls back to `name`. It deliberately does
+ * NOT skip to derivation when name_zh is missing: `name` is also where an
+ * OPERATOR-set name lives (the editor's rename box writes it), and deriveName
+ * returns the first member's title when there is no shared prefix, so
+ * preferring derivation would silently override a name the user typed.
+ *
+ * The cost is that a source-named group with no localized name — the IGDB ones,
+ * which have no zh name upstream — reads in English under a zh UI until it is
+ * renamed by hand. Populating name_zh for those would mean deriving a name
+ * server-side and freezing it, which is worse than a rename box.
+ */
+function storedName(collection: Collection, lang: UiLang): string | null {
+  if (lang === "zh") return collection.name_zh || collection.name || null;
+  return collection.name || null;
+}
+
+/**
+ * The collection's display name in `lang`: the stored name for that language,
+ * else auto-derived from its direct items' titles (longest common prefix — the
  * same behavior the flat series had), else its child collections' shared prefix,
  * else a fallback.
+ *
+ * A zh UI prefers name_zh (TMDB's localized franchise name, e.g. 民国三部曲）and
+ * falls back to `name` before deriving, so a group with only an English name
+ * still reads as that name rather than a prefix guess.
  */
 export function collectionName(
   collection: Collection,
@@ -185,7 +208,8 @@ export function collectionName(
   lang: UiLang,
   fallback: string,
 ): string {
-  if (collection.name) return collection.name;
+  const stored = storedName(collection, lang);
+  if (stored) return stored;
   const fromItems = deriveName(itemsUnder.map((m) => displayTitle(m, lang)));
   if (fromItems) return fromItems;
   const fromChildren = deriveName(childNames);
@@ -314,7 +338,8 @@ export function collectionNameFromSamples(
   lang: UiLang,
   fallback: string,
 ): string {
-  if (collection.name) return collection.name;
+  const stored = storedName(collection, lang);
+  if (stored) return stored;
   const fromItems = deriveName(sampleTitles.map((s) => displayTitle(s, lang)));
   if (fromItems) return fromItems;
   return deriveName(childNames) || fallback;

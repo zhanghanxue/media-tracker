@@ -226,6 +226,27 @@ export async function getTmdbDetail(
   });
 }
 
+/**
+ * A movie collection's own record. Used only for its LOCALIZED name: the name on
+ * `belongs_to_collection` comes back in the detail request's language, so the zh
+ * name needs its own call (`?language=zh-CN` → "民国三部曲（系列）"). Returns null
+ * when TMDB has no such collection.
+ */
+export async function getTmdbCollectionName(
+  id: number,
+  options: TmdbClientOptions,
+): Promise<string | null> {
+  const params = new URLSearchParams();
+  if (options.language) params.set("language", options.language);
+  const qs = params.toString();
+  const payload = await tmdbRequest<{ id: number; name?: string }>(
+    `/collection/${id}${qs ? `?${qs}` : ""}`,
+    options,
+    { notFoundIsNull: true },
+  );
+  return payload?.name?.trim() || null;
+}
+
 export async function getTmdbSeason(
   showId: number,
   seasonNumber: number,

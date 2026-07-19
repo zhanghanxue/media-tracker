@@ -583,9 +583,9 @@ export async function insertCollection(
 ): Promise<Collection> {
   const inserted = await db
     .prepare(
-      "INSERT INTO collections (id, name, parent_id, cover_url, sort_order) VALUES (?, ?, ?, ?, ?) RETURNING *",
+      "INSERT INTO collections (id, name, name_zh, parent_id, cover_url, sort_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
     )
-    .bind(row.id, row.name, row.parent_id, row.cover_url, row.sort_order)
+    .bind(row.id, row.name, row.name_zh, row.parent_id, row.cover_url, row.sort_order)
     .first<Collection>();
   if (inserted === null) {
     throw new Error("insertCollection: INSERT ... RETURNING * returned no row");
@@ -602,16 +602,23 @@ export async function ensureCollection(
   db: D1Database,
   id: string,
   name: string | null = null,
+  nameZh: string | null = null,
 ): Promise<void> {
   await db
     .prepare(
-      "INSERT INTO collections (id, name) VALUES (?, ?) ON CONFLICT(id) DO NOTHING",
+      "INSERT INTO collections (id, name, name_zh) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
     )
-    .bind(id, name)
+    .bind(id, name, nameZh)
     .run();
 }
 
-const COLLECTION_FIELDS = ["name", "cover_url", "parent_id", "sort_order"] as const;
+const COLLECTION_FIELDS = [
+  "name",
+  "name_zh",
+  "cover_url",
+  "parent_id",
+  "sort_order",
+] as const;
 export type CollectionPatch = Partial<
   Pick<Collection, (typeof COLLECTION_FIELDS)[number]>
 >;

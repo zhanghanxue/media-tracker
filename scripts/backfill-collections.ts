@@ -37,7 +37,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 
-import { getTmdbDetail } from "../src/worker/sources/tmdb";
+import { getTmdbCollectionName, getTmdbDetail } from "../src/worker/sources/tmdb";
 import { getIgdbDetail } from "../src/worker/sources/igdb";
 import {
   igdbIdOf,
@@ -185,9 +185,12 @@ async function main() {
   // Collections that already exist — a loose straggler may join one of these
   // even when it's the only loose member of its franchise.
   const { json: colPage } = await request("GET", "/api/collections");
-  const existingIds = new Set(
-    ((colPage?.collections ?? []) as { id: string }[]).map((c) => c.id),
-  );
+  const allCollections = (colPage?.collections ?? []) as {
+    id: string;
+    name: string | null;
+    name_zh: string | null;
+  }[];
+  const existingIds = new Set(allCollections.map((c) => c.id));
 
   const loose = all.filter((r) => r.collection_id === null);
   const candidates = selectCandidates(all, {
@@ -249,6 +252,107 @@ async function main() {
     await sleep(args.perMs);
   }
 
+  // --- Naming pass -----------------------------------------------------------
+  // Two gaps to close on EXISTING franchise groups, neither reachable from the
+  // filing pass above (it only looks at rows with collection_id IS NULL, and a
+  // filed group has no loose members left):
+  //
+  //   1. no name at all — the client falls back to longest-common-prefix, which
+  //      gives "建" for 建国大业/建党伟业/建军大业 and, with no shared prefix, one
+  //      member's own title (a group named after a film inside it).
+  //   2. no name_zh — the group reads in English in a Chinese UI.
+  //
+  // The English name comes from a MEMBER's detail (same calls as the filing
+  // pass); the Chinese one from TMDB's collection endpoint, which is the only
+  // place the localized name lives. IGDB has no localized names, so its groups
+  // keep name_zh null and the client derives a Chinese name from the members —
+  // which is where that derivation actually works well (开拓者).
+  //
+  // Only MISSING fields are written; an operator-set name is never overwritten.
+  const FRANCHISE_ID = /^(?:tmdb|igdb):collection:\d+$/;
+  const membersByCollection = new Map<string, Row[]>();
+  for (const r of all) {
+    if (!r.collection_id || !FRANCHISE_ID.test(r.collection_id)) continue;
+    const list = membersByCollection.get(r.collection_id) ?? [];
+    list.push(r);
+    membersByCollection.set(r.collection_id, list);
+  }
+  const needsNaming = allCollections.filter((c) => {
+    if (!FRANCHISE_ID.test(c.id) || !membersByCollection.has(c.id)) return false;
+    return !c.name || (c.id.startsWith("tmdb:") && !c.name_zh);
+  });
+
+  const renames: {
+    id: string;
+    to: string | null;
+    toZh: string | null;
+    sample: string;
+  }[] = [];
+  for (const col of needsNaming) {
+    const members = membersByCollection.get(col.id)!;
+    let en: string | null = null;
+    // Any member resolves the franchise name; try until one answers.
+    if (!col.name) {
+      for (const m of members) {
+        try {
+          if (col.id.startsWith("tmdb:") && tmdbMovieIdOf(m) !== null) {
+            const d = await getTmdbDetail(tmdbMovieIdOf(m)!, "movie", {
+              apiKey: tmdbKey!,
+            });
+            en = d?.belongs_to_collection?.name ?? null;
+          } else if (col.id.startsWith("igdb:") && igdbIdOf(m) !== null) {
+            const g = await getIgdbDetail(igdbIdOf(m)!, {
+              clientId: twitchId!,
+              clientSecret: twitchSecret!,
+            });
+            en = g?.collections?.[0]?.name ?? null;
+          }
+        } catch {
+          // try the next member
+        }
+        await sleep(args.perMs);
+        if (en) break;
+      }
+    }
+
+    let zh: string | null = null;
+    if (col.id.startsWith("tmdb:") && !col.name_zh) {
+      try {
+        zh = await getTmdbCollectionName(Number(col.id.split(":").pop()), {
+          apiKey: tmdbKey!,
+          language: "zh-CN",
+        });
+      } catch {
+        // keep null — the client falls back to deriving from the members
+      }
+      // Untranslated collections echo the English name; storing a copy would
+      // just freeze it, so leave name_zh null and let derivation try.
+      if (zh && zh === (en ?? col.name)) zh = null;
+      await sleep(args.perMs);
+    }
+
+    if (en || zh) {
+      renames.push({
+        id: col.id,
+        to: en,
+        toZh: zh,
+        sample: titleOf(members[0]!),
+      });
+    }
+  }
+
+  if (renames.length) {
+    console.error(`
+collections to name (${renames.length}):`);
+    for (const r of renames) {
+      const parts = [
+        r.to ? `name "${r.to}"` : null,
+        r.toZh ? `name_zh "${r.toZh}"` : null,
+      ].filter(Boolean);
+      console.error(`  ${r.id} → ${parts.join(" + ")}   (e.g. ${r.sample})`);
+    }
+  }
+
   const { actionable, singletons } = partitionGroups(groups, existingIds);
 
   console.error(`\nfranchises to file (${actionable.length}):`);
@@ -276,24 +380,62 @@ async function main() {
   const totalItems = actionable.reduce((n, [, g]) => n + g.rows.length, 0);
   if (!args.commit) {
     console.error(
-      `\nDRY-RUN — nothing written. Re-run with --commit to file ${totalItems} item(s) into ${actionable.length} collection(s).`,
+      `\nDRY-RUN — nothing written. Re-run with --commit to file ${totalItems} item(s) into ${actionable.length} collection(s)` +
+        (renames.length
+          ? ` and name ${renames.length} existing collection(s)`
+          : "") +
+        `.`,
     );
     return;
   }
 
   console.error(`\nCOMMIT → ${args.base} …`);
   let filed = 0;
+  let renamed = 0;
+
+  // Rename first: these groups already exist and only their label is wrong, so
+  // they apply even when the filing pass below has nothing left to do.
+  for (const r of renames) {
+    try {
+      await request("PATCH", `/api/collections/${encodeURIComponent(r.id)}`, {
+        ...(r.to ? { name: r.to } : {}),
+        ...(r.toZh ? { name_zh: r.toZh } : {}),
+      });
+      renamed += 1;
+    } catch (e) {
+      console.error(`  RENAME failed ${r.id}: ${(e as Error).message}`);
+    }
+    await sleep(150);
+  }
   for (const [key, g] of actionable) {
     try {
       // Create the collection first — a media.collection_id pointing at a row
       // that doesn't exist would drop the items out of the UI entirely (the
       // tree is built from real collection rows). Idempotent: an existing id
-      // comes back 200. Name left null so the client derives it from members,
-      // matching what the add path produces.
-      const { json: created } = await request("POST", "/api/collections", {
-        id: key,
-        name: null,
-      });
+      // comes back 200.
+      //
+      // Store the SOURCE's franchise name ("Beiyang Trilogy", "Pathfinder"),
+      // same as the add path. Leaving it null hands the client a
+      // longest-common-prefix guess, which yields "建" for the New China Trilogy
+      // and, with no shared prefix, names the group after one of its own films.
+      const { status: createStatus, json: created } = await request(
+        "POST",
+        "/api/collections",
+        { id: key, name: g.name },
+      );
+      // 200 = the group already existed, and POST does NOT touch its name. A
+      // group created before names were stored still carries null, so backfill
+      // it here — that's what renames the franchises filed by an earlier run.
+      // An operator-set name is never overwritten.
+      if (createStatus === 200 && g.name) {
+        const existingName = (created as { name?: string | null } | null)?.name;
+        if (!existingName) {
+          await request("PATCH", `/api/collections/${encodeURIComponent(key)}`, {
+            name: g.name,
+          });
+          renamed += 1;
+        }
+      }
       // An OLDER deployed Worker ignores the `id` field and mints a col:<uuid>
       // instead, which would silently scatter each franchise into a throwaway
       // group. Undo that row and stop: the target needs the explicit-id support
@@ -333,7 +475,11 @@ async function main() {
     }
     await sleep(150);
   }
-  console.error(`filed ${filed}/${totalItems} item(s). done.`);
+  console.error(
+    `filed ${filed}/${totalItems} item(s)` +
+      (renamed ? `, named ${renamed} existing collection(s)` : "") +
+      ". done.",
+  );
 }
 
 await main();

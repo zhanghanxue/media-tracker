@@ -146,8 +146,8 @@ describe("POST /api/collections", () => {
 
 describe("GET /api/collections", () => {
   it("returns all collections", async () => {
-    await insertCollection(env.DB, { id: "col:a", name: "A", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:b", name: "B", parent_id: "col:a", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:a", name: "A", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:b", name: "B", name_zh: null, parent_id: "col:a", cover_url: null, sort_order: null });
     const res = await json("GET", "/api/collections");
     const { collections } = (await res.json()) as { collections: Collection[] };
     expect(collections.map((c) => c.id).sort()).toEqual(["col:a", "col:b"]);
@@ -156,8 +156,8 @@ describe("GET /api/collections", () => {
 
 describe("PATCH /api/collections/:id — metadata + move", () => {
   it("renames, sets cover, and moves under a new parent", async () => {
-    await insertCollection(env.DB, { id: "col:p", name: "Parent", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:c", name: "Child", parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:p", name: "Parent", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:c", name: "Child", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
 
     const res = await json("PATCH", "/api/collections/col:c", {
       name: "Renamed",
@@ -173,9 +173,9 @@ describe("PATCH /api/collections/:id — metadata + move", () => {
 
   it("rejects a move that would create a cycle (parent into its own descendant)", async () => {
     // a → b → c ; moving a under c is a cycle
-    await insertCollection(env.DB, { id: "col:a", name: "a", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:b", name: "b", parent_id: "col:a", cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:c", name: "c", parent_id: "col:b", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:a", name: "a", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:b", name: "b", name_zh: null, parent_id: "col:a", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:c", name: "c", name_zh: null, parent_id: "col:b", cover_url: null, sort_order: null });
 
     const res = await json("PATCH", "/api/collections/col:a", { parent_id: "col:c" });
     expect(res.status).toBe(400);
@@ -184,7 +184,7 @@ describe("PATCH /api/collections/:id — metadata + move", () => {
   });
 
   it("rejects making a collection its own parent", async () => {
-    await insertCollection(env.DB, { id: "col:s", name: "s", parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:s", name: "s", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
     const res = await json("PATCH", "/api/collections/col:s", { parent_id: "col:s" });
     expect(res.status).toBe(400);
   });
@@ -197,8 +197,8 @@ describe("PATCH /api/collections/:id — metadata + move", () => {
 
 describe("PATCH /api/collections/:id — subtree bulk edit", () => {
   it("applies region/type/genres to every item in the subtree (nested too)", async () => {
-    await insertCollection(env.DB, { id: "col:mcu", name: "MCU", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:im", name: "Iron Man", parent_id: "col:mcu", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:mcu", name: "MCU", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:im", name: "Iron Man", name_zh: null, parent_id: "col:mcu", cover_url: null, sort_order: null });
     const loose = await insertMedia(env.DB, row("1")); // directly in MCU
     const nested = await insertMedia(env.DB, row("2")); // in Iron Man (sub-collection)
     const outside = await insertMedia(env.DB, row("3")); // not in the subtree
@@ -225,9 +225,9 @@ describe("PATCH /api/collections/:id — subtree bulk edit", () => {
 
 describe("DELETE /api/collections/:id", () => {
   it("re-parents sub-collections + items up to the deleted node's parent", async () => {
-    await insertCollection(env.DB, { id: "col:mcu", name: "MCU", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:im", name: "Iron Man", parent_id: "col:mcu", cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:sub", name: "Sub", parent_id: "col:im", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:mcu", name: "MCU", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:im", name: "Iron Man", name_zh: null, parent_id: "col:mcu", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:sub", name: "Sub", name_zh: null, parent_id: "col:im", cover_url: null, sort_order: null });
     const item = await insertMedia(env.DB, row("1"));
     await linkItem(item.id, "col:im");
 
@@ -255,10 +255,10 @@ describe("repository helpers", () => {
   });
 
   it("collectionSubtreeIds returns the root + all descendants", async () => {
-    await insertCollection(env.DB, { id: "col:a", name: "a", parent_id: null, cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:b", name: "b", parent_id: "col:a", cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:c", name: "c", parent_id: "col:b", cover_url: null, sort_order: null });
-    await insertCollection(env.DB, { id: "col:other", name: "o", parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:a", name: "a", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:b", name: "b", name_zh: null, parent_id: "col:a", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:c", name: "c", name_zh: null, parent_id: "col:b", cover_url: null, sort_order: null });
+    await insertCollection(env.DB, { id: "col:other", name: "o", name_zh: null, parent_id: null, cover_url: null, sort_order: null });
     const ids = (await collectionSubtreeIds(env.DB, "col:a")).sort();
     expect(ids).toEqual(["col:a", "col:b", "col:c"]);
   });

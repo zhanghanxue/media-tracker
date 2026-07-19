@@ -289,7 +289,23 @@ CREATE TABLE dismissed_suggestions (
 > **Schema block currency:** the block above is kept in sync through migration
 > 0010. Migration 0011 is data-only (genre canonicalization) and adds no schema.
 > The `genres`, `collection_id`, and `sort_order` columns (migrations 0004/0005)
-> pre-date this note and are documented in their own migration files.
+> pre-date this note and are documented in their own migration files. Later
+> additions, likewise documented in their own migrations: `media.title_sort_zh`
+> (0012, pinyin sort key) and `collections.name_zh` (0013).
+>
+> **Collection names are per-language** (0013). `collections` carries `name` (the
+> English/default label) and `name_zh`, resolved as
+> `name_zh → name → derive-from-members → fallback` under a zh UI and
+> `name → derive-from-members → fallback` under en — mirroring how a media row
+> picks a title. Franchise groups store what the source gives: TMDB has a
+> localized collection name (`/collection/{id}?language=zh-CN` →
+> 民国三部曲（系列）), IGDB does not, so its groups carry only `name`.
+>
+> The stored name always wins over derivation, in both languages, because `name`
+> is also where an operator-typed name lands (the editor's rename box) and
+> `deriveName` returns the first member's title when members share no prefix —
+> so preferring derivation would override a name the user typed, and would name a
+> group after one of the items inside it.
 
 ---
 
