@@ -25,6 +25,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { getIgdbDetail } from "../src/worker/sources/igdb";
 import { igdbDeveloperRegion, igdbRegion } from "../src/worker/sources/igdb-mapper";
+import { fetchAllMedia } from "./lib/fetch-all-media";
 
 interface GameRow {
   id: number;
@@ -146,9 +147,9 @@ async function main() {
   };
 
   // Pull the whole library and keep the games.
-  const { json: page } = await request("GET", "/api/media?limit=5000");
-  const games = ((page?.items ?? []) as GameRow[]).filter((r) => r.type === "game");
-  console.error(`library: ${page?.items?.length ?? 0} rows, ${games.length} games`);
+  const allRows = await fetchAllMedia<GameRow>(request);
+  const games = allRows.filter((r) => r.type === "game");
+  console.error(`library: ${allRows.length} rows, ${games.length} games`);
 
   const linked = games.filter((g) => igdbIdOf(g) !== null);
   const noLink = games.filter((g) => igdbIdOf(g) === null);

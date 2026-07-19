@@ -665,6 +665,68 @@ async function seedThree(): Promise<void> {
   });
 }
 
+// Whole-library sweeps (the backfills, auto-link, What's New) page through with
+// LIMIT/OFFSET. That is only correct if the ORDER BY is a TOTAL order — with a
+// tied final key SQLite may order tied rows differently per query, so a row can
+// appear on two pages or on none. Every sort therefore ends in `id ASC`.
+//
+// Caveat on what these prove: they still PASS without the tiebreak, because at
+// this size SQLite happens to walk a tied full scan in rowid order. They are
+// end-to-end regression guards against gaps/duplicates, not a demonstration of
+// the bug — the discriminating test is in media-query-builder.test.ts, which
+// asserts the clause shape directly and fails without it. Don't rely on these
+// to catch a future sort that drops the tiebreak.
+describe("GET /api/media — pagination is stable across tied sort keys", () => {
+  // 7 rows sharing ONE title and one release_date: every sort key below ties for
+  // all of them, so only the id tiebreak can make paging deterministic.
+  async function seedTied(n = 7): Promise<number[]> {
+    const ids: number[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const inserted = await insertMedia(env.DB, {
+        ...BASE_ROW,
+        external_id: `tied-${i}`,
+        title_english: "Same Title",
+        title_native: null,
+        title_romaji: null,
+        title_chinese: null,
+        release_date: "2020-01-01",
+      });
+      ids.push(inserted.id);
+    }
+    return ids;
+  }
+
+  for (const sort of ["title", "release_date", "date_added", "status"] as const) {
+    it(`walks every row exactly once with sort=${sort}`, async () => {
+      const expected = await seedTied();
+      const seen: number[] = [];
+      for (let offset = 0; offset < expected.length; offset += 2) {
+        const res = await get(`/api/media?sort=${sort}&limit=2&offset=${offset}`);
+        const body = (await res.json()) as { items: { id: number }[] };
+        seen.push(...body.items.map((r) => r.id));
+      }
+      // No duplicates, no gaps — the whole set, once each.
+      expect(new Set(seen).size).toBe(expected.length);
+      expect([...seen].sort((a, b) => a - b)).toEqual(
+        [...expected].sort((a, b) => a - b),
+      );
+    });
+  }
+
+  it("returns a page slice consistent with the full list", async () => {
+    await seedTied();
+    const full = (await (await get("/api/media?sort=title&limit=50")).json()) as {
+      items: { id: number }[];
+    };
+    const second = (await (
+      await get("/api/media?sort=title&limit=3&offset=3")
+    ).json()) as { items: { id: number }[] };
+    expect(second.items.map((r) => r.id)).toEqual(
+      full.items.slice(3, 6).map((r) => r.id),
+    );
+  });
+});
+
 describe("GET /api/media — list", () => {
   it("returns { items, total } for all rows with no filters", async () => {
     await seedThree();

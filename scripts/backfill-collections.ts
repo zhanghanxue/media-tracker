@@ -46,6 +46,7 @@ import {
   tmdbMovieIdOf,
   type PlanRow,
 } from "./backfill/franchise-plan";
+import { fetchAllMedia } from "./lib/fetch-all-media";
 
 interface Row extends PlanRow {
   title_english: string | null;
@@ -179,8 +180,7 @@ async function main() {
     return { status: res.status, json };
   };
 
-  const { json: page } = await request("GET", "/api/media?limit=5000");
-  const all = (page?.items ?? []) as Row[];
+  const all = await fetchAllMedia<Row>(request);
 
   // Collections that already exist — a loose straggler may join one of these
   // even when it's the only loose member of its franchise.

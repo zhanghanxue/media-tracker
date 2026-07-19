@@ -29,7 +29,7 @@ describe("buildMediaListQuery — no filters", () => {
   });
 
   it("defaults ORDER BY to date_updated DESC", () => {
-    expect(build({}).orderBy).toBe("date_updated DESC");
+    expect(build({}).orderBy).toBe("date_updated DESC, id ASC");
   });
 });
 
@@ -170,49 +170,69 @@ describe("buildMediaListQuery — collection scope", () => {
 
 describe("buildMediaListQuery — sort whitelist", () => {
   it("maps date_added", () => {
-    expect(build({ sort: "date_added" }).orderBy).toBe("date_added DESC");
+    expect(build({ sort: "date_added" }).orderBy).toBe("date_added DESC, id ASC");
   });
 
   it("maps status to a priority CASE, newest activity within each group", () => {
     expect(build({ sort: "status" }).orderBy).toBe(
-      "CASE status WHEN 'in_progress' THEN 0 WHEN 'planned' THEN 1 WHEN 'completed' THEN 2 WHEN 'dropped' THEN 3 WHEN 'paused' THEN 4 ELSE 99 END ASC, date_updated DESC",
+      "CASE status WHEN 'in_progress' THEN 0 WHEN 'planned' THEN 1 WHEN 'completed' THEN 2 WHEN 'dropped' THEN 3 WHEN 'paused' THEN 4 ELSE 99 END ASC, date_updated DESC, id ASC",
     );
   });
 
   it("maps title to a COALESCE NOCASE clause (English-first)", () => {
     expect(build({ sort: "title" }).orderBy).toBe(
-      "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE ASC",
+      "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE ASC, id ASC",
     );
   });
 
   it("maps title_zh to the pinyin key, falling back to the Chinese-first COALESCE", () => {
     expect(build({ sort: "title_zh" }).orderBy).toBe(
-      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC",
+      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE ASC, id ASC",
     );
   });
 
   it("maps release_date to oldest-first with nulls last", () => {
     expect(build({ sort: "release_date" }).orderBy).toBe(
-      "release_date IS NULL, release_date ASC",
+      "release_date IS NULL, release_date ASC, id ASC",
     );
   });
 
   // Feature D — reverse directions. Undated rows still sort LAST in both.
   it("maps release_date_desc to newest-first with nulls still last", () => {
     expect(build({ sort: "release_date_desc" }).orderBy).toBe(
-      "release_date IS NULL, release_date DESC",
+      "release_date IS NULL, release_date DESC, id ASC",
     );
   });
 
   it("maps title_desc to a COALESCE NOCASE DESC clause (English-first)", () => {
     expect(build({ sort: "title_desc" }).orderBy).toBe(
-      "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE DESC",
+      "COALESCE(title_english, title_romaji, title_native, title_chinese) COLLATE NOCASE DESC, id ASC",
     );
   });
 
   it("maps title_zh_desc to the pinyin key, falling back to the Chinese-first COALESCE", () => {
     expect(build({ sort: "title_zh_desc" }).orderBy).toBe(
-      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC",
+      "COALESCE(title_sort_zh, title_chinese, title_native, title_english, title_romaji) COLLATE NOCASE DESC, id ASC",
     );
+  });
+
+  // Pagination correctness: every sort must end in a UNIQUE key, else tied rows
+  // (same second, same title, the whole undated tail) can land on two pages or
+  // none as a caller walks LIMIT/OFFSET.
+  it("ends every sort with the id tiebreak so paging is stable", () => {
+    const sorts = [
+      "status",
+      "date_updated",
+      "date_added",
+      "release_date",
+      "release_date_desc",
+      "title",
+      "title_desc",
+      "title_zh",
+      "title_zh_desc",
+    ] as const;
+    for (const sort of sorts) {
+      expect(build({ sort }).orderBy.endsWith(", id ASC")).toBe(true);
+    }
   });
 });
