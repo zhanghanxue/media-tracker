@@ -283,17 +283,36 @@ async function main() {
 
   console.error(`\nCOMMIT → ${args.base} …`);
   let filed = 0;
+  let renamed = 0;
   for (const [key, g] of actionable) {
     try {
       // Create the collection first — a media.collection_id pointing at a row
       // that doesn't exist would drop the items out of the UI entirely (the
       // tree is built from real collection rows). Idempotent: an existing id
-      // comes back 200. Name left null so the client derives it from members,
-      // matching what the add path produces.
-      const { json: created } = await request("POST", "/api/collections", {
-        id: key,
-        name: null,
-      });
+      // comes back 200.
+      //
+      // Store the SOURCE's franchise name ("Beiyang Trilogy", "Pathfinder"),
+      // same as the add path. Leaving it null hands the client a
+      // longest-common-prefix guess, which yields "建" for the New China Trilogy
+      // and, with no shared prefix, names the group after one of its own films.
+      const { status: createStatus, json: created } = await request(
+        "POST",
+        "/api/collections",
+        { id: key, name: g.name },
+      );
+      // 200 = the group already existed, and POST does NOT touch its name. A
+      // group created before names were stored still carries null, so backfill
+      // it here — that's what renames the franchises filed by an earlier run.
+      // An operator-set name is never overwritten.
+      if (createStatus === 200 && g.name) {
+        const existingName = (created as { name?: string | null } | null)?.name;
+        if (!existingName) {
+          await request("PATCH", `/api/collections/${encodeURIComponent(key)}`, {
+            name: g.name,
+          });
+          renamed += 1;
+        }
+      }
       // An OLDER deployed Worker ignores the `id` field and mints a col:<uuid>
       // instead, which would silently scatter each franchise into a throwaway
       // group. Undo that row and stop: the target needs the explicit-id support
@@ -333,7 +352,11 @@ async function main() {
     }
     await sleep(150);
   }
-  console.error(`filed ${filed}/${totalItems} item(s). done.`);
+  console.error(
+    `filed ${filed}/${totalItems} item(s)` +
+      (renamed ? `, renamed ${renamed} existing collection(s)` : "") +
+      ". done.",
+  );
 }
 
 await main();

@@ -377,9 +377,15 @@ describe("POST /api/media — TMDB source", () => {
       // render (or rename) the group.
       const collections = await app.request("/api/collections", {}, env);
       const { collections: list } = (await collections.json()) as {
-        collections: { id: string }[];
+        collections: { id: string; name: string | null }[];
       };
       expect(list.map((c) => c.id)).toContain("tmdb:collection:1575");
+
+      // Store TMDB's own franchise name. The client's fallback is
+      // longest-common-prefix over member titles, which names a no-shared-prefix
+      // franchise after one of its own films.
+      const group = list.find((c) => c.id === "tmdb:collection:1575");
+      expect(group?.name).toBe("Rocky Collection");
     });
 
     it("puts a second film of the franchise in the same collection", async () => {
@@ -504,6 +510,15 @@ describe("POST /api/media — TMDB source", () => {
     expect(row.sort_order).toBe(2);
     expect(row.total_episodes).toBe(40);
     expect(row.title_chinese).toBe("唐朝诡事录 西行");
+
+    // Season groups keep a NULL name: every member starts with the show title,
+    // so the client's prefix derivation works and stays language-aware. Only
+    // franchise groups store a source-provided name.
+    const cols = await app.request("/api/collections", {}, env);
+    const { collections } = (await cols.json()) as {
+      collections: { id: string; name: string | null }[];
+    };
+    expect(collections.find((c) => c.id === "tmdb:tv:211089")?.name).toBeNull();
   });
 });
 

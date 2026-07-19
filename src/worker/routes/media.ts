@@ -221,11 +221,27 @@ mediaRoutes.post("/", async (c) => {
     });
   }
 
-  // A mapper-assigned collection_id (TMDB whole-show seasons → "tmdb:tv:<id>")
-  // must point at a real collection row before the FK is set. Idempotent across
-  // the show's seasons; name stays null so the client auto-derives it.
+  // A mapper-assigned collection_id (TMDB whole-show seasons → "tmdb:tv:<id>",
+  // franchises → "<source>:collection:<id>") must point at a real collection row
+  // before the FK is set. Idempotent across the show's seasons.
+  //
+  // Franchise groups store the name the SOURCE gives ("Beiyang Trilogy",
+  // "Pathfinder"). The client's fallback is longest-common-prefix over member
+  // titles, which degrades badly for franchises: 建国大业/建党伟业/建军大业 share
+  // only "建", and titles with no shared prefix (一步之遥/邪不压正/让子弹飞) make it
+  // fall back to ONE member's title — so the group ends up named after a film
+  // inside it. Season groups keep a null name, where the prefix derivation works
+  // (every member starts with the show title) and is already shipped behavior.
   if (row.collection_id) {
-    await ensureCollection(c.env.DB, row.collection_id);
+    const tmdbFranchise = tmdbDetail?.belongs_to_collection ?? null;
+    const igdbSeries = igdbGame?.collections?.[0] ?? null;
+    let franchiseName: string | null = null;
+    if (tmdbFranchise && row.collection_id === `tmdb:collection:${tmdbFranchise.id}`) {
+      franchiseName = tmdbFranchise.name ?? null;
+    } else if (igdbSeries && row.collection_id === `igdb:collection:${igdbSeries.id}`) {
+      franchiseName = igdbSeries.name ?? null;
+    }
+    await ensureCollection(c.env.DB, row.collection_id, franchiseName);
   }
 
   const inserted = await insertMedia(c.env.DB, row);
