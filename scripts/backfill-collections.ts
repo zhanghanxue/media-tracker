@@ -185,9 +185,11 @@ async function main() {
   // Collections that already exist — a loose straggler may join one of these
   // even when it's the only loose member of its franchise.
   const { json: colPage } = await request("GET", "/api/collections");
-  const existingIds = new Set(
-    ((colPage?.collections ?? []) as { id: string }[]).map((c) => c.id),
-  );
+  const allCollections = (colPage?.collections ?? []) as {
+    id: string;
+    name: string | null;
+  }[];
+  const existingIds = new Set(allCollections.map((c) => c.id));
 
   const loose = all.filter((r) => r.collection_id === null);
   const candidates = selectCandidates(all, {
@@ -249,6 +251,65 @@ async function main() {
     await sleep(args.perMs);
   }
 
+  // --- Rename pass -----------------------------------------------------------
+  // Franchise groups created before names were stored carry a null name, so the
+  // client falls back to longest-common-prefix — "建" for 建国大业/建党伟业/建军大业,
+  // or one member's own title when they share no prefix. Those groups have no
+  // LOOSE members left, so the filing pass above never revisits them; they need
+  // their own sweep.
+  //
+  // The name comes from a MEMBER's detail (belongs_to_collection / collections),
+  // reusing the same calls as the filing pass — no extra API surface. An
+  // operator-set name is never touched.
+  const FRANCHISE_ID = /^(?:tmdb|igdb):collection:\d+$/;
+  const membersByCollection = new Map<string, Row[]>();
+  for (const r of all) {
+    if (!r.collection_id || !FRANCHISE_ID.test(r.collection_id)) continue;
+    const list = membersByCollection.get(r.collection_id) ?? [];
+    list.push(r);
+    membersByCollection.set(r.collection_id, list);
+  }
+  const unnamed = allCollections.filter(
+    (c) => FRANCHISE_ID.test(c.id) && !c.name && membersByCollection.has(c.id),
+  );
+
+  const renames: { id: string; to: string; sample: string }[] = [];
+  for (const col of unnamed) {
+    const members = membersByCollection.get(col.id)!;
+    // Any member resolves the franchise name; try until one answers.
+    for (const m of members) {
+      try {
+        let found: string | null = null;
+        if (col.id.startsWith("tmdb:") && tmdbMovieIdOf(m) !== null) {
+          const d = await getTmdbDetail(tmdbMovieIdOf(m)!, "movie", {
+            apiKey: tmdbKey!,
+          });
+          found = d?.belongs_to_collection?.name ?? null;
+        } else if (col.id.startsWith("igdb:") && igdbIdOf(m) !== null) {
+          const g = await getIgdbDetail(igdbIdOf(m)!, {
+            clientId: twitchId!,
+            clientSecret: twitchSecret!,
+          });
+          found = g?.collections?.[0]?.name ?? null;
+        }
+        await sleep(args.perMs);
+        if (found) {
+          renames.push({ id: col.id, to: found, sample: titleOf(m) });
+          break;
+        }
+      } catch {
+        // try the next member
+      }
+    }
+  }
+
+  if (renames.length) {
+    console.error(`\ncollections to rename (${renames.length}):`);
+    for (const r of renames) {
+      console.error(`  ${r.id} → "${r.to}"   (was deriving from e.g. ${r.sample})`);
+    }
+  }
+
   const { actionable, singletons } = partitionGroups(groups, existingIds);
 
   console.error(`\nfranchises to file (${actionable.length}):`);
@@ -276,7 +337,11 @@ async function main() {
   const totalItems = actionable.reduce((n, [, g]) => n + g.rows.length, 0);
   if (!args.commit) {
     console.error(
-      `\nDRY-RUN — nothing written. Re-run with --commit to file ${totalItems} item(s) into ${actionable.length} collection(s).`,
+      `\nDRY-RUN — nothing written. Re-run with --commit to file ${totalItems} item(s) into ${actionable.length} collection(s)` +
+        (renames.length
+          ? ` and rename ${renames.length} existing collection(s)`
+          : "") +
+        `.`,
     );
     return;
   }
@@ -284,6 +349,20 @@ async function main() {
   console.error(`\nCOMMIT → ${args.base} …`);
   let filed = 0;
   let renamed = 0;
+
+  // Rename first: these groups already exist and only their label is wrong, so
+  // they apply even when the filing pass below has nothing left to do.
+  for (const r of renames) {
+    try {
+      await request("PATCH", `/api/collections/${encodeURIComponent(r.id)}`, {
+        name: r.to,
+      });
+      renamed += 1;
+    } catch (e) {
+      console.error(`  RENAME failed ${r.id}: ${(e as Error).message}`);
+    }
+    await sleep(150);
+  }
   for (const [key, g] of actionable) {
     try {
       // Create the collection first — a media.collection_id pointing at a row
