@@ -87,6 +87,61 @@ describe("POST /api/collections", () => {
     const res = await json("POST", "/api/collections", { name: "x", parent_id: "col:ghost" });
     expect(res.status).toBe(400);
   });
+
+  // The franchise backfill files loose rows into the SAME deterministic ids the
+  // mappers mint on add, so a later add joins the group instead of splitting it.
+  describe("explicit source-derived id", () => {
+    it("creates a collection with a caller-supplied tmdb franchise id", async () => {
+      const res = await json("POST", "/api/collections", {
+        id: "tmdb:collection:1575",
+        name: null,
+      });
+      expect(res.status).toBe(201);
+      const c = (await res.json()) as Collection;
+      expect(c.id).toBe("tmdb:collection:1575");
+      expect(await getCollection(env.DB, "tmdb:collection:1575")).not.toBeNull();
+    });
+
+    it("accepts an igdb series id", async () => {
+      const res = await json("POST", "/api/collections", {
+        id: "igdb:collection:671",
+      });
+      expect(res.status).toBe(201);
+      expect(((await res.json()) as Collection).id).toBe("igdb:collection:671");
+    });
+
+    it("is idempotent — re-running the backfill reuses the group", async () => {
+      const first = await json("POST", "/api/collections", {
+        id: "tmdb:collection:1575",
+      });
+      expect(first.status).toBe(201);
+
+      const again = await json("POST", "/api/collections", {
+        id: "tmdb:collection:1575",
+      });
+      expect(again.status).toBe(200); // existing, not a duplicate
+      expect(((await again.json()) as Collection).id).toBe("tmdb:collection:1575");
+
+      const list = (await (await json("GET", "/api/collections")).json()) as {
+        collections: Collection[];
+      };
+      expect(
+        list.collections.filter((c) => c.id === "tmdb:collection:1575"),
+      ).toHaveLength(1);
+    });
+
+    it("rejects a free-form id — those stay server-minted", async () => {
+      for (const bad of ["col:squatted", "whatever", "tmdb:collection:abc", ""]) {
+        const res = await json("POST", "/api/collections", { id: bad });
+        expect(res.status).toBe(400);
+      }
+    });
+
+    it("still mints a col: id when none is supplied", async () => {
+      const res = await json("POST", "/api/collections", { name: "Manual" });
+      expect(((await res.json()) as Collection).id).toMatch(/^col:/);
+    });
+  });
 });
 
 describe("GET /api/collections", () => {

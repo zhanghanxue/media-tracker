@@ -24,6 +24,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { titleSortZh } from "../src/worker/sources/titleSortKey";
+import { fetchAllMedia } from "./lib/fetch-all-media";
 
 interface Args {
   base: string;
@@ -117,8 +118,7 @@ async function main() {
     return;
   }
 
-  const page = await get("/api/media?limit=5000");
-  const all = (page?.items ?? []) as LibRow[];
+  const all = await fetchAllMedia<LibRow>((_m, p) => get(p).then((json) => ({ json })));
   let pending = all.filter((r) => r.title_sort_zh === null || r.title_sort_zh === undefined);
   console.error(`library: ${all.length} rows, ${pending.length} missing title_sort_zh`);
   if (args.limit) pending = pending.slice(0, args.limit);

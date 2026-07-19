@@ -40,6 +40,7 @@ import { getIgdbDetail } from "../src/worker/sources/igdb";
 import { igdbToMediaRow } from "../src/worker/sources/igdb-mapper";
 import { getTmdbDetail, getTmdbSeason } from "../src/worker/sources/tmdb";
 import {
+import { fetchAllMedia } from "./lib/fetch-all-media";
   tmdbToMediaRow,
   tmdbSeasonToMediaRow,
 } from "../src/worker/sources/tmdb-mapper";
@@ -241,8 +242,7 @@ async function main() {
     return;
   }
 
-  const page = await get("/api/media?limit=5000");
-  const all = (page?.items ?? []) as LibRow[];
+  const all = await fetchAllMedia<LibRow>((_m, p) => get(p).then((json) => ({ json })));
   let pending = all.filter(
     (r) =>
       !!r.external_source &&

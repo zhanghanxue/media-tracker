@@ -21,6 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import {
+import { fetchAllMedia } from "./lib/fetch-all-media";
   encodeGenres,
   fetchGenresFor,
   needsGenres,
@@ -137,8 +138,7 @@ async function main() {
   }
 
   // Pull the whole library (the raised MAX_LIMIT lets one page hold it).
-  const { json: page } = await request("GET", "/api/media?limit=5000");
-  const all = (page?.items ?? []) as LibRow[];
+  const all = await fetchAllMedia<LibRow>(request);
   let pending = all.filter(needsGenres);
   console.error(`library: ${all.length} rows, ${pending.length} missing genres`);
   console.error("missing by source:", tally(pending, (r) => r.external_source ?? "?"));

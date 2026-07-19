@@ -19,7 +19,8 @@ import {
 } from "../../worker/api/whats-new";
 import { fetchTmdbSeasons } from "./tmdbSearch";
 import type { AniListMedia } from "../../worker/sources/anilist";
-import type { MediaListResponse, MediaRow } from "./types";
+import { fetchAllMedia } from "./api";
+import type { MediaRow } from "./types";
 
 // A surfaced suggestion: a new season/sequel of a show already in the library.
 export interface Suggestion {
@@ -95,9 +96,7 @@ export async function scanWhatsNew(
   onProgress?: (p: ScanProgress) => void,
   scope: ScanScope = "all",
 ): Promise<ScanResult> {
-  const res = await fetch("/api/media?limit=5000");
-  if (!res.ok) throw new Error(`Failed to load library (HTTP ${res.status})`);
-  const { items } = (await res.json()) as MediaListResponse;
+  const items = await fetchAllMedia();
 
   // Which source paths this scope runs. Scoping to one section means we only seed
   // (and only fire external calls) for that section — the whole point of the

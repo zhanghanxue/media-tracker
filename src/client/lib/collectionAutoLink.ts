@@ -15,8 +15,9 @@ import {
   getAniListRelations,
   type AniListRelationEdge,
 } from "../../worker/sources/anilist";
+import { fetchAllMedia } from "./api";
 import { createCollectionApi, setItemCollectionApi } from "./collections";
-import type { MediaListResponse, MediaRow } from "./types";
+import type { MediaRow } from "./types";
 
 const CHAIN_RELATIONS = new Set(["SEQUEL", "PREQUEL"]);
 const SEASON_FORMATS = new Set(["TV", "TV_SHORT", "ONA"]);
@@ -66,9 +67,7 @@ export interface AutoLinkResult {
 async function fetchAniListLibraryIndex(): Promise<
   Map<string, AniListLibraryEntry>
 > {
-  const res = await fetch("/api/media?limit=5000");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const { items } = (await res.json()) as MediaListResponse;
+  const items = await fetchAllMedia();
   const index = new Map<string, AniListLibraryEntry>();
   for (const row of items) {
     if (row.external_source === "anilist" && row.external_id) {
