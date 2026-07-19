@@ -157,6 +157,7 @@ export function igdbToMediaRow(
   opts: IgdbMapOptions,
 ): IgdbMapperResult {
   const name = game.name?.trim();
+  const seriesId = game.collections?.[0]?.id ?? null;
   return {
     type: "game",
     region: igdbRegion(game), // developer's country (best-effort); editor can fix
@@ -182,7 +183,13 @@ export function igdbToMediaRow(
     genres: joinGenres(extractIgdbGenres(game)),
     platform: opts.platform,
     consumption_mode: opts.consumptionMode,
-    collection_id: null,
+    // Series grouping: a game in an IGDB collection (Dark Souls, Yakuza, …)
+    // joins "igdb:collection:<id>" so sequels land beside each other. The route
+    // ensures the collection row exists before insert; name stays null so the
+    // client auto-derives it from the members' titles. Detail-only field — a
+    // search-shaped game maps to null, same as before.
+    collection_id: seriesId === null ? null : `igdb:collection:${seriesId}`,
+    // IGDB gives no in-series ordinal; the client falls back to date_added.
     sort_order: null,
   };
 }

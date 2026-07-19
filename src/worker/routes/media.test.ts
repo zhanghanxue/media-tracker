@@ -328,6 +328,101 @@ describe("POST /api/media — TMDB source", () => {
     expect(second.status).toBe(409);
   });
 
+  // Franchise grouping: a movie carrying belongs_to_collection must land in
+  // "tmdb:collection:<id>" AND have that collection row created before insert,
+  // so the FK the client reads back actually resolves.
+  describe("franchise grouping", () => {
+    // Rocky (1366) in the Rocky Collection (1575), reusing the captured
+    // Parasite payload for every other field.
+    const ROCKY_ID = 1366;
+    const rockyDetail = {
+      ...(tmdbMovieDetailFixture as Record<string, unknown>),
+      id: ROCKY_ID,
+      belongs_to_collection: { id: 1575, name: "Rocky Collection" },
+    };
+
+    function mockRockyDetail(): void {
+      fetchMock
+        .get(TMDB_API_ORIGIN)
+        .intercept({ method: "GET", path: new RegExp(`^/3/movie/${ROCKY_ID}`) })
+        .reply(200, JSON.stringify(rockyDetail), {
+          headers: { "content-type": "application/json" },
+        });
+    }
+
+    function mockRockyPoster(): void {
+      fetchMock
+        .get(TMDB_IMG_ORIGIN)
+        .intercept({ method: "GET", path: TMDB_POSTER_PATH })
+        .reply(200, "fake-image-bytes", {
+          headers: { "content-type": "image/jpeg" },
+        });
+    }
+
+    it("assigns the franchise collection and creates the collection row", async () => {
+      mockRockyDetail();
+      mockRockyPoster();
+
+      const res = await post({
+        external_source: "tmdb",
+        status: "completed",
+        media: { id: ROCKY_ID, media_type: "movie" },
+      });
+      expect(res.status).toBe(201);
+
+      const row = (await res.json()) as Record<string, unknown>;
+      expect(row.collection_id).toBe("tmdb:collection:1575");
+
+      // The row must exist, else the media FK dangles and the client can't
+      // render (or rename) the group.
+      const collections = await app.request("/api/collections", {}, env);
+      const { collections: list } = (await collections.json()) as {
+        collections: { id: string }[];
+      };
+      expect(list.map((c) => c.id)).toContain("tmdb:collection:1575");
+    });
+
+    it("puts a second film of the franchise in the same collection", async () => {
+      mockRockyDetail();
+      mockRockyPoster();
+      const first = await post({
+        external_source: "tmdb",
+        status: "completed",
+        media: { id: ROCKY_ID, media_type: "movie" },
+      });
+      expect(first.status).toBe(201);
+
+      // Rocky II — same franchise, different film.
+      const sequelId = 1367;
+      fetchMock
+        .get(TMDB_API_ORIGIN)
+        .intercept({ method: "GET", path: new RegExp(`^/3/movie/${sequelId}`) })
+        .reply(200, JSON.stringify({ ...rockyDetail, id: sequelId }), {
+          headers: { "content-type": "application/json" },
+        });
+      mockRockyPoster();
+
+      const second = await post({
+        external_source: "tmdb",
+        status: "planned",
+        media: { id: sequelId, media_type: "movie" },
+      });
+      expect(second.status).toBe(201);
+
+      const a = (await first.json()) as Record<string, unknown>;
+      const b = (await second.json()) as Record<string, unknown>;
+      expect(b.collection_id).toBe(a.collection_id);
+      // ensureCollection is idempotent — still exactly one row.
+      const collections = await app.request("/api/collections", {}, env);
+      const { collections: list } = (await collections.json()) as {
+        collections: { id: string }[];
+      };
+      expect(list.filter((c) => c.id === "tmdb:collection:1575")).toHaveLength(
+        1,
+      );
+    });
+  });
+
   it("returns 404 when TMDB has no such id", async () => {
     fetchMock
       .get(TMDB_API_ORIGIN)

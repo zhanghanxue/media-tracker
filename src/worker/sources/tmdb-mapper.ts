@@ -96,6 +96,11 @@ export function tmdbToMediaRow(
   const totalEpisodes =
     kind === "tv" ? (detail.number_of_episodes ?? null) : null;
 
+  const franchiseId =
+    kind === "movie" ? (detail.belongs_to_collection?.id ?? null) : null;
+  const collectionId =
+    franchiseId === null ? null : `tmdb:collection:${franchiseId}`;
+
   return {
     type,
     region,
@@ -127,7 +132,14 @@ export function tmdbToMediaRow(
     genres: joinGenres(extractTmdbGenres(detail)),
     platform: null, // game-only fields (IGDB)
     consumption_mode: null,
-    collection_id: null,
+    // Franchise grouping: a movie in a TMDB collection (Rocky, Alien, …) joins
+    // "tmdb:collection:<id>" so sequels land beside each other instead of as
+    // loose cards. The route ensures the collection row exists before insert;
+    // name stays null so the client auto-derives it from the members' titles.
+    // Only movies — tv detail carries no belongs_to_collection, and a whole-show
+    // add already groups its seasons under "tmdb:tv:<id>".
+    collection_id: collectionId,
+    // No ordinal in belongs_to_collection; the client falls back to date_added.
     sort_order: null,
   };
 }

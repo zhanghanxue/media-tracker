@@ -58,6 +58,12 @@ export interface IgdbGame {
   // Aggregate rating, 0–100 (absent when unrated). Normalized to the 0–10
   // `source_rating` by the mapper. Fetched on both search + detail.
   rating?: number | null;
+  // The series a game belongs to (Dark Souls, Yakuza, …) — IGDB v4's `collections`
+  // (the singular `collection` is deprecated). Detail only; the mapper turns the
+  // first entry into an "igdb:collection:<id>" group. Note IGDB also exposes
+  // `franchises`, a broader umbrella (all of Mario, not just Mario Kart) — we
+  // deliberately don't group on it, since umbrella lumping is worse than none.
+  collections?: { id: number; name?: string }[];
   // Feature B: IGDB's own "similar games" — full nested game objects (id + name +
   // cover + rating), so one request yields addable recommendation candidates.
   // Fetched only by getIgdbSimilarGames.
@@ -170,9 +176,11 @@ export async function getIgdbDetail(
   options: IgdbClientOptions,
 ): Promise<IgdbGame | null> {
   // Detail also pulls the involved companies' developer flag + country, so the
-  // mapper can derive a region (the developer's country) for the game.
+  // mapper can derive a region (the developer's country) for the game, and the
+  // game's series (`collections`) so sequels auto-group. Both are detail-only —
+  // search results don't need them and the payload stays lean.
   const body =
-    `fields ${GAME_FIELDS},summary,genres.name,themes.name,` +
+    `fields ${GAME_FIELDS},summary,genres.name,themes.name,collections.name,` +
     `involved_companies.developer,involved_companies.publisher,involved_companies.company.country;` +
     ` where id = ${id};`;
   const results = await igdbRequest(body, options);

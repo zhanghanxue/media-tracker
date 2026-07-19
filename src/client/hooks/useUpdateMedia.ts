@@ -19,10 +19,12 @@ async function patchMedia(id: number, patch: MediaPatch): Promise<MediaRow> {
 }
 
 // Replace the row with the given id across every cached ["media", …] list —
-// both flat list pages ({ items, total }) AND infinite-query caches
-// ({ pages: [{ items, total }], pageParams }), since the drill-down grid is an
-// infinite query. Other caches under the prefix (the ["media","titles-index"]
-// Set, ["media","collection-rollups"], …) aren't list-shaped and are left as-is.
+// flat list pages ({ items, total }), infinite-query caches
+// ({ pages: [{ items, total }], pageParams }) since the drill-down grid is an
+// infinite query, AND bare MediaRow[] arrays (the ["media","session-added"]
+// pins Home renders in place of the grid copy). Other caches under the prefix
+// (the ["media","titles-index"] Set, ["media","collection-rollups"], …) either
+// aren't list-shaped or hold rows with no matching id, so they're left as-is.
 type InfiniteMedia = { pages: MediaListResponse[]; pageParams: unknown[] };
 
 function mapRow(
@@ -35,6 +37,17 @@ function mapRow(
 
   queryClient.setQueriesData<unknown>({ queryKey: ["media"] }, (old: unknown) => {
     if (!old || typeof old !== "object") return old;
+    // Bare MediaRow[] — the ["media","session-added"] pins. Home renders these
+    // INSTEAD of the grid's copy of the same row, so skipping them left a
+    // just-added card showing a stale status until a refresh. Safe against the
+    // other array caches under the prefix (collection rollups, matching-
+    // collection ids): mapItems only rewrites entries whose id matches.
+    if (Array.isArray(old)) {
+      const rows = old as MediaRow[];
+      // Keep the array identity when nothing matched, so unrelated array caches
+      // don't re-render on every tap.
+      return rows.some((it) => it?.id === id) ? mapItems(rows) : old;
+    }
     // Flat list page.
     if (Array.isArray((old as Partial<MediaListResponse>).items)) {
       const page = old as MediaListResponse;
