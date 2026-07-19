@@ -7,6 +7,8 @@
 // appends `translations` in one request so the mapper can pull EN / 中文 / native
 // titles without extra round-trips.
 
+import { stripCollectionSuffix } from "./collection-name";
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
 // Poster base. w500 is plenty for our card/cover sizes; the R2 re-host pipeline
@@ -231,6 +233,10 @@ export async function getTmdbDetail(
  * `belongs_to_collection` comes back in the detail request's language, so the zh
  * name needs its own call (`?language=zh-CN` → "民国三部曲（系列）"). Returns null
  * when TMDB has no such collection.
+ *
+ * The trailing （系列） marker is stripped here, at the one point every caller
+ * (the add route and the backfill) goes through, so a stored name is already in
+ * display form — "民国三部曲".
  */
 export async function getTmdbCollectionName(
   id: number,
@@ -244,7 +250,7 @@ export async function getTmdbCollectionName(
     options,
     { notFoundIsNull: true },
   );
-  return payload?.name?.trim() || null;
+  return stripCollectionSuffix(payload?.name ?? null);
 }
 
 export async function getTmdbSeason(
