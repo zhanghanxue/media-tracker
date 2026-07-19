@@ -38,6 +38,7 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import { getTmdbCollectionName, getTmdbDetail } from "../src/worker/sources/tmdb";
+import { stripCollectionSuffix } from "../src/worker/sources/collection-name";
 import { getIgdbDetail } from "../src/worker/sources/igdb";
 import {
   igdbIdOf,
@@ -171,7 +172,7 @@ async function main() {
         `non-JSON response (HTTP ${res.status}) from ${path} — likely the Access login page; check the service token + policy.`,
       );
     }
-    const json = await res.json().catch(() => null);
+    const json: any = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(
         `${method} ${path} → HTTP ${res.status} ${JSON.stringify(json)}`,
@@ -281,6 +282,26 @@ async function main() {
     if (!FRANCHISE_ID.test(c.id) || !membersByCollection.has(c.id)) return false;
     return !c.name || (c.id.startsWith("tmdb:") && !c.name_zh);
   });
+
+  // Names stored before the （系列） marker was stripped at the source keep the
+  // suffix, and the naming pass above skips any group that already has a
+  // name_zh. Normalizing is a pure string op over what is already stored — no
+  // lookup, nothing to re-resolve — so it is its own cheap sweep.
+  const normalizations: { id: string; from: string; to: string }[] = [];
+  for (const c of allCollections) {
+    if (!FRANCHISE_ID.test(c.id) || !c.name_zh) continue;
+    const stripped = stripCollectionSuffix(c.name_zh);
+    if (stripped && stripped !== c.name_zh) {
+      normalizations.push({ id: c.id, from: c.name_zh, to: stripped });
+    }
+  }
+
+  if (normalizations.length) {
+    console.error(`\nnames to normalize (${normalizations.length}):`);
+    for (const n of normalizations) {
+      console.error(`  ${n.id}: "${n.from}" → "${n.to}"`);
+    }
+  }
 
   const renames: {
     id: string;
@@ -395,6 +416,19 @@ collections to name (${renames.length}):`);
   console.error(`\nCOMMIT → ${args.base} …`);
   let filed = 0;
   let renamed = 0;
+
+  // Pure string fixes to already-stored names — no lookup, so they go first.
+  for (const n of normalizations) {
+    try {
+      await request("PATCH", `/api/collections/${encodeURIComponent(n.id)}`, {
+        name_zh: n.to,
+      });
+      renamed += 1;
+    } catch (e) {
+      console.error(`  NORMALIZE failed ${n.id}: ${(e as Error).message}`);
+    }
+    await sleep(150);
+  }
 
   // Rename first: these groups already exist and only their label is wrong, so
   // they apply even when the filing pass below has nothing left to do.
