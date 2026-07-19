@@ -4,8 +4,8 @@
 // these endpoints manage the collections themselves + subtree bulk-edits.
 //
 //   GET    /api/collections        → all collections (client builds the tree)
-//   POST   /api/collections        → create { name?, parent_id? }
-//   PATCH  /api/collections/:id     → { name?, cover_url?, parent_id?, sort_order? }
+//   POST   /api/collections        → create { name?, name_zh?, parent_id? }
+//   PATCH  /api/collections/:id     → { name?, name_zh?, cover_url?, parent_id?, sort_order? }
 //                                     and/or subtree bulk { region?, type?, genres? }
 //   DELETE /api/collections/:id     → delete, re-parenting contents up to its parent
 
@@ -78,9 +78,11 @@ collectionsRoutes.post("/", async (c) => {
   const obj = asObject(body);
 
   let name: string | null;
+  let nameZh: string | null;
   let parentId: string | null;
   try {
     name = "name" in obj ? coerceNullableString(obj.name, "name") : null;
+    nameZh = "name_zh" in obj ? coerceNullableString(obj.name_zh, "name_zh") : null;
     parentId = "parent_id" in obj ? coerceNullableString(obj.parent_id, "parent_id") : null;
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
@@ -111,6 +113,7 @@ collectionsRoutes.post("/", async (c) => {
     const made = await insertCollection(c.env.DB, {
       id: obj.id,
       name,
+      name_zh: nameZh,
       parent_id: parentId,
       cover_url: null,
       sort_order: null,
@@ -122,6 +125,7 @@ collectionsRoutes.post("/", async (c) => {
   const created = await insertCollection(c.env.DB, {
     id,
     name,
+    name_zh: nameZh,
     parent_id: parentId,
     cover_url: null,
     sort_order: null,
@@ -146,6 +150,8 @@ collectionsRoutes.patch("/:id", async (c) => {
   const bulk: SubtreeItemFields = {};
   try {
     if ("name" in obj) patch.name = coerceNullableString(obj.name, "name");
+    if ("name_zh" in obj)
+      patch.name_zh = coerceNullableString(obj.name_zh, "name_zh");
     if ("cover_url" in obj) patch.cover_url = coerceNullableString(obj.cover_url, "cover_url");
     if ("sort_order" in obj) {
       const v = obj.sort_order;

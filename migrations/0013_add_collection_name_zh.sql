@@ -1,0 +1,27 @@
+-- Migration 0013: `collections.name_zh` — the Chinese display name of a
+-- collection, so a group reads in the UI's language like every media row does
+-- (title_english / title_chinese, picked by displayTitle).
+--
+-- Why a column and not derivation: `collections.name` holds ONE string, so a
+-- franchise named from its source ("Beiyang Trilogy") stayed English even with
+-- the UI in Chinese. The client's fallback — longest common prefix over member
+-- titles — can't stand in for it either: 建国大业/建党伟业/建军大业 share only
+-- "建", and titles with no shared prefix make it fall back to a single member's
+-- title, naming the group after a film inside it.
+--
+-- TMDB has real localized names (GET /collection/{id}?language=zh-CN →
+-- "民国三部曲（系列）"), so `name` keeps the en value and `name_zh` the zh one.
+--
+-- ADDITIVE: existing rows get NULL. Resolution order per language, unchanged
+-- where a value is missing:
+--   zh UI → name_zh → name → derive-from-members → fallback
+--   en UI → name    → derive-from-members → fallback
+-- So a null name_zh degrades to today's behavior rather than showing blank, and
+-- IGDB groups (no localization upstream) keep deriving a Chinese name from their
+-- members' Chinese titles, which is where that derivation actually works well
+-- (开拓者 for the Pathfinder games).
+--
+-- scripts/backfill-collections.ts fills both names for existing franchise
+-- groups; new adds populate them in POST /api/media via ensureCollection.
+
+ALTER TABLE collections ADD COLUMN name_zh TEXT;

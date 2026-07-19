@@ -52,6 +52,7 @@ import { withTitleSortKey } from "../sources/titleSortKey";
 import type { AniListMedia } from "../sources/anilist";
 import type { BangumiSubject } from "../sources/bangumi";
 import {
+  getTmdbCollectionName,
   getTmdbDetail,
   getTmdbSeason,
   type TmdbDetail,
@@ -236,12 +237,34 @@ mediaRoutes.post("/", async (c) => {
     const tmdbFranchise = tmdbDetail?.belongs_to_collection ?? null;
     const igdbSeries = igdbGame?.collections?.[0] ?? null;
     let franchiseName: string | null = null;
+    let franchiseNameZh: string | null = null;
     if (tmdbFranchise && row.collection_id === `tmdb:collection:${tmdbFranchise.id}`) {
       franchiseName = tmdbFranchise.name ?? null;
+      // The zh name needs its own request (belongs_to_collection is in the
+      // detail call's language). ensureCollection is a no-op once the group
+      // exists, so only pay for it when actually creating one.
+      if (!(await getCollection(c.env.DB, row.collection_id))) {
+        try {
+          franchiseNameZh = await getTmdbCollectionName(tmdbFranchise.id, {
+            apiKey: c.env.TMDB_API_KEY!,
+            language: "zh-CN",
+          });
+        } catch {
+          // Naming is a nicety — never fail an add over it. A null name_zh
+          // just means the client derives a Chinese name from the members.
+        }
+      }
     } else if (igdbSeries && row.collection_id === `igdb:collection:${igdbSeries.id}`) {
+      // IGDB has no localized collection names, so name_zh stays null and the
+      // client derives one from the members' Chinese titles.
       franchiseName = igdbSeries.name ?? null;
     }
-    await ensureCollection(c.env.DB, row.collection_id, franchiseName);
+    await ensureCollection(
+      c.env.DB,
+      row.collection_id,
+      franchiseName,
+      franchiseNameZh,
+    );
   }
 
   const inserted = await insertMedia(c.env.DB, row);

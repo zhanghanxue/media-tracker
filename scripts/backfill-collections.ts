@@ -37,7 +37,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 
-import { getTmdbDetail } from "../src/worker/sources/tmdb";
+import { getTmdbCollectionName, getTmdbDetail } from "../src/worker/sources/tmdb";
 import { getIgdbDetail } from "../src/worker/sources/igdb";
 import {
   igdbIdOf,
@@ -188,6 +188,7 @@ async function main() {
   const allCollections = (colPage?.collections ?? []) as {
     id: string;
     name: string | null;
+    name_zh: string | null;
   }[];
   const existingIds = new Set(allCollections.map((c) => c.id));
 
@@ -251,16 +252,23 @@ async function main() {
     await sleep(args.perMs);
   }
 
-  // --- Rename pass -----------------------------------------------------------
-  // Franchise groups created before names were stored carry a null name, so the
-  // client falls back to longest-common-prefix — "建" for 建国大业/建党伟业/建军大业,
-  // or one member's own title when they share no prefix. Those groups have no
-  // LOOSE members left, so the filing pass above never revisits them; they need
-  // their own sweep.
+  // --- Naming pass -----------------------------------------------------------
+  // Two gaps to close on EXISTING franchise groups, neither reachable from the
+  // filing pass above (it only looks at rows with collection_id IS NULL, and a
+  // filed group has no loose members left):
   //
-  // The name comes from a MEMBER's detail (belongs_to_collection / collections),
-  // reusing the same calls as the filing pass — no extra API surface. An
-  // operator-set name is never touched.
+  //   1. no name at all — the client falls back to longest-common-prefix, which
+  //      gives "建" for 建国大业/建党伟业/建军大业 and, with no shared prefix, one
+  //      member's own title (a group named after a film inside it).
+  //   2. no name_zh — the group reads in English in a Chinese UI.
+  //
+  // The English name comes from a MEMBER's detail (same calls as the filing
+  // pass); the Chinese one from TMDB's collection endpoint, which is the only
+  // place the localized name lives. IGDB has no localized names, so its groups
+  // keep name_zh null and the client derives a Chinese name from the members —
+  // which is where that derivation actually works well (开拓者).
+  //
+  // Only MISSING fields are written; an operator-set name is never overwritten.
   const FRANCHISE_ID = /^(?:tmdb|igdb):collection:\d+$/;
   const membersByCollection = new Map<string, Row[]>();
   for (const r of all) {
@@ -269,44 +277,79 @@ async function main() {
     list.push(r);
     membersByCollection.set(r.collection_id, list);
   }
-  const unnamed = allCollections.filter(
-    (c) => FRANCHISE_ID.test(c.id) && !c.name && membersByCollection.has(c.id),
-  );
+  const needsNaming = allCollections.filter((c) => {
+    if (!FRANCHISE_ID.test(c.id) || !membersByCollection.has(c.id)) return false;
+    return !c.name || (c.id.startsWith("tmdb:") && !c.name_zh);
+  });
 
-  const renames: { id: string; to: string; sample: string }[] = [];
-  for (const col of unnamed) {
+  const renames: {
+    id: string;
+    to: string | null;
+    toZh: string | null;
+    sample: string;
+  }[] = [];
+  for (const col of needsNaming) {
     const members = membersByCollection.get(col.id)!;
+    let en: string | null = null;
     // Any member resolves the franchise name; try until one answers.
-    for (const m of members) {
-      try {
-        let found: string | null = null;
-        if (col.id.startsWith("tmdb:") && tmdbMovieIdOf(m) !== null) {
-          const d = await getTmdbDetail(tmdbMovieIdOf(m)!, "movie", {
-            apiKey: tmdbKey!,
-          });
-          found = d?.belongs_to_collection?.name ?? null;
-        } else if (col.id.startsWith("igdb:") && igdbIdOf(m) !== null) {
-          const g = await getIgdbDetail(igdbIdOf(m)!, {
-            clientId: twitchId!,
-            clientSecret: twitchSecret!,
-          });
-          found = g?.collections?.[0]?.name ?? null;
+    if (!col.name) {
+      for (const m of members) {
+        try {
+          if (col.id.startsWith("tmdb:") && tmdbMovieIdOf(m) !== null) {
+            const d = await getTmdbDetail(tmdbMovieIdOf(m)!, "movie", {
+              apiKey: tmdbKey!,
+            });
+            en = d?.belongs_to_collection?.name ?? null;
+          } else if (col.id.startsWith("igdb:") && igdbIdOf(m) !== null) {
+            const g = await getIgdbDetail(igdbIdOf(m)!, {
+              clientId: twitchId!,
+              clientSecret: twitchSecret!,
+            });
+            en = g?.collections?.[0]?.name ?? null;
+          }
+        } catch {
+          // try the next member
         }
         await sleep(args.perMs);
-        if (found) {
-          renames.push({ id: col.id, to: found, sample: titleOf(m) });
-          break;
-        }
-      } catch {
-        // try the next member
+        if (en) break;
       }
+    }
+
+    let zh: string | null = null;
+    if (col.id.startsWith("tmdb:") && !col.name_zh) {
+      try {
+        zh = await getTmdbCollectionName(Number(col.id.split(":").pop()), {
+          apiKey: tmdbKey!,
+          language: "zh-CN",
+        });
+      } catch {
+        // keep null — the client falls back to deriving from the members
+      }
+      // Untranslated collections echo the English name; storing a copy would
+      // just freeze it, so leave name_zh null and let derivation try.
+      if (zh && zh === (en ?? col.name)) zh = null;
+      await sleep(args.perMs);
+    }
+
+    if (en || zh) {
+      renames.push({
+        id: col.id,
+        to: en,
+        toZh: zh,
+        sample: titleOf(members[0]!),
+      });
     }
   }
 
   if (renames.length) {
-    console.error(`\ncollections to rename (${renames.length}):`);
+    console.error(`
+collections to name (${renames.length}):`);
     for (const r of renames) {
-      console.error(`  ${r.id} → "${r.to}"   (was deriving from e.g. ${r.sample})`);
+      const parts = [
+        r.to ? `name "${r.to}"` : null,
+        r.toZh ? `name_zh "${r.toZh}"` : null,
+      ].filter(Boolean);
+      console.error(`  ${r.id} → ${parts.join(" + ")}   (e.g. ${r.sample})`);
     }
   }
 
@@ -339,7 +382,7 @@ async function main() {
     console.error(
       `\nDRY-RUN — nothing written. Re-run with --commit to file ${totalItems} item(s) into ${actionable.length} collection(s)` +
         (renames.length
-          ? ` and rename ${renames.length} existing collection(s)`
+          ? ` and name ${renames.length} existing collection(s)`
           : "") +
         `.`,
     );
@@ -355,7 +398,8 @@ async function main() {
   for (const r of renames) {
     try {
       await request("PATCH", `/api/collections/${encodeURIComponent(r.id)}`, {
-        name: r.to,
+        ...(r.to ? { name: r.to } : {}),
+        ...(r.toZh ? { name_zh: r.toZh } : {}),
       });
       renamed += 1;
     } catch (e) {
@@ -433,7 +477,7 @@ async function main() {
   }
   console.error(
     `filed ${filed}/${totalItems} item(s)` +
-      (renamed ? `, renamed ${renamed} existing collection(s)` : "") +
+      (renamed ? `, named ${renamed} existing collection(s)` : "") +
       ". done.",
   );
 }

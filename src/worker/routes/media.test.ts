@@ -788,7 +788,7 @@ describe("GET /api/media — list", () => {
     // must still return it (session-added pins are scope-unscoped).
     await insertCollection(env.DB, {
       id: "col:pin",
-      name: null,
+      name: null, name_zh: null,
       parent_id: null,
       cover_url: null,
       sort_order: null,
@@ -861,7 +861,7 @@ describe("PATCH /api/media/bulk", () => {
     const b = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b2" });
     const c = await insertMedia(env.DB, { ...BASE_ROW, external_id: "b3" });
     await insertCollection(env.DB, {
-      id: "col:ac", name: "AC", parent_id: null, cover_url: null, sort_order: null,
+      id: "col:ac", name: "AC", name_zh: null, parent_id: null, cover_url: null, sort_order: null,
     });
 
     const res = await patch("/api/media/bulk", {

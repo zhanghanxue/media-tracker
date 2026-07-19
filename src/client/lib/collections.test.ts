@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   collectionCoverFromRollup,
+  collectionName,
   collectionNameFromSamples,
   collectionsWithItems,
   deriveName,
@@ -13,7 +14,7 @@ import type { CollectionRollup } from "./api";
 import type { Collection, MediaRow } from "./types";
 
 function col(id: string, parent: string | null): Collection {
-  return { id, name: null, parent_id: parent, cover_url: null, sort_order: null, date_added: "" };
+  return { id, name: null, name_zh: null, parent_id: parent, cover_url: null, sort_order: null, date_added: "" };
 }
 
 function rollup(id: string, over: Partial<CollectionRollup> = {}): CollectionRollup {
@@ -138,8 +139,78 @@ describe("rollupStatus", () => {
   });
 });
 
+// Per-language collection names (migration 0013). A franchise group stores the
+// source's name in both languages; the zh UI must not fall straight through to
+// the English one, because deriving from the members' Chinese titles is usually
+// better (开拓者 beats "Pathfinder" for the IGDB groups, which have no localized
+// name upstream).
+describe("collectionName — language resolution", () => {
+  const franchise: Collection = {
+    id: "tmdb:collection:1158059",
+    name: "Beiyang Trilogy",
+    name_zh: "民国三部曲（系列）",
+    parent_id: null,
+    cover_url: null,
+    sort_order: null,
+    date_added: "",
+  };
+  const members: MediaRow[] = [
+    { ...item(1, null), title_english: "Let the Bullets Fly", title_chinese: "让子弹飞" },
+    { ...item(2, null), title_english: "Hidden Man", title_chinese: "邪不压正" },
+  ];
+
+  it("uses the English name in an en UI", () => {
+    expect(collectionName(franchise, members, [], "en", "Untitled")).toBe(
+      "Beiyang Trilogy",
+    );
+  });
+
+  it("uses the Chinese name in a zh UI", () => {
+    expect(collectionName(franchise, members, [], "zh", "Untitled")).toBe(
+      "民国三部曲（系列）",
+    );
+  });
+
+  it("never shows the zh name in an en UI", () => {
+    const zhOnly = { ...franchise, name: null };
+    // Falls through to derivation instead — deriveName returns the first
+    // member's title when there is no shared prefix, never the zh name.
+    expect(collectionName(zhOnly, members, [], "en", "Untitled")).toBe(
+      "Let the Bullets Fly",
+    );
+  });
+
+  it("falls back to the stored name in a zh UI when there is no zh name", () => {
+    // Must NOT skip to derivation: `name` is also where an operator-typed name
+    // lives, and derivation would silently override it.
+    const noZh = { ...franchise, name_zh: null };
+    expect(collectionName(noZh, members, [], "zh", "Untitled")).toBe(
+      "Beiyang Trilogy",
+    );
+  });
+
+  it("derives only when neither name is set", () => {
+    const unnamed = { ...franchise, name: null, name_zh: null };
+    expect(collectionName(unnamed, members, [], "zh", "Untitled")).toBe(
+      // no shared prefix → the first member's title (the pre-0013 behavior
+      // this migration exists to avoid)
+      "让子弹飞",
+    );
+  });
+});
+
 describe("collectionNameFromSamples", () => {
-  const titled = { id: "x", name: "My Folder", parent_id: null, cover_url: null, sort_order: null, date_added: "" };
+  const titled = { id: "x", name: "My Folder", name_zh: null, parent_id: null, cover_url: null, sort_order: null, date_added: "" };
+
+  it("uses name_zh under the zh language", () => {
+    const zh = { ...titled, name_zh: "我的文件夹" };
+    expect(collectionNameFromSamples(zh, [], [], "zh", "Untitled")).toBe(
+      "我的文件夹",
+    );
+    expect(collectionNameFromSamples(zh, [], [], "en", "Untitled")).toBe(
+      "My Folder",
+    );
+  });
 
   it("prefers an explicit collection name", () => {
     expect(
@@ -177,7 +248,7 @@ describe("collectionNameFromSamples", () => {
 
 describe("collectionCoverFromRollup", () => {
   it("prefers a pinned cover over the rollup sample", () => {
-    const pinned = { id: "x", name: null, parent_id: null, cover_url: "pinned.jpg", sort_order: null, date_added: "" };
+    const pinned = { id: "x", name: null, name_zh: null, parent_id: null, cover_url: "pinned.jpg", sort_order: null, date_added: "" };
     expect(collectionCoverFromRollup(pinned, rollup("x", { sample_cover: "s.jpg" }))).toBe(
       "pinned.jpg",
     );

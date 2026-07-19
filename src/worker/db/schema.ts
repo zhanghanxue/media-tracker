@@ -178,7 +178,11 @@ export type MediaInsert = Pick<
 // (see lib/collections.ts); NULL parent_id → a root collection.
 export interface Collection {
   id: string;
+  /** English / default display name. */
   name: string | null;
+  /** Chinese display name (migration 0013). Null falls back to `name`, then to
+   *  the client's derive-from-members. */
+  name_zh: string | null;
   parent_id: string | null;
   cover_url: string | null;
   sort_order: number | null;
@@ -189,5 +193,5 @@ export interface Collection {
 // caller / SQL default.
 export type CollectionInsert = Pick<
   Collection,
-  "id" | "name" | "parent_id" | "cover_url" | "sort_order"
+  "id" | "name" | "name_zh" | "parent_id" | "cover_url" | "sort_order"
 >;
