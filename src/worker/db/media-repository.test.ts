@@ -305,7 +305,7 @@ describe("listMedia — collection scope", () => {
   beforeEach(async () => {
     await insertCollection(env.DB, {
       id: "col:a",
-      name: "A",
+      name: "A", name_zh: null,
       parent_id: null,
       cover_url: null,
       sort_order: null,
@@ -336,6 +336,7 @@ describe("selectCollectionRollups", () => {
     await insertCollection(env.DB, {
       id: "col:s",
       name: null, // forces client-side name derivation from sample titles
+      name_zh: null,
       parent_id: null,
       cover_url: null,
       sort_order: null,
@@ -387,7 +388,7 @@ describe("selectCollectionRollups", () => {
 
   it("counts direct game items into game_count (drives the all-game bar suppression)", async () => {
     await insertCollection(env.DB, {
-      id: "col:g", name: null, parent_id: null, cover_url: null, sort_order: null,
+      id: "col:g", name: null, name_zh: null, parent_id: null, cover_url: null, sort_order: null,
     });
     await insertMedia(env.DB, makeRow({ external_id: "g1", collection_id: "col:g", type: "game" }));
     await insertMedia(env.DB, makeRow({ external_id: "g2", collection_id: "col:g", type: "game" }));
@@ -401,7 +402,7 @@ describe("selectCollectionRollups", () => {
 
   it("breaks the full status histogram out per collection", async () => {
     await insertCollection(env.DB, {
-      id: "col:h", name: null, parent_id: null, cover_url: null, sort_order: null,
+      id: "col:h", name: null, name_zh: null, parent_id: null, cover_url: null, sort_order: null,
     });
     const statuses: AniListMapperResult["status"][] = [
       "in_progress",
@@ -433,14 +434,14 @@ describe("selectMatchingCollectionIds", () => {
   it("returns distinct collections whose direct items match the filters", async () => {
     await insertCollection(env.DB, {
       id: "col:anime",
-      name: "Anime",
+      name: "Anime", name_zh: null,
       parent_id: null,
       cover_url: null,
       sort_order: null,
     });
     await insertCollection(env.DB, {
       id: "col:manga",
-      name: "Manga",
+      name: "Manga", name_zh: null,
       parent_id: null,
       cover_url: null,
       sort_order: null,
