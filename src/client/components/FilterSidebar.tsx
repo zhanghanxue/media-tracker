@@ -50,6 +50,24 @@ export function FilterSidebar({
   const hasFacets =
     filters.regions.length + filters.statuses.length + filters.genres.length > 0;
 
+  // Picking a facet applies it immediately, so on mobile the open drawer is
+  // then just covering the results it produced. Close it. The checkbox is
+  // uncontrolled (no `checked` prop, no onChange), so React isn't managing it
+  // and setting `.checked` directly is what drives the peer-checked CSS.
+  // Inert on desktop, where the sidebar is always visible regardless.
+  //
+  // Deliberately NOT wired to type selection: that drills from the type list
+  // into that type's facets, so the drawer has more to show, not less.
+  const closeDrawer = () => {
+    const checkbox = document.getElementById("filter-drawer");
+    if (checkbox instanceof HTMLInputElement) checkbox.checked = false;
+  };
+
+  const toggleAndClose = (facet: FacetKey, value: string) => {
+    onToggle(facet, value);
+    closeDrawer();
+  };
+
   // Show whatever's selected even if it dropped out of the current facet list
   // (e.g. you picked a genre, then the facet list refreshed) so it stays
   // visible and un-checkable-away-able.
@@ -85,7 +103,7 @@ export function FilterSidebar({
           push the grid around with the panel itself off-screen above. From md
           up every one of those overrides is reset and it's the plain sidebar
           column again. */}
-      <aside className="hidden shrink-0 space-y-6 peer-checked:fixed peer-checked:inset-x-0 peer-checked:top-14 peer-checked:z-20 peer-checked:block peer-checked:max-h-[70vh] peer-checked:overflow-y-auto peer-checked:border-b peer-checked:border-zinc-800 peer-checked:bg-zinc-950 peer-checked:p-4 light:peer-checked:border-zinc-200 light:peer-checked:bg-white md:static md:z-auto md:block md:max-h-none md:w-56 md:overflow-visible md:border-0 md:bg-transparent md:p-0 md:pt-4">
+      <aside className="hidden shrink-0 space-y-6 peer-checked:fixed peer-checked:inset-x-0 peer-checked:top-14 peer-checked:z-20 peer-checked:block peer-checked:max-h-[50vh] peer-checked:overflow-y-auto peer-checked:border-b peer-checked:border-zinc-800 peer-checked:bg-zinc-950 peer-checked:p-4 light:peer-checked:border-zinc-200 light:peer-checked:bg-white md:static md:z-auto md:block md:max-h-none md:w-56 md:overflow-visible md:border-0 md:bg-transparent md:p-0 md:pt-4">
         {activeType === null ? (
           <>
             <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
@@ -139,7 +157,7 @@ export function FilterSidebar({
                 count: regionCounts.get(v),
               }))}
               selected={filters.regions}
-              onToggle={(v) => onToggle("regions", v)}
+              onToggle={(v) => toggleAndClose("regions", v)}
             />
             {genreValues.length > 0 && (
               <ChipGroup
@@ -152,7 +170,7 @@ export function FilterSidebar({
                   count: genreCounts.get(v),
                 }))}
                 selected={filters.genres}
-                onToggle={(v) => onToggle("genres", v)}
+                onToggle={(v) => toggleAndClose("genres", v)}
               />
             )}
             <ChipGroup
@@ -162,7 +180,7 @@ export function FilterSidebar({
                 label: t(`status.${v}`),
               }))}
               selected={filters.statuses}
-              onToggle={(v) => onToggle("statuses", v)}
+              onToggle={(v) => toggleAndClose("statuses", v)}
             />
           </>
         )}
