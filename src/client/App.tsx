@@ -150,7 +150,12 @@ export function App() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-4 md:flex md:gap-6">
+      {/* No top padding: the list's sticky toolbar must sit flush under the
+          header at scroll-top, exactly as it does once pinned. A gap here left
+          an empty band between the two that closed on scroll, so the header
+          looked detached at rest and joined-up scrolled. The sidebar restores
+          its own top breathing room via md:pt-4. */}
+      <div className="mx-auto max-w-7xl px-4 pb-4 md:flex md:gap-6">
         <FilterSidebar
           filters={filters}
           genreFacets={genreFacets}
@@ -160,7 +165,7 @@ export function App() {
           onBackToTypes={backToTypes}
           onClear={clearFacets}
         />
-        <main className="mt-4 min-w-0 flex-1 md:mt-0">
+        <main className="min-w-0 flex-1">
           {/* Handed to MediaList rather than rendered here, so it rides that
               component's existing sticky bar instead of becoming a second one. */}
           <MediaList
