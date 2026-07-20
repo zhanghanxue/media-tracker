@@ -13,9 +13,11 @@ export type { TmdbKind, TmdbSearchResultRaw };
 export async function searchTmdbMedia(
   q: string,
   kind: TmdbKind,
+  signal?: AbortSignal,
 ): Promise<TmdbSearchResultRaw[]> {
   const res = await fetch(
     `/api/tmdb/search?q=${encodeURIComponent(q)}&kind=${kind}`,
+    { signal },
   );
   if (!res.ok) {
     throw new Error(`TMDB search failed (HTTP ${res.status})`);

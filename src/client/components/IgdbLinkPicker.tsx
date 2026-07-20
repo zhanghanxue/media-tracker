@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useIgdbSearch } from "../hooks/useIgdbSearch";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { SEARCH_DEBOUNCE_MS, isSearchable } from "../lib/searchTuning";
 import { igdbCover, igdbYear } from "../lib/igdbSearch";
 
 export interface PickedIgdbGame {
@@ -24,7 +25,7 @@ export function IgdbLinkPicker({
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState(initialQuery);
-  const debounced = useDebouncedValue(input, 350);
+  const [debounced, flushQuery] = useDebouncedValue(input, SEARCH_DEBOUNCE_MS);
   const search = useIgdbSearch(debounced);
 
   return (
@@ -34,6 +35,12 @@ export function IgdbLinkPicker({
         autoFocus
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            flushQuery();
+          }
+        }}
         placeholder={t("add.searchPlaceholderIgdb")}
         className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none light:border-zinc-300 light:bg-white light:text-zinc-900"
       />
@@ -42,6 +49,10 @@ export function IgdbLinkPicker({
         {debounced.trim().length === 0 ? (
           <p className="py-3 text-center text-xs text-zinc-500">
             {t("add.emptyIgdb")}
+          </p>
+        ) : !isSearchable(debounced) ? (
+          <p className="py-3 text-center text-xs text-zinc-500">
+            {t("picker.keepTyping")}
           </p>
         ) : search.isPending ? (
           <p className="py-3 text-center text-xs text-zinc-500">

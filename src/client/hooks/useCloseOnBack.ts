@@ -73,13 +73,18 @@ function installDispatcher(): void {
   });
 }
 
-export function useCloseOnBack(onClose: () => void): void {
+// `enabled` is read once at mount (the effect deliberately never re-runs), so
+// callers must pass a value that is constant for the overlay's lifetime. It
+// exists so a component can defer registration to an outer wrapper that already
+// owns this overlay's history entry — see Modal's `closeOnBack` prop.
+export function useCloseOnBack(onClose: () => void, enabled = true): void {
   // Ref so the dispatcher always sees the latest onClose without the effect
   // re-running (a re-run would push a duplicate history entry).
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
+    if (!enabled) return;
     installDispatcher();
 
     overlayDepth += 1;

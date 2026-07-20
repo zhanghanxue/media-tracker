@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useCloseOnBack } from "../hooks/useCloseOnBack";
+import { Modal } from "./Modal";
 import { useWhatsNew } from "../hooks/useWhatsNew";
 import type { ScanScope, Suggestion } from "../lib/whatsNew";
 
@@ -15,8 +15,6 @@ const SCOPES: ScanScope[] = ["all", "animation", "drama", "variety"];
 // reuses the add flow via the hook. Mirrors the other modals' shell/styles.
 export function WhatsNewModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
-  useCloseOnBack(onClose);
   const { phase, progress, suggestions, checked, scan, add, dismiss } = useWhatsNew();
   // Remember which section is being scanned, to label its button "Scanning…".
   const [activeScope, setActiveScope] = useState<ScanScope | null>(null);
@@ -26,28 +24,15 @@ export function WhatsNewModal({ onClose }: { onClose: () => void }) {
     void scan(scope);
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-16"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      onClose={onClose}
+      ariaLabel={t("whatsNew.title")}
+      maxWidth="max-w-2xl"
+      maxHeight="max-h-[80vh]"
+      align="top"
     >
-      <div
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("whatsNew.title")}
-      >
-        <div className="flex items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
           <h2 className="text-base font-semibold">{t("whatsNew.title")}</h2>
           <button
             type="button"
@@ -59,7 +44,7 @@ export function WhatsNewModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="shrink-0 space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
           <p className="text-xs text-zinc-500">{t("whatsNew.intro")}</p>
           {/* Per-section scan buttons — scan just one slice for a quicker, lighter
               run, or "All" for the whole library. */}
@@ -113,8 +98,7 @@ export function WhatsNewModal({ onClose }: { onClose: () => void }) {
             </ul>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

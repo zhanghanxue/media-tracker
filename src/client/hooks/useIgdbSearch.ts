@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { isSearchable } from "../lib/searchTuning";
 import { searchIgdbMedia } from "../lib/igdbSearch";
 
-// Debounced IGDB search via the Worker proxy. Disabled until there's a query;
-// keyed on the trimmed query. Caller debounces.
+// Debounced IGDB search via the Worker proxy. Disabled until the query is long
+// enough to be worth a round trip; keyed on the trimmed query. Caller debounces.
 export function useIgdbSearch(query: string) {
   const trimmed = query.trim();
   return useQuery({
     queryKey: ["igdb-search", trimmed],
-    queryFn: () => searchIgdbMedia(trimmed),
-    enabled: trimmed.length > 0,
+    queryFn: ({ signal }) => searchIgdbMedia(trimmed, signal),
+    enabled: isSearchable(trimmed),
   });
 }

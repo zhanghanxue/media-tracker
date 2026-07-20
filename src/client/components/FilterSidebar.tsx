@@ -73,15 +73,19 @@ export function FilterSidebar({
 
   return (
     <>
+      {/* The checkbox must stay a preceding SIBLING of the aside for
+          `peer-checked` to work. Its label does not — <label htmlFor> reaches
+          across the document — so the toggle itself lives in the sticky
+          toolbar, where it's reachable while scrolled. */}
       <input id="filter-drawer" type="checkbox" className="peer hidden" />
-      <label
-        htmlFor="filter-drawer"
-        className="mb-3 inline-flex cursor-pointer items-center rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100 md:hidden"
-      >
-        {t("filters.toggle")}
-      </label>
 
-      <aside className="hidden shrink-0 space-y-6 peer-checked:block md:block md:w-56">
+      {/* Below md the open drawer is a FIXED panel hanging off the header, not
+          an inline block. Inline would expand it here in DOM order — above the
+          list — so opening it from the sticky toolbar while scrolled down would
+          push the grid around with the panel itself off-screen above. From md
+          up every one of those overrides is reset and it's the plain sidebar
+          column again. */}
+      <aside className="hidden shrink-0 space-y-6 peer-checked:fixed peer-checked:inset-x-0 peer-checked:top-14 peer-checked:z-20 peer-checked:block peer-checked:max-h-[70vh] peer-checked:overflow-y-auto peer-checked:border-b peer-checked:border-zinc-800 peer-checked:bg-zinc-950 peer-checked:p-4 light:peer-checked:border-zinc-200 light:peer-checked:bg-white md:static md:z-auto md:block md:max-h-none md:w-56 md:overflow-visible md:border-0 md:bg-transparent md:p-0">
         {activeType === null ? (
           <>
             <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
@@ -164,5 +168,20 @@ export function FilterSidebar({
         )}
       </aside>
     </>
+  );
+}
+
+// The drawer's toggle button, rendered separately from the drawer itself so it
+// can sit in the sticky toolbar (below md; the sidebar is always visible above
+// it). Driven purely by htmlFor → the peer checkbox inside FilterSidebar.
+export function FilterDrawerToggle() {
+  const { t } = useTranslation();
+  return (
+    <label
+      htmlFor="filter-drawer"
+      className="inline-flex shrink-0 cursor-pointer items-center rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100 md:hidden"
+    >
+      {t("filters.toggle")}
+    </label>
   );
 }

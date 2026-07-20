@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useAniListSearch } from "../hooks/useAniListSearch";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { SEARCH_DEBOUNCE_MS, isSearchable } from "../lib/searchTuning";
 import type { SearchType } from "../lib/api";
 import type { MediaType } from "../../worker/db/schema";
 
@@ -31,7 +32,7 @@ export function AniListTitlePicker({
 }) {
   const { t } = useTranslation();
   const [input, setInput] = useState(initialQuery);
-  const debounced = useDebouncedValue(input, 350);
+  const [debounced, flushQuery] = useDebouncedValue(input, SEARCH_DEBOUNCE_MS);
   const searchType: SearchType =
     mediaType === "manga" || mediaType === "light_novel" ? "MANGA" : "ANIME";
   const search = useAniListSearch(debounced, searchType);
@@ -43,6 +44,12 @@ export function AniListTitlePicker({
         autoFocus
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            flushQuery();
+          }
+        }}
         placeholder={t("picker.searchPlaceholderAniList")}
         className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none light:border-zinc-300 light:bg-white light:text-zinc-900"
       />
@@ -51,6 +58,10 @@ export function AniListTitlePicker({
         {debounced.trim().length === 0 ? (
           <p className="py-3 text-center text-xs text-zinc-500">
             {t("picker.emptyAniList")}
+          </p>
+        ) : !isSearchable(debounced) ? (
+          <p className="py-3 text-center text-xs text-zinc-500">
+            {t("picker.keepTyping")}
           </p>
         ) : search.isPending ? (
           <p className="py-3 text-center text-xs text-zinc-500">

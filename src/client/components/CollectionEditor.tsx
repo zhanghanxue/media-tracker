@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -7,6 +7,7 @@ import { splitGenres } from "../../worker/sources/genres";
 import { REGION_FACETS, TYPE_FACETS } from "../lib/facets";
 import { fetchMediaList, type MediaFilters } from "../lib/api";
 import { uiLangFromI18n } from "../lib/displayTitle";
+import { Modal } from "./Modal";
 import { useCloseOnBack } from "../hooks/useCloseOnBack";
 import { useCollections } from "../hooks/useCollections";
 import {
@@ -128,14 +129,6 @@ function CollectionEditorForm({
   const [genres, setGenres] = useState<string>(seedGenres);
   const [newSub, setNewSub] = useState("");
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   // Valid parents: every collection except this one and its descendants (moving
   // into a descendant would make a cycle — the server rejects it too).
   const banned = subtreeCollectionIds(allCollections, collection.id);
@@ -189,20 +182,19 @@ function CollectionEditorForm({
     "w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 light:border-zinc-300 light:bg-white";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      onClose={onClose}
+      ariaLabel={t("collection.edit")}
+      maxWidth="max-w-sm"
+      // The outer CollectionEditor wrapper already owns this overlay's history
+      // entry (it mounts before the data loads).
+      closeOnBack={false}
     >
-      <div
-        className="max-h-[85vh] w-full max-w-sm space-y-4 overflow-y-auto rounded-lg bg-zinc-900 p-4 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("collection.edit")}
-      >
-        <h2 className="text-base font-semibold leading-snug">{derivedName}</h2>
+        <h2 className="shrink-0 border-b border-zinc-800 px-4 py-3 text-base font-semibold leading-snug light:border-zinc-200">
+          {derivedName}
+        </h2>
 
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <label className="block text-sm">
           <span className={labelCls}>{t("collection.name")}</span>
           <input
@@ -367,7 +359,9 @@ function CollectionEditorForm({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-2 pt-1">
+        {/* Destructive action stays in the scrolling body — deliberately not in
+            the pinned footer next to Save. */}
+        <div className="pt-1">
           <button
             type="button"
             onClick={remove}
@@ -375,25 +369,26 @@ function CollectionEditorForm({
           >
             {t("collection.delete")}
           </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
-            >
-              {t("editor.cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={update.isPending}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              {t("editor.save")}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-800 px-4 py-3 light:border-zinc-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
+          >
+            {t("editor.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={update.isPending}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {t("editor.save")}
+          </button>
+        </div>
+    </Modal>
   );
 }
