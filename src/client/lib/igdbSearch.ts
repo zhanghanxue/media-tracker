@@ -65,8 +65,13 @@ export interface IgdbSearchResponse {
   results: IgdbGame[];
 }
 
-export async function searchIgdbMedia(q: string): Promise<IgdbGame[]> {
-  const res = await fetch(`/api/igdb/search?q=${encodeURIComponent(q)}`);
+export async function searchIgdbMedia(
+  q: string,
+  signal?: AbortSignal,
+): Promise<IgdbGame[]> {
+  const res = await fetch(`/api/igdb/search?q=${encodeURIComponent(q)}`, {
+    signal,
+  });
   if (!res.ok) throw new Error(`IGDB search failed (HTTP ${res.status})`);
   const data = (await res.json()) as IgdbSearchResponse;
   return data.results;

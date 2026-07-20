@@ -158,6 +158,7 @@
     "empty": "Type to search AniList.",
     "emptyBangumi": "Type a Chinese name to search Bangumi.",
     "emptyTmdb": "Type a movie or TV title to search TMDB.",
+    "keepTyping": "Keep typing — then press Enter to search now.",
     "searching": "Searching…",
     "noResults": "No results.",
     "error": "Search failed.",
@@ -301,6 +302,7 @@
     "searchPlaceholderAniList": "Search AniList (EN / romaji / 日本語)…",
     "empty": "Type to search Bangumi.",
     "emptyAniList": "Type to search AniList.",
+    "keepTyping": "Keep typing — then press Enter to search now.",
     "searching": "Searching…",
     "noResults": "No results.",
     "error": "Search failed."

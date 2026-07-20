@@ -219,10 +219,13 @@ export interface AniListSearchResponse {
 
 // Best-effort library-membership lookup; if it fails, the search still renders
 // (every result just shows as not-added).
-async function fetchExistingIds(ids: string[]): Promise<Set<string>> {
+async function fetchExistingIds(
+  ids: string[],
+  signal?: AbortSignal,
+): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const qs = ids.map((id) => encodeURIComponent(id)).join(",");
-  const res = await fetch(`/api/anilist/existing?ids=${qs}`);
+  const res = await fetch(`/api/anilist/existing?ids=${qs}`, { signal });
   if (!res.ok) return new Set();
   const data = (await res.json()) as { existing: string[] };
   return new Set(data.existing);
@@ -231,11 +234,15 @@ async function fetchExistingIds(ids: string[]): Promise<Set<string>> {
 export async function searchAniListMedia(
   q: string,
   type: SearchType,
+  signal?: AbortSignal,
 ): Promise<AniListSearchResponse> {
   // perPage 25 (vs the client default of 10) gives relevance-tail headroom so a
   // result just past the top 10 still shows. AniList caps perPage at 50.
-  const results = await searchAniList(q, type, { perPage: 25 }); // browser → AniList (CORS)
-  const existing = await fetchExistingIds(results.map((r) => String(r.id)));
+  const results = await searchAniList(q, type, { perPage: 25, signal }); // browser → AniList (CORS)
+  const existing = await fetchExistingIds(
+    results.map((r) => String(r.id)),
+    signal,
+  );
   return {
     results: results.map((media) => ({
       ...media,

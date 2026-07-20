@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useCloseOnBack } from "../hooks/useCloseOnBack";
+import { Modal } from "./Modal";
 import {
   useRecommendations,
   useAddRecommendation,
@@ -22,8 +22,6 @@ const BATCH = 15;
 
 export function RecommendModal({ onClose }: { onClose: () => void }) {
   const { t, i18n } = useTranslation();
-  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
-  useCloseOnBack(onClose);
   const [type, setType] = useState<RecommendType | null>(null);
   const [offset, setOffset] = useState(0);
   // Mount-unique → each modal open bypasses the react-query cache; bumped when
@@ -53,14 +51,6 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
         rec.title)
       : rec.title;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm ${
       active
@@ -69,19 +59,14 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
     }`;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-16"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      onClose={onClose}
+      ariaLabel={t("recommend.title")}
+      maxWidth="max-w-3xl"
+      maxHeight="max-h-[80vh]"
+      align="top"
     >
-      <div
-        className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("recommend.title")}
-      >
-        <div className="flex items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
           <h2 className="text-base font-semibold">{t("recommend.title")}</h2>
           <button
             type="button"
@@ -93,7 +78,7 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="shrink-0 space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
           <p className="text-xs text-zinc-500">{t("recommend.intro")}</p>
           <div className="flex flex-wrap items-center gap-2">
             {TYPES.map((ty) => (
@@ -169,8 +154,7 @@ export function RecommendModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

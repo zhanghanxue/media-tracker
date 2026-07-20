@@ -75,6 +75,11 @@ export interface BangumiInfoboxItem {
 export interface BangumiClientOptions {
   /** Override fetch (used in tests). Defaults to global fetch. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Abort the in-flight request. Search-as-you-type supersedes its own requests
+   * constantly; without this every superseded request stays open.
+   */
+  signal?: AbortSignal;
 }
 
 export class BangumiError extends Error {
@@ -105,6 +110,7 @@ export async function searchBangumiV0(
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ keyword, filter: { type: [type] } }),
+      signal: options.signal,
     },
   );
 
@@ -137,6 +143,7 @@ export async function searchBangumiLegacy(
 
   const response = await fetchImpl(url, {
     headers: { Accept: "application/json" },
+    signal: options.signal,
   });
 
   // A 404 here means "no subjects matched" — Bangumi's legacy quirk. Treat as

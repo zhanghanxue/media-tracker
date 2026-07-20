@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useLevelItems } from "../hooks/useLevelItems";
@@ -33,7 +33,17 @@ import { CollectionCard } from "./CollectionCard";
 import { CollectionEditor } from "./CollectionEditor";
 import { BulkActionBar } from "./BulkActionBar";
 
-export function MediaList({ filters }: { filters: MediaFilters }) {
+export function MediaList({
+  filters,
+  toolbar,
+}: {
+  filters: MediaFilters;
+  // Search + sort + filter-drawer controls, hosted inside this component's
+  // sticky bar rather than pinned as a second sticky layer of their own. Two
+  // stacked sticky bars ate ~150px of a phone viewport and coupled their
+  // heights: every change to one forced retuning the other's `top-*`.
+  toolbar?: ReactNode;
+}) {
   const { t, i18n } = useTranslation();
   const lang = uiLangFromI18n(i18n.language);
 
@@ -340,14 +350,23 @@ export function MediaList({ filters }: { filters: MediaFilters }) {
 
   return (
     <>
-      {/* Sticky just under the app header (h-14 = top-14) so New / Select / Edit
-          stay reachable while scrolled down a long level — previously this bar
-          scrolled away and you had to return to the top to enter select mode.
+      {/* Sticky just under the app header (h-14 = top-14) so the breadcrumb,
+          search, sort and New / Select / Edit all stay reachable while scrolled
+          down a long level. ONE sticky block, not several stacked ones: extra
+          layers each cost viewport height and force manual `top-*` retuning
+          whenever a neighbour's height changes.
           z below the header (z-10); opaque bg + a little vertical padding so
-          cards don't show through when it's pinned. */}
-      <div className="sticky top-14 z-[5] -mx-1 mb-4 flex items-center justify-between gap-2 bg-zinc-950/95 px-1 py-2 backdrop-blur light:bg-zinc-50/95">
+          cards don't show through when it's pinned.
+          Below md it wraps to two rows (breadcrumb + buttons, then the
+          toolbar); from md up it's a single row. */}
+      <div className="sticky top-14 z-[5] -mx-1 mb-4 flex flex-wrap items-center gap-2 bg-zinc-950/95 px-1 py-2 backdrop-blur light:bg-zinc-50/95">
         <Breadcrumb path={path} onNavigate={navigateTo} homeLabel={t("collection.home")} />
-        <div className="flex shrink-0 gap-2">
+        {toolbar && (
+          <div className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1">
+            {toolbar}
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 gap-2 md:ml-0">
           {!selectMode && (
             <button
               type="button"
