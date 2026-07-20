@@ -85,7 +85,7 @@ export function FilterSidebar({
           push the grid around with the panel itself off-screen above. From md
           up every one of those overrides is reset and it's the plain sidebar
           column again. */}
-      <aside className="hidden shrink-0 space-y-6 peer-checked:fixed peer-checked:inset-x-0 peer-checked:top-14 peer-checked:z-20 peer-checked:block peer-checked:max-h-[70vh] peer-checked:overflow-y-auto peer-checked:border-b peer-checked:border-zinc-800 peer-checked:bg-zinc-950 peer-checked:p-4 light:peer-checked:border-zinc-200 light:peer-checked:bg-white md:static md:z-auto md:block md:max-h-none md:w-56 md:overflow-visible md:border-0 md:bg-transparent md:p-0">
+      <aside className="hidden shrink-0 space-y-6 peer-checked:fixed peer-checked:inset-x-0 peer-checked:top-14 peer-checked:z-20 peer-checked:block peer-checked:max-h-[70vh] peer-checked:overflow-y-auto peer-checked:border-b peer-checked:border-zinc-800 peer-checked:bg-zinc-950 peer-checked:p-4 light:peer-checked:border-zinc-200 light:peer-checked:bg-white md:static md:z-auto md:block md:max-h-none md:w-56 md:overflow-visible md:border-0 md:bg-transparent md:p-0 md:pt-4">
         {activeType === null ? (
           <>
             <h2 className="text-sm font-semibold text-zinc-100 light:text-zinc-900">
