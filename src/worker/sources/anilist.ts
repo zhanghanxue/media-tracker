@@ -142,6 +142,12 @@ export interface AniListClientOptions {
   retries?: number;
   /** Initial backoff in ms, doubles per retry. Defaults to 1000. */
   backoffMs?: number;
+  /**
+   * Abort the in-flight request. Search-as-you-type supersedes its own requests
+   * constantly; without this the browser keeps every superseded request open
+   * against AniList's per-IP rate limit.
+   */
+  signal?: AbortSignal;
 }
 
 export class AniListError extends Error {
@@ -310,6 +316,7 @@ async function graphqlRequest<T>(
         Accept: "application/json",
       },
       body: JSON.stringify({ query, variables }),
+      signal: options.signal,
     });
 
     if (response.status === 429 && attempt < retries) {

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
-import { useCloseOnBack } from "../hooks/useCloseOnBack";
+import { Modal } from "./Modal";
 import { useUpdateMedia } from "../hooks/useUpdateMedia";
 import { useDeleteMedia } from "../hooks/useDeleteMedia";
 import { useRefreshCover } from "../hooks/useRefreshCover";
@@ -75,8 +75,6 @@ export function MediaDetailEditor({
 }) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
-  // Mobile back-swipe (history back) closes the editor instead of leaving the app.
-  useCloseOnBack(onClose);
   const update = useUpdateMedia();
   const del = useDeleteMedia();
   const refreshCover = useRefreshCover();
@@ -265,14 +263,6 @@ export function MediaDetailEditor({
     }
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const save = () => {
     const patch: MediaPatch = {};
     if (status !== media.status) patch.status = status;
@@ -359,21 +349,29 @@ export function MediaDetailEditor({
     );
   };
 
+  // Cmd/Ctrl+Enter commits from anywhere in the form — the counterpart to
+  // Escape (owned by Modal), so neither committing nor discarding requires
+  // reaching for a button. Held in a ref so the listener registers once instead
+  // of re-binding on every keystroke-driven re-render. Suppressed while the
+  // nested collection editor is open, which owns the keyboard at that point.
+  const cmdEnterSave = useRef<() => void>(() => {});
+  cmdEnterSave.current = () => {
+    if (!editingCollectionId && !update.isPending) save();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      cmdEnterSave.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-sm space-y-4 overflow-y-auto rounded-lg bg-zinc-900 p-4 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("editor.title")}
-      >
-        <div>
+    <Modal onClose={onClose} ariaLabel={t("editor.title")} maxWidth="max-w-sm">
+        <div className="shrink-0 border-b border-zinc-800 px-4 py-3 light:border-zinc-200">
           <h2 className="text-base font-semibold leading-snug">
             {headerTitle || t("editor.title")}
           </h2>
@@ -423,6 +421,10 @@ export function MediaDetailEditor({
           )}
         </div>
 
+        {/* Only this region scrolls — the title above and the actions below stay
+            put, so a one-field edit near the top no longer means scrolling to
+            the bottom to reach Save. */}
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <div className="text-sm">
           <span className="mb-1.5 block text-zinc-400 light:text-zinc-500">
             {t("editor.status")}
@@ -778,7 +780,10 @@ export function MediaDetailEditor({
           />
         </label>
 
-        <div className="flex items-center justify-between gap-2">
+        {/* Delete stays down here in the scrolling body. Pinning a destructive
+            action permanently on screen beside Save is the wrong affordance —
+            it should take deliberate effort to reach. */}
+        <div>
           <button
             type="button"
             onClick={handleDelete}
@@ -787,26 +792,27 @@ export function MediaDetailEditor({
           >
             {t("editor.delete")}
           </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
-            >
-              {t("editor.cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={update.isPending}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              {t("editor.save")}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-800 px-4 py-3 light:border-zinc-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 light:text-zinc-600 light:hover:bg-zinc-100"
+          >
+            {t("editor.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={update.isPending}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            {t("editor.save")}
+          </button>
+        </div>
+    </Modal>
 
     {editingCollectionId && (
       <CollectionEditor

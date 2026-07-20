@@ -38,10 +38,11 @@ export function bangumiCover(subject: BangumiSubject): string | null {
 export async function searchBangumiBoth(
   query: string,
   type: BangumiType,
+  signal?: AbortSignal,
 ): Promise<BangumiSubject[]> {
   const [v0, legacy] = await Promise.allSettled([
-    searchBangumiV0(query, type, { max: 12 }),
-    searchBangumiLegacy(query, type, { max: 12 }),
+    searchBangumiV0(query, type, { max: 12, signal }),
+    searchBangumiLegacy(query, type, { max: 12, signal }),
   ]);
 
   const lists = [

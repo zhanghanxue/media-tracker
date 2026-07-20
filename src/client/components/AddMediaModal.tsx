@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
-import { useCloseOnBack } from "../hooks/useCloseOnBack";
+import { Modal } from "./Modal";
 import { useAniListSearch } from "../hooks/useAniListSearch";
 import { useBangumiSearch } from "../hooks/useBangumiSearch";
 import { useTmdbSearch } from "../hooks/useTmdbSearch";
@@ -10,6 +10,7 @@ import { useIgdbSearch } from "../hooks/useIgdbSearch";
 import { useAddMedia } from "../hooks/useAddMedia";
 import { useAddByChinese } from "../hooks/useAddByChinese";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { SEARCH_DEBOUNCE_MS, isSearchable } from "../lib/searchTuning";
 import { titleInLibrary, useLibraryTitleIndex } from "../hooks/useLibraryTitles";
 import { bangumiCover } from "../lib/bangumiSearch";
 import { igdbChineseAlias, type IgdbGame } from "../lib/igdbSearch";
@@ -54,8 +55,6 @@ function metaLine(item: AniListSearchItem): string {
 
 export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  // Mobile back-swipe (history back) closes the modal instead of leaving the app.
-  useCloseOnBack(onClose);
   const [source, setSource] = useState<Source>("anilist");
   const [searchType, setSearchType] = useState<SearchType>("ANIME");
   // Bangumi has its own sub-type: 2 anime/donghua · 1 book · 6 live-action (影视).
@@ -66,7 +65,10 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
   const [gameMode, setGameMode] = useState<MediaConsumptionMode>("playing");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<MediaStatus>("planned");
-  const debouncedQuery = useDebouncedValue(input, 300);
+  const [debouncedQuery, flushQuery] = useDebouncedValue(
+    input,
+    SEARCH_DEBOUNCE_MS,
+  );
 
   // Only the active source's query is non-empty, so only it fetches.
   const aniSearch = useAniListSearch(
@@ -105,15 +107,6 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       // Grouping is a convenience — never let it surface as an add failure.
     }
   };
-
-  // Close on Escape.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   // AniList + TMDB both go through addMutation; only one source renders at a time.
   const pendingAddId = addMutation.isPending
@@ -242,20 +235,15 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
     }`;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-16"
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      onClose={onClose}
+      ariaLabel={t("add.title")}
+      maxWidth="max-w-2xl"
+      maxHeight="max-h-[80vh]"
+      align="top"
     >
-      <div
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-zinc-700 light:bg-white light:ring-zinc-200"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("add.title")}
-      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 p-4 light:border-zinc-200">
           <h2 className="text-base font-semibold">{t("add.title")}</h2>
           <button
             type="button"
@@ -268,7 +256,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Controls */}
-        <div className="space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
+        <div className="shrink-0 space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
           {/* Source: AniList (EN/JP) · Bangumi (中文) · TMDB (影视) */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -370,6 +358,14 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             autoFocus
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            // Enter = "I've typed the whole title, search now" — skips the
+            // remaining debounce instead of making the user wait it out.
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                flushQuery();
+              }
+            }}
             placeholder={placeholder}
             className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none light:border-zinc-300 light:bg-white light:text-zinc-900 light:placeholder:text-zinc-400"
           />
@@ -402,9 +398,17 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
               {autoLinkNotice}
             </p>
           )}
+          {/* Below the search minimum the query is disabled, so react-query
+              reports `isPending` forever — these two branches must come before
+              the isPending check or a 2-character query shows "Searching…"
+              indefinitely. */}
           {debouncedQuery.trim().length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">
               {emptyMessage}
+            </p>
+          ) : !isSearchable(debouncedQuery) ? (
+            <p className="py-8 text-center text-sm text-zinc-500">
+              {t("add.keepTyping")}
             </p>
           ) : search.isPending ? (
             <p className="py-8 text-center text-sm text-zinc-500">
@@ -600,7 +604,6 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             </ul>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
