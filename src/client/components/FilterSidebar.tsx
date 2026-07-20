@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { GenreFacet, MediaFilters } from "../lib/api";
@@ -67,6 +68,49 @@ export function FilterSidebar({
     onToggle(facet, value);
     closeDrawer();
   };
+
+  // Scrolling dismisses the open drawer. Pinning it keeps the panel reachable
+  // from anywhere in a long list (an in-flow panel lives above the grid, so
+  // opening it while scrolled would mean jumping back to the top to see it) —
+  // but pinned means it sits over the results until dismissed. Letting a scroll
+  // close it gives both: reachable from any position, and gone the moment you
+  // move on, without losing your place.
+  //
+  // The threshold keeps a stray pixel of momentum, or a mobile address bar
+  // collapsing, from closing the panel out from under a tap.
+  useEffect(() => {
+    const checkbox = document.getElementById("filter-drawer");
+    if (!(checkbox instanceof HTMLInputElement)) return;
+
+    const CLOSE_AFTER_PX = 40;
+    // Where the page sat when the drawer opened; null while it's shut.
+    let openedAt: number | null = null;
+
+    const onChange = () => {
+      openedAt = checkbox.checked ? window.scrollY : null;
+    };
+
+    const onScroll = () => {
+      if (openedAt === null) return;
+      // A facet pick closes the drawer programmatically, which fires no change
+      // event — so re-check rather than trusting openedAt alone.
+      if (!checkbox.checked) {
+        openedAt = null;
+        return;
+      }
+      if (Math.abs(window.scrollY - openedAt) > CLOSE_AFTER_PX) {
+        checkbox.checked = false;
+        openedAt = null;
+      }
+    };
+
+    checkbox.addEventListener("change", onChange);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      checkbox.removeEventListener("change", onChange);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   // Show whatever's selected even if it dropped out of the current facet list
   // (e.g. you picked a genre, then the facet list refreshed) so it stays
