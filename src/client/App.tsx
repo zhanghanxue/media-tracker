@@ -101,7 +101,12 @@ export function App() {
 
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur light:border-zinc-200 light:bg-white/90">
+      {/* No border-b: the list's sticky toolbar always sits directly beneath
+          this, so a divider here separates chrome from chrome. At scroll-top a
+          16px gap (the container's py-4) left it floating as a stray line above
+          the toolbar; once scrolled the toolbar pinned flush and it vanished.
+          The chrome/content boundary is the toolbar's job, not the header's. */}
+      <header className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur light:bg-white/90">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4">
           <h1 className="min-w-0 truncate text-lg font-semibold">{t("app.title")}</h1>
           {/* Every control is icon-only below sm (the text label is hidden) so the
