@@ -7,6 +7,7 @@ import {
   type RecommendType,
 } from "../lib/recommend";
 import { addMedia, type AddMediaInput } from "../lib/api";
+import { invalidateAfterAdd } from "../lib/invalidateAfterAdd";
 import type { MediaStatus } from "../../worker/db/schema";
 
 // Fetch recommendations for a type. Disabled until a type is chosen (the panel
@@ -57,7 +58,7 @@ export function useAddRecommendation() {
   return useMutation({
     mutationFn: (rec: Recommendation) => addMedia(toAddInput(rec, "planned")),
     onSuccess: (_inserted, rec) => {
-      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
+      invalidateAfterAdd(queryClient);
       removeFromRecommendationPools(queryClient, rec);
     },
   });
