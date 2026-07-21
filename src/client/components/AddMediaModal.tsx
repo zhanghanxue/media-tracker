@@ -26,6 +26,7 @@ import {
   type TmdbSearchResultRaw,
 } from "../lib/tmdbSearch";
 import { addMedia, type AniListSearchItem, type SearchType } from "../lib/api";
+import { invalidateAfterAdd } from "../lib/invalidateAfterAdd";
 import type { BangumiSubject, BangumiType } from "../../worker/sources/bangumi";
 import type { MediaConsumptionMode, MediaPlatform, MediaStatus } from "../../worker/db/schema";
 import type { MediaRow } from "../lib/types";
@@ -101,7 +102,9 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
       const res = await autoLinkAniListSeries(row);
       if (res.linked) {
         setAutoLinkNotice(res.created ? t("add.autoGrouped") : t("add.autoLinked"));
-        void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
+        // autoLinkAniListSeries may have just created a collection via the bare
+        // API helper (not the mutation hook), so the tree needs refreshing too.
+        invalidateAfterAdd(queryClient);
       }
     } catch {
       // Grouping is a convenience — never let it surface as an add failure.
@@ -196,7 +199,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
           });
         }
       }
-      await queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
+      invalidateAfterAdd(queryClient);
     } finally {
       setAddingAllId(null);
     }

@@ -10,6 +10,7 @@ import {
   type Suggestion,
 } from "../lib/whatsNew";
 import { addMedia } from "../lib/api";
+import { invalidateAfterAdd } from "../lib/invalidateAfterAdd";
 
 type Phase = "idle" | "scanning" | "done" | "error";
 
@@ -62,7 +63,7 @@ export function useWhatsNew() {
             };
       await addMedia(input);
       setSuggestions((prev) => prev.filter((x) => keyOf(x) !== keyOf(s)));
-      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
+      invalidateAfterAdd(queryClient);
     },
     [queryClient],
   );

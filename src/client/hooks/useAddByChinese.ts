@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { addByBangumiSubject } from "../lib/addByChinese";
+import { invalidateAfterAdd } from "../lib/invalidateAfterAdd";
 import type { BangumiSubject } from "../../worker/sources/bangumi";
 import type { MediaStatus } from "../../worker/db/schema";
 
@@ -17,7 +18,7 @@ export function useAddByChinese() {
     mutationFn: ({ subject, status }: AddByChineseVars) =>
       addByBangumiSubject(subject, status),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["media"], refetchType: "all" });
+      invalidateAfterAdd(queryClient);
     },
   });
 }
