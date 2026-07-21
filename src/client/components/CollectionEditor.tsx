@@ -14,6 +14,7 @@ import {
   collectionName,
   directItems,
   childCollections,
+  storedName,
   subtreeCollectionIds,
   subtreeItems,
   type CollectionPatch,
@@ -104,23 +105,32 @@ function CollectionEditorForm({
   const create = useCreateCollection();
   const del = useDeleteCollection();
 
-  const labelOf = (c: Collection) =>
+  const labelIn = (c: Collection, l: UiLang) =>
     collectionName(
       c,
       directItems(items, c.id),
-      childCollections(allCollections, c.id).map((g) => g.name ?? ""),
-      lang,
+      childCollections(allCollections, c.id).map((g) => storedName(g, l) ?? ""),
+      l,
       t("collection.untitled"),
     );
+  const labelOf = (c: Collection) => labelIn(c, lang);
 
   const sub = subtreeItems(items, allCollections, collection.id);
   const derivedName = labelOf(collection);
+  // What each language falls back to when its own name box is left blank —
+  // shown as that box's placeholder so it's clear what a hand-entered name
+  // overrides. Computed with that language's stored field nulled out (not from
+  // the live edit state) so the hint stays stable while typing. zh still falls
+  // back through `name` before deriving, mirroring storedName().
+  const fallbackEn = labelIn({ ...collection, name: null }, "en");
+  const fallbackZh = labelIn({ ...collection, name_zh: null }, "zh");
 
   const seedType = (sub[0]?.type ?? "") as MediaType | "";
   const seedRegion = sub[0]?.region ?? "";
   const seedGenres = splitGenres(sub[0]?.genres ?? null).join(", ");
 
   const [name, setName] = useState(collection.name ?? "");
+  const [nameZh, setNameZh] = useState(collection.name_zh ?? "");
   const [parentId, setParentId] = useState<string>(collection.parent_id ?? "");
   const [showParentPicker, setShowParentPicker] = useState(false);
   const [parentQuery, setParentQuery] = useState("");
@@ -147,6 +157,9 @@ function CollectionEditorForm({
     const patch: CollectionPatch = {};
     if (name.trim() !== (collection.name ?? "")) {
       patch.name = name.trim() === "" ? null : name.trim();
+    }
+    if (nameZh.trim() !== (collection.name_zh ?? "")) {
+      patch.name_zh = nameZh.trim() === "" ? null : nameZh.trim();
     }
     const nextParent = parentId === "" ? null : parentId;
     if (nextParent !== (collection.parent_id ?? null)) patch.parent_id = nextParent;
@@ -195,16 +208,29 @@ function CollectionEditorForm({
         </h2>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {/* Two hand-authored names, one per UI language. Neither source API
+            gives us both (IGDB has no localized names at all, and a group the
+            user made has only whatever they typed), so this is the only way a
+            collection reads correctly in both languages. Blank = fall through
+            to the derive-from-members path for that language. */}
         <label className="block text-sm">
           <span className={labelCls}>{t("collection.name")}</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            // When no explicit name is set, show the auto-derived name as the
-            // placeholder so it's clear what's being overridden (and that blank
-            // keeps deriving from the contents).
-            placeholder={collection.name ? t("collection.namePlaceholder") : derivedName}
+            placeholder={fallbackEn}
+            className={fieldCls}
+          />
+        </label>
+
+        <label className="block text-sm">
+          <span className={labelCls}>{t("collection.nameZh")}</span>
+          <input
+            type="text"
+            value={nameZh}
+            onChange={(e) => setNameZh(e.target.value)}
+            placeholder={fallbackZh}
             className={fieldCls}
           />
           <p className="mt-1 text-[11px] text-zinc-500">{t("collection.nameHint")}</p>

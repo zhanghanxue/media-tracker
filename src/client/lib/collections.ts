@@ -20,6 +20,7 @@ export async function listCollectionsApi(): Promise<Collection[]> {
 
 export interface CollectionPatch {
   name?: string | null;
+  name_zh?: string | null;
   cover_url?: string | null;
   parent_id?: string | null;
   sort_order?: number | null;
@@ -186,7 +187,7 @@ export function collectionPath(
  * renamed by hand. Populating name_zh for those would mean deriving a name
  * server-side and freezing it, which is worse than a rename box.
  */
-function storedName(collection: Collection, lang: UiLang): string | null {
+export function storedName(collection: Collection, lang: UiLang): string | null {
   if (lang === "zh") return collection.name_zh || collection.name || null;
   return collection.name || null;
 }
