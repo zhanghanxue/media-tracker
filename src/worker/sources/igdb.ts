@@ -68,6 +68,38 @@ export interface IgdbGame {
   // cover + rating), so one request yields addable recommendation candidates.
   // Fetched only by getIgdbSimilarGames.
   similar_games?: IgdbGame[];
+  // How many IGDB users the `rating` averages over. A 95 from 8 voters is noise;
+  // gap-scanning scripts gate on this. Fetched only by getIgdbCollectionGames.
+  rating_count?: number | null;
+  // What KIND of release this is: 0 = main game, 1 = DLC/add-on, 2 = expansion,
+  // 3 = bundle, 4 = standalone expansion, 8 = remake, 9 = remaster, 10 = port,
+  // 11 = fork, 13 = pack, 14 = update. Lets a caller keep main entries and drop
+  // packs/ports. Fetched only by getIgdbCollectionGames.
+  //
+  // IGDB v4 renamed this from `category` to `game_type` and now DROPS `category`
+  // from responses silently — no error, the key is simply absent, so a filter
+  // reading it matches nothing and every row looks like a main game. Request
+  // `game_type` (a bare id, or {id,type} when expanded); `category` is kept only
+  // to read fixtures captured before the rename. Use igdbGameTypeId().
+  game_type?: number | { id: number; type?: string } | null;
+  category?: number | null;
+  // Set when this entry is an alternate EDITION of another game (Game of the
+  // Year, Deluxe, …) rather than its own release — such rows duplicate their
+  // parent and are filtered out. Fetched only by getIgdbCollectionGames.
+  version_parent?: number | null;
+}
+
+/**
+ * A game's release-kind id (0 = main game, 9 = remaster, …), reading whichever
+ * of the two spellings the payload carries: `game_type` (current, bare id or
+ * expanded object) or `category` (pre-rename fixtures). Null when neither is
+ * present — treat that as unknown, not as "main game".
+ */
+export function igdbGameTypeId(game: IgdbGame): number | null {
+  const t = game.game_type;
+  if (typeof t === "number") return t;
+  if (t && typeof t === "object" && typeof t.id === "number") return t.id;
+  return game.category ?? null;
 }
 
 /** Merge IGDB's genres + themes into one source-native genre list. */
@@ -202,6 +234,42 @@ export async function getIgdbSimilarGames(
     ` where id = ${id};`;
   const results = await igdbRequest(body, options);
   return results[0]?.similar_games ?? [];
+}
+
+// Every game IGDB files under a collection (series) — the same `collections`
+// connection the mapper groups on, queried in reverse. Used by the series-gap
+// scan to ask "what else is in this series that I don't own?", so it also pulls
+// the fields that judge whether a gap is worth surfacing: rating_count (is the
+// score trustworthy?), category (main game vs DLC/pack/port) and version_parent
+// (an edition re-listing of another entry). Sorted newest-first; `limit` caps a
+// sprawling series (IGDB's own ceiling is 500).
+export async function getIgdbCollectionGames(
+  collectionId: number,
+  options: IgdbClientOptions & { limit?: number },
+): Promise<IgdbGame[]> {
+  const limit = Math.min(options.limit ?? 200, 500);
+  const body =
+    `fields ${GAME_FIELDS},rating_count,game_type,version_parent;` +
+    ` where collections = (${collectionId});` +
+    ` sort first_release_date desc; limit ${limit};`;
+  return igdbRequest(body, options);
+}
+
+// The series each of `ids` belongs to, in ONE request (up to IGDB's 500-row
+// ceiling). getIgdbDetail answers this for a single game, but a library-wide
+// scan needs it for hundreds — asking per game would be hundreds of round trips
+// against a 4 req/s budget. Returns the games that IGDB knows, each with its
+// `collections` expanded; games it doesn't return simply have no entry.
+export async function getIgdbGameSeries(
+  ids: number[],
+  options: IgdbClientOptions,
+): Promise<IgdbGame[]> {
+  if (ids.length === 0) return [];
+  const body =
+    `fields name,collections.name;` +
+    ` where id = (${ids.join(",")});` +
+    ` limit ${Math.min(ids.length, 500)};`;
+  return igdbRequest(body, options);
 }
 
 async function igdbRequest(
