@@ -26,3 +26,7 @@ _*.json
 # Phase 12 import outputs — derived from the private list, not deliverables.
 review*.csv
 backups/
+
+# Throwaway git worktrees created by agent tooling — full checkouts of this
+# same repo, never their own deliverable.
+.claude/worktrees/
