@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getIgdbCollectionGames,
   getIgdbDetail,
+  getIgdbGameSeries,
   getIgdbSimilarGames,
   igdbCoverUrl,
+  igdbGameTypeId,
   resetIgdbTokenCache,
   searchIgdb,
   type IgdbGame,
@@ -127,6 +130,77 @@ describe("getIgdbSimilarGames", () => {
   it("returns [] when the game has no similar_games / isn't found", async () => {
     const fetchMock = makeFetch([]);
     expect(await getIgdbSimilarGames(1, { ...CREDS, fetch: fetchMock })).toEqual([]);
+  });
+});
+
+describe("getIgdbCollectionGames", () => {
+  it("queries the collection newest-first and asks for the gap-scan fields", async () => {
+    const fetchMock = makeFetch([
+      { id: 1, name: "Dark Souls III", rating: 88, rating_count: 900, category: 0 },
+    ] as IgdbGame[]);
+
+    const games = await getIgdbCollectionGames(1234, { ...CREDS, fetch: fetchMock });
+
+    expect(games[0]!.rating_count).toBe(900);
+    const body = String(
+      (fetchMock.mock.calls.find((c) => String(c[0]).includes("api.igdb.com"))![1] as RequestInit)
+        .body,
+    );
+    expect(body).toContain("where collections = (1234)");
+    expect(body).toContain("sort first_release_date desc");
+    expect(body).toContain("rating_count");
+    expect(body).toContain("version_parent");
+    // Must ask for game_type, NOT the renamed-away `category`: IGDB drops an
+    // unknown field silently, so asking for `category` yields no kind at all.
+    expect(body).toContain("game_type");
+    expect(body).not.toContain("category");
+  });
+
+  it("caps limit at IGDB's 500 ceiling", async () => {
+    const fetchMock = makeFetch([]);
+    await getIgdbCollectionGames(1, { ...CREDS, fetch: fetchMock, limit: 9999 });
+    const body = String(
+      (fetchMock.mock.calls.find((c) => String(c[0]).includes("api.igdb.com"))![1] as RequestInit)
+        .body,
+    );
+    expect(body).toContain("limit 500;");
+  });
+});
+
+describe("getIgdbGameSeries", () => {
+  it("asks for many ids in one request", async () => {
+    const fetchMock = makeFetch([
+      { id: 1, name: "Dark Souls", collections: [{ id: 9, name: "Dark Souls" }] },
+    ] as IgdbGame[]);
+
+    const games = await getIgdbGameSeries([1, 2, 3], { ...CREDS, fetch: fetchMock });
+
+    expect(games[0]!.collections![0]!.name).toBe("Dark Souls");
+    const body = String(
+      (fetchMock.mock.calls.find((c) => String(c[0]).includes("api.igdb.com"))![1] as RequestInit)
+        .body,
+    );
+    expect(body).toContain("where id = (1,2,3)");
+    expect(body).toContain("collections.name");
+  });
+
+  it("short-circuits on an empty id list (no request at all)", async () => {
+    const fetchMock = makeFetch([]);
+    expect(await getIgdbGameSeries([], { ...CREDS, fetch: fetchMock })).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("igdbGameTypeId", () => {
+  it("reads a bare game_type id, an expanded object, and the legacy category", () => {
+    expect(igdbGameTypeId({ id: 1, name: "a", game_type: 9 })).toBe(9);
+    expect(igdbGameTypeId({ id: 1, name: "a", game_type: { id: 3, type: "Bundle" } })).toBe(3);
+    expect(igdbGameTypeId({ id: 1, name: "a", category: 2 })).toBe(2);
+  });
+
+  it("distinguishes 'main game' (0) from 'unknown' (absent)", () => {
+    expect(igdbGameTypeId({ id: 1, name: "a", game_type: 0 })).toBe(0);
+    expect(igdbGameTypeId({ id: 1, name: "a" })).toBeNull();
   });
 });
 
