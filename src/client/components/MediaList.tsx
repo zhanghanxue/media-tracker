@@ -21,6 +21,7 @@ import {
   collectionNameFromSamples,
   collectionPath,
   rollupStatus,
+  storedName,
   subtreeRollup,
   subtreeStatusPriority,
 } from "../lib/collections";
@@ -164,7 +165,7 @@ export function MediaList({
     collectionNameFromSamples(
       col,
       rollupById.get(col.id)?.sample_titles ?? [],
-      childCollections(collections, col.id).map((g) => g.name ?? ""),
+      childCollections(collections, col.id).map((g) => storedName(g, lang) ?? ""),
       lang,
       t("collection.untitled"),
     );
