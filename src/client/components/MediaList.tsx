@@ -211,7 +211,17 @@ export function MediaList({
     }
     if (q) {
       for (const c of collections) {
-        if (nameOf(c).toLowerCase().includes(q)) addWithAncestors(c.id);
+        // Match the active-language display name AND both raw stored names, so
+        // a collection stays findable by its English name even once a Chinese
+        // name is set (a zh UI would otherwise only search name_zh) and vice
+        // versa.
+        if (
+          nameOf(c).toLowerCase().includes(q) ||
+          (c.name ?? "").toLowerCase().includes(q) ||
+          (c.name_zh ?? "").toLowerCase().includes(q)
+        ) {
+          addWithAncestors(c.id);
+        }
       }
     }
     return set;

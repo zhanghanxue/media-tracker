@@ -180,12 +180,29 @@ describe("collectionName — language resolution", () => {
     );
   });
 
-  it("falls back to the stored name in a zh UI when there is no zh name", () => {
-    // Must NOT skip to derivation: `name` is also where an operator-typed name
-    // lives, and derivation would silently override it.
+  it("keeps the English name in a zh UI when the members share no zh prefix", () => {
+    // No name_zh and the members' Chinese titles (让子弹飞 / 邪不压正) share no
+    // prefix, so there is no meaningful Chinese name to derive — the typed
+    // English name is better than echoing one member's title.
     const noZh = { ...franchise, name_zh: null };
     expect(collectionName(noZh, members, [], "zh", "Untitled")).toBe(
       "Beiyang Trilogy",
+    );
+  });
+
+  it("derives a zh prefix over the English name when the members share one", () => {
+    // name_zh unset, English name set, but the members DO share a Chinese prefix
+    // (开拓者…). A zh UI should read that derived Chinese name, not the English
+    // one — the IGDB-franchise case (no localized name upstream).
+    const pathfinder = { ...franchise, name: "Pathfinder", name_zh: null };
+    const games: MediaRow[] = [
+      { ...item(1, null), title_english: "Pathfinder: Kingmaker", title_chinese: "开拓者：拥王者" },
+      { ...item(2, null), title_english: "Pathfinder: Wrath", title_chinese: "开拓者：正义之怒" },
+    ];
+    expect(collectionName(pathfinder, games, [], "zh", "Untitled")).toBe("开拓者");
+    // en UI is unaffected — the explicit English name still wins.
+    expect(collectionName(pathfinder, games, [], "en", "Untitled")).toBe(
+      "Pathfinder",
     );
   });
 

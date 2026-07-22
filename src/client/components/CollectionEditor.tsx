@@ -144,7 +144,13 @@ function CollectionEditorForm({
   const banned = subtreeCollectionIds(allCollections, collection.id);
   const parentQ = parentQuery.trim().toLowerCase();
   const parentMatches = allCollections.filter(
-    (c) => !banned.has(c.id) && labelOf(c).toLowerCase().includes(parentQ),
+    (c) =>
+      !banned.has(c.id) &&
+      // Match the active-language label AND both raw names, so a parent stays
+      // searchable by its English name even after a Chinese name is set.
+      (labelOf(c).toLowerCase().includes(parentQ) ||
+        (c.name ?? "").toLowerCase().includes(parentQ) ||
+        (c.name_zh ?? "").toLowerCase().includes(parentQ)),
   );
   const parentLabel =
     parentId === ""
