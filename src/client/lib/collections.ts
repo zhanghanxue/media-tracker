@@ -174,18 +174,13 @@ export function collectionPath(
 }
 
 /**
- * The stored name for a language, or null when none is set.
+ * The best stored name for a language, or null when none is set. A zh UI prefers
+ * name_zh and then falls back to `name`. Used for search matching and for
+ * labelling a child collection when deriving its parent's name.
  *
- * A zh UI prefers name_zh and then falls back to `name`. It deliberately does
- * NOT skip to derivation when name_zh is missing: `name` is also where an
- * OPERATOR-set name lives (the editor's rename box writes it), and deriveName
- * returns the first member's title when there is no shared prefix, so
- * preferring derivation would silently override a name the user typed.
- *
- * The cost is that a source-named group with no localized name — the IGDB ones,
- * which have no zh name upstream — reads in English under a zh UI until it is
- * renamed by hand. Populating name_zh for those would mean deriving a name
- * server-side and freezing it, which is worse than a rename box.
+ * This is the raw stored resolution only. The full display name (collectionName
+ * / collectionNameFromSamples) layers a shared-prefix derivation on top: in zh,
+ * a genuine Chinese prefix of the members beats the English `name` fallback.
  */
 export function storedName(collection: Collection, lang: UiLang): string | null {
   if (lang === "zh") return collection.name_zh || collection.name || null;
@@ -193,14 +188,41 @@ export function storedName(collection: Collection, lang: UiLang): string | null 
 }
 
 /**
- * The collection's display name in `lang`: the stored name for that language,
- * else auto-derived from its direct items' titles (longest common prefix — the
- * same behavior the flat series had), else its child collections' shared prefix,
- * else a fallback.
- *
- * A zh UI prefers name_zh (TMDB's localized franchise name, e.g. 民国三部曲）and
- * falls back to `name` before deriving, so a group with only an English name
- * still reads as that name rather than a prefix guess.
+ * Resolve a collection's display name from its members' titles (already mapped
+ * to the active language). The resolution order is:
+ *   1. an explicit stored name for THIS language (name_zh in zh, name in en);
+ *   2. zh only — a Chinese name derived from a *genuine shared prefix* of the
+ *      members, preferred over the English `name`, so a franchise whose items
+ *      share a zh prefix (开拓者…) reads in Chinese even when only an English
+ *      name was typed. sharedPrefix returns "" for a lone member or no overlap,
+ *      so an English-named group of unrelated zh titles keeps its English name
+ *      rather than echoing one member;
+ *   3. loose derivation (longest common prefix, echoing the first member when
+ *      there is none) — the pre-name behavior for an unnamed group;
+ *   4. the child collections' shared prefix, then the untitled fallback.
+ */
+function resolveName(
+  collection: Collection,
+  memberTitles: string[],
+  childNames: string[],
+  lang: UiLang,
+  fallback: string,
+): string {
+  const explicit = lang === "zh" ? collection.name_zh : collection.name;
+  if (explicit) return explicit;
+  if (lang === "zh") {
+    const prefix = sharedPrefix(memberTitles);
+    if (prefix) return prefix;
+    if (collection.name) return collection.name;
+  }
+  const fromItems = deriveName(memberTitles);
+  if (fromItems) return fromItems;
+  return deriveName(childNames) || fallback;
+}
+
+/**
+ * The collection's display name in `lang`, derived from its direct items. See
+ * resolveName for the full resolution order.
  */
 export function collectionName(
   collection: Collection,
@@ -209,12 +231,13 @@ export function collectionName(
   lang: UiLang,
   fallback: string,
 ): string {
-  const stored = storedName(collection, lang);
-  if (stored) return stored;
-  const fromItems = deriveName(itemsUnder.map((m) => displayTitle(m, lang)));
-  if (fromItems) return fromItems;
-  const fromChildren = deriveName(childNames);
-  return fromChildren || fallback;
+  return resolveName(
+    collection,
+    itemsUnder.map((m) => displayTitle(m, lang)),
+    childNames,
+    lang,
+    fallback,
+  );
 }
 
 /** Cover to show for a collection: pinned override, else first item's cover. */
@@ -330,8 +353,7 @@ export function rollupStatus(counts: {
 }
 
 /** A collection's display name from its rollup sample titles (instead of the
- *  full member list): stored name, else common-prefix of the samples in the
- *  active language, else child-collection prefix, else fallback. */
+ *  full member list). Same resolution as collectionName — see resolveName. */
 export function collectionNameFromSamples(
   collection: Collection,
   sampleTitles: CollectionRollupTitles[],
@@ -339,11 +361,13 @@ export function collectionNameFromSamples(
   lang: UiLang,
   fallback: string,
 ): string {
-  const stored = storedName(collection, lang);
-  if (stored) return stored;
-  const fromItems = deriveName(sampleTitles.map((s) => displayTitle(s, lang)));
-  if (fromItems) return fromItems;
-  return deriveName(childNames) || fallback;
+  return resolveName(
+    collection,
+    sampleTitles.map((s) => displayTitle(s, lang)),
+    childNames,
+    lang,
+    fallback,
+  );
 }
 
 /** Cover for a collection: pinned override, else the rollup's sample cover. */
@@ -353,6 +377,25 @@ export function collectionCoverFromRollup(
 ): string | null {
   if (collection.cover_url) return collection.cover_url;
   return rollup?.sample_cover ?? null;
+}
+
+/**
+ * The shared leading prefix of 2+ titles, trimmed, or "" when they share none
+ * (or there are fewer than two). Unlike deriveName it never echoes a lone
+ * member — a "" result means "no real common name", so callers can fall back to
+ * a stored name instead of guessing one from a single title.
+ */
+export function sharedPrefix(rawTitles: string[]): string {
+  const titles = rawTitles.map((t) => t.trim()).filter((t) => t.length > 0);
+  if (titles.length < 2) return "";
+  let prefix = titles[0]!;
+  for (const t of titles.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < t.length && prefix[i] === t[i]) i += 1;
+    prefix = prefix.slice(0, i);
+    if (prefix === "") break;
+  }
+  return prefix.replace(/[\s:：·・/\-–—]+$/u, "").trim();
 }
 
 /** Longest common prefix of titles, trimmed; "" when none. (was deriveSeriesName) */
