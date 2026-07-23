@@ -30,3 +30,6 @@ backups/
 # Throwaway git worktrees created by agent tooling — full checkouts of this
 # same repo, never their own deliverable.
 .claude/worktrees/
+
+# Personal one-off worklist, not a project deliverable.
+COLLECTION-NAMES-TODO.md
