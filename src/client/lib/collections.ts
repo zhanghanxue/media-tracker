@@ -7,6 +7,7 @@ import type { Collection, MediaRow, UiLang } from "./types";
 import type { MediaStatus } from "../../worker/db/schema";
 import type { CollectionRollup, CollectionRollupTitles } from "./api";
 import { displayTitle } from "./displayTitle";
+import { stripSeriesWords } from "../../worker/sources/collection-name";
 import { recordSessionCollectionAdd } from "./sessionAdds";
 
 // --- API ------------------------------------------------------------------
@@ -379,38 +380,75 @@ export function collectionCoverFromRollup(
   return rollup?.sample_cover ?? null;
 }
 
+/** Raw longest common prefix of 2+ titles, before any cleanup. */
+function commonPrefix(titles: string[]): string {
+  let prefix = titles[0]!;
+  for (const t of titles.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < t.length && prefix[i] === t[i]) i += 1;
+    prefix = prefix.slice(0, i);
+    if (prefix === "") break;
+  }
+  return prefix;
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Back a common prefix off a word it only half-consumed.
+ *
+ * "Stranger Things Season 1" and "Stranger Things Stranger Things 2" share
+ * "Stranger Things S" — the prefix stops one letter into a word that then
+ * diverges, and a dangling "S" is worse than no derivation at all. When the
+ * prefix both ends on a word character AND is followed by one in some member,
+ * it is cut back to the last whitespace.
+ *
+ * Only helps space-separated scripts. Chinese titles have no word breaks, so a
+ * prefix with no whitespace is returned untouched and stripSeriesWords deals
+ * with it instead (…第 → …).
+ */
+function trimPartialWord(prefix: string, titles: string[]): string {
+  if (!WORD_CHAR.test(prefix.slice(-1))) return prefix;
+  const cutsAWord = titles.some((t) => {
+    const next = t[prefix.length];
+    return next !== undefined && WORD_CHAR.test(next);
+  });
+  if (!cutsAWord) return prefix;
+  const lastBreak = prefix.search(/\s+\S*$/u);
+  return lastBreak > 0 ? prefix.slice(0, lastBreak) : prefix;
+}
+
+/** Longest common prefix, cut back off a half-word and stripped of markers. */
+function derivedPrefix(titles: string[]): string {
+  return stripSeriesWords(trimPartialWord(commonPrefix(titles), titles));
+}
+
 /**
  * The shared leading prefix of 2+ titles, trimmed, or "" when they share none
  * (or there are fewer than two). Unlike deriveName it never echoes a lone
  * member — a "" result means "no real common name", so callers can fall back to
  * a stored name instead of guessing one from a single title.
+ *
+ * A prefix that stops on a grouping word is cleaned up by stripSeriesWords:
+ * 第一季 + 第二季 share "…第", which is an ordinal with its ordinal sheared off.
  */
 export function sharedPrefix(rawTitles: string[]): string {
   const titles = rawTitles.map((t) => t.trim()).filter((t) => t.length > 0);
   if (titles.length < 2) return "";
-  let prefix = titles[0]!;
-  for (const t of titles.slice(1)) {
-    let i = 0;
-    while (i < prefix.length && i < t.length && prefix[i] === t[i]) i += 1;
-    prefix = prefix.slice(0, i);
-    if (prefix === "") break;
-  }
-  return prefix.replace(/[\s:：·・/\-–—]+$/u, "").trim();
+  return derivedPrefix(titles);
 }
 
-/** Longest common prefix of titles, trimmed; "" when none. (was deriveSeriesName) */
+/**
+ * Longest common prefix of titles, trimmed; "" when none. (was deriveSeriesName)
+ *
+ * A lone title is echoed verbatim — "Season of the Witch" is a film, not a
+ * grouping word — so the cleanup only applies to a real derived prefix.
+ */
 export function deriveName(rawTitles: string[]): string {
   const titles = rawTitles.map((t) => t.trim()).filter((t) => t.length > 0);
   if (titles.length === 0) return "";
   if (titles.length === 1) return titles[0]!;
-  let prefix = titles[0]!;
-  for (const t of titles.slice(1)) {
-    let i = 0;
-    while (i < prefix.length && i < t.length && prefix[i] === t[i]) i += 1;
-    prefix = prefix.slice(0, i);
-    if (prefix === "") break;
-  }
-  prefix = prefix.replace(/[\s:：·・/\-–—]+$/u, "").trim();
+  const prefix = derivedPrefix(titles);
   return prefix.length >= 1 ? prefix : titles[0]!;
 }
 

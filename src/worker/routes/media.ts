@@ -18,10 +18,11 @@
 // detail fetch (tmdb adds), and the Twitch token + IGDB detail fetch (igdb adds);
 // integration tests mock them via fetchMock. D1 and R2 are real bindings.
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
+import type { MediaRow } from "../db/schema";
 import {
   addVideoPart,
   bulkDeleteMedia,
@@ -55,10 +56,15 @@ import {
   getTmdbCollectionName,
   getTmdbDetail,
   getTmdbSeason,
+  tmdbPosterUrl,
   type TmdbDetail,
   type TmdbSeasonDetail,
   type TmdbSeasonSummary,
 } from "../sources/tmdb";
+import {
+  isTmdbPosterPath,
+  selectPosterChoices,
+} from "../api/poster-choices";
 import { getIgdbDetail, type IgdbGame } from "../sources/igdb";
 import {
   parseCreateMediaRequest,
@@ -439,6 +445,151 @@ mediaRoutes.patch("/:id", async (c) => {
   return c.json(updated, 200);
 });
 
+/**
+ * A row's TMDB identity, parsed out of its external_id — "movie:ID", "tv:ID" or
+ * "tv:ID:sN" (kind-prefixed; seasons suffixed). Null for a malformed legacy row.
+ */
+function tmdbRefOf(
+  externalId: string | null,
+): { kind: "movie" | "tv"; tmdbId: number; seasonNumber?: number } | null {
+  const match = /^(movie|tv):(\d+)(?::s(\d+))?$/.exec(externalId ?? "");
+  if (!match) return null;
+  return {
+    kind: match[1] as "movie" | "tv",
+    tmdbId: Number(match[2]),
+    seasonNumber: match[3] !== undefined ? Number(match[3]) : undefined,
+  };
+}
+
+/**
+ * The TMDB-side checks every cover route repeats: the row exists, it's a TMDB
+ * row with a parseable id, and the key is configured. Returns the row + its ref,
+ * or the Response to send back.
+ */
+async function loadTmdbCoverTarget(
+  c: Context<{ Bindings: AppEnv; Variables: AuthVariables }>,
+): Promise<
+  | { ok: true; row: MediaRow; ref: NonNullable<ReturnType<typeof tmdbRefOf>> }
+  | { ok: false; response: Response }
+> {
+  const idParam = c.req.param("id") ?? "";
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return {
+      ok: false,
+      response: c.json({ error: "id must be a positive integer" }, 400),
+    };
+  }
+  const row = await findById(c.env.DB, Number(idParam));
+  if (row === null) {
+    return {
+      ok: false,
+      response: c.json({ error: `no media with id ${idParam}` }, 404),
+    };
+  }
+  if (row.external_source !== "tmdb") {
+    return {
+      ok: false,
+      response: c.json(
+        { error: "poster selection is only supported for TMDB items" },
+        422,
+      ),
+    };
+  }
+  if (!c.env.TMDB_API_KEY) {
+    return {
+      ok: false,
+      response: c.json({ error: "TMDB integration is not configured" }, 503),
+    };
+  }
+  const ref = tmdbRefOf(row.external_id);
+  if (!ref) {
+    return {
+      ok: false,
+      response: c.json({ error: "this item has no usable TMDB id" }, 422),
+    };
+  }
+  return { ok: true, row, ref };
+}
+
+// GET /api/media/:id/posters — every poster TMDB has for this item, so the user
+// can pick one instead of living with the automatic origin-language choice.
+// The add flow deliberately does NOT ask (a chooser on every add is friction);
+// this is the on-demand escape hatch for the cases where the auto pick is wrong.
+//
+// Returns the poster PATHS (not full URLs) alongside a rendered url — the path
+// is what POST /cover takes back, which keeps the settable value confined to
+// TMDB's own image host.
+mediaRoutes.get("/:id/posters", async (c) => {
+  const target = await loadTmdbCoverTarget(c);
+  if (!target.ok) return target.response;
+  const { ref } = target;
+
+  let posters;
+  try {
+    const detail = await getTmdbDetail(ref.tmdbId, ref.kind, {
+      apiKey: c.env.TMDB_API_KEY!,
+      images: true,
+    });
+    if (detail === null) {
+      return c.json({ error: "media not found on TMDB" }, 404);
+    }
+    if (ref.seasonNumber !== undefined) {
+      // A season's own art, not the show's — that's what the card shows.
+      const season = await getTmdbSeason(ref.tmdbId, ref.seasonNumber, {
+        apiKey: c.env.TMDB_API_KEY!,
+        images: true,
+      });
+      posters = season?.images?.posters ?? [];
+    } else {
+      posters = detail.images?.posters ?? [];
+    }
+  } catch {
+    return c.json({ error: "TMDB request failed" }, 502);
+  }
+
+  return c.json({ posters: selectPosterChoices(posters) });
+});
+
+// POST /api/media/:id/cover { poster_path } — pin one of TMDB's posters as this
+// item's cover. Re-hosts to R2 over the same key and cache-busts, exactly like
+// refresh-cover; the only difference is WHICH poster gets stored.
+mediaRoutes.post("/:id/cover", async (c) => {
+  const target = await loadTmdbCoverTarget(c);
+  if (!target.ok) return target.response;
+  const { row } = target;
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be valid JSON" }, 400);
+  }
+  const posterPath = (body as { poster_path?: unknown })?.poster_path;
+  if (typeof posterPath !== "string" || !isTmdbPosterPath(posterPath)) {
+    return c.json(
+      { error: "poster_path must be a TMDB poster path, e.g. /abc123.jpg" },
+      400,
+    );
+  }
+
+  // Built from TMDB's own image base rather than trusting a caller-supplied
+  // URL, so this route can never be pointed at an arbitrary host.
+  const sourceUrl = tmdbPosterUrl(posterPath)!;
+  const rehosted = await uploadCoverToR2(
+    c.env,
+    sourceUrl,
+    { externalSource: "tmdb", externalId: row.external_id! },
+    { overwrite: true },
+  );
+  const busted = `${rehosted}${rehosted.includes("?") ? "&" : "?"}v=${Date.now()}`;
+
+  const updated = await setCoverUrl(c.env.DB, row.id, busted);
+  if (updated === null) {
+    return c.json({ error: `no media with id ${row.id}` }, 404);
+  }
+  return c.json(updated, 200);
+});
+
 // POST /api/media/:id/refresh-cover — re-pull the origin-language poster for a
 // TMDB item and overwrite its cached R2 cover. The origin-poster selection
 // (tmdb-mapper) only runs on NEW adds, so existing rows keep whatever cover they
@@ -466,15 +617,11 @@ mediaRoutes.post("/:id/refresh-cover", async (c) => {
     return c.json({ error: "TMDB integration is not configured" }, 503);
   }
 
-  // external_id is "movie:ID", "tv:ID" or "tv:ID:sN" (kind-prefixed; seasons
-  // suffixed). Anything else is a malformed legacy row we can't refresh.
-  const match = /^(movie|tv):(\d+)(?::s(\d+))?$/.exec(existing.external_id ?? "");
-  if (!match) {
+  const ref = tmdbRefOf(existing.external_id);
+  if (!ref) {
     return c.json({ error: "this item has no refreshable TMDB id" }, 422);
   }
-  const kind = match[1] as "movie" | "tv";
-  const tmdbId = Number(match[2]);
-  const seasonNumber = match[3] !== undefined ? Number(match[3]) : undefined;
+  const { kind, tmdbId, seasonNumber } = ref;
 
   // Re-fetch detail (+ season) with poster images, then re-run the SAME mapper
   // the add flow uses so the origin-language selection is identical — we only

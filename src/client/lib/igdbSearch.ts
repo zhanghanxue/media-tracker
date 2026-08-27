@@ -76,3 +76,31 @@ export async function searchIgdbMedia(
   const data = (await res.json()) as IgdbSearchResponse;
   return data.results;
 }
+
+export interface IgdbSeries {
+  id: number;
+  name: string | null;
+}
+
+/** The distinct IGDB series the given games belong to (one upstream request). */
+export async function fetchIgdbSeriesOf(gameIds: number[]): Promise<IgdbSeries[]> {
+  if (gameIds.length === 0) return [];
+  const res = await fetch(`/api/igdb/series?ids=${gameIds.join(",")}`);
+  if (!res.ok) throw new Error(`IGDB series lookup failed (HTTP ${res.status})`);
+  return ((await res.json()) as { series: IgdbSeries[] }).series;
+}
+
+/** A series' members, already filtered of editions / DLC / bundles / ports. */
+export async function fetchIgdbSeriesGames(seriesId: number): Promise<IgdbGame[]> {
+  const res = await fetch(`/api/igdb/series/${seriesId}/games`);
+  if (!res.ok) throw new Error(`IGDB series games failed (HTTP ${res.status})`);
+  return ((await res.json()) as { games: IgdbGame[] }).games;
+}
+
+/** Which of these IGDB ids the library already tracks. Bounded to what's asked. */
+export async function fetchIgdbExisting(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const res = await fetch(`/api/igdb/existing?ids=${ids.join(",")}`);
+  if (!res.ok) throw new Error(`IGDB existing check failed (HTTP ${res.status})`);
+  return new Set(((await res.json()) as { existing: string[] }).existing);
+}

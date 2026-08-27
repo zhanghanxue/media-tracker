@@ -51,6 +51,23 @@
     "sequelAvailable": "续作《{{label}}》可添加",
     "dismiss": "忽略"
   },
+  "gaps": {
+    "button": "查看缺失",
+    "title": "本合集中尚未添加的作品",
+    "scanning": "正在查询来源…",
+    "scanningCount": "正在查询来源…（已查 {{done}} 项）",
+    "error": "查询失败，请重试。",
+    "empty": "没有缺失 —— 本合集已收齐。",
+    "found_other": "有 {{count}} 部尚未添加。",
+    "addFailed": "添加失败，请重试。",
+    "seasonLabel": "第 {{number}} 季",
+    "kind": {
+      "movie": "电影",
+      "season": "季",
+      "game": "游戏",
+      "anime": "动画"
+    }
+  },
   "filters": {
     "allTypes": "全部类型",
     "type": "类型",
@@ -231,6 +248,14 @@
     "refreshCover": "↻ 刷新封面（原产地海报）",
     "refreshingCover": "正在刷新封面…",
     "refreshCoverFailed": "封面刷新失败。",
+    "choosePoster": "🖼 选择海报",
+    "posterPick": "选择海报 —— 点击即可使用",
+    "posterClose": "关闭",
+    "posterLoading": "正在加载海报…",
+    "posterFailed": "无法从 TMDB 加载海报。",
+    "posterEmpty": "TMDB 没有此条目的海报。",
+    "posterTextless": "无文字",
+    "posterSetFailed": "设置海报失败。",
     "linkedAniList": "✓ 已关联 AniList · #{{id}}",
     "linkedIgdb": "✓ 已关联 IGDB · #{{id}}",
     "linkedTmdb": "✓ 已关联 TMDB · #{{id}}",

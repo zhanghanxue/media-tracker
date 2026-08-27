@@ -217,6 +217,11 @@ export interface AniListSearchResponse {
   results: AniListSearchItem[];
 }
 
+/** Which of these AniList ids the library already tracks (bounded lookup). */
+export async function fetchAniListExisting(ids: string[]): Promise<Set<string>> {
+  return fetchExistingIds(ids);
+}
+
 // Best-effort library-membership lookup; if it fails, the search still renders
 // (every result just shows as not-added).
 async function fetchExistingIds(

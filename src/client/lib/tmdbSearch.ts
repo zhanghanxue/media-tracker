@@ -68,3 +68,39 @@ export async function fetchTmdbSeasons(showId: number): Promise<TmdbSeason[]> {
   const data = (await res.json()) as { seasons: TmdbSeason[] };
   return data.seasons;
 }
+
+export interface TmdbCollectionPartRow {
+  id: number;
+  title: string | null;
+  release_date: string | null;
+  poster_path: string | null;
+  vote_average: number | null;
+}
+
+/** Every film TMDB files under a franchise, for the collection-gap scan. */
+export async function fetchTmdbCollection(
+  collectionId: number,
+): Promise<{ name: string | null; parts: TmdbCollectionPartRow[] }> {
+  const res = await fetch(`/api/tmdb/collection/${collectionId}`);
+  if (!res.ok) throw new Error(`TMDB collection failed (HTTP ${res.status})`);
+  return (await res.json()) as {
+    name: string | null;
+    parts: TmdbCollectionPartRow[];
+  };
+}
+
+/**
+ * Which of these TMDB external ids ("movie:550", "tv:1399:s2") the library
+ * already tracks. Bounded to the ids asked about — never a whole-library fetch.
+ */
+export async function fetchTmdbExisting(
+  externalIds: string[],
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+  const res = await fetch(
+    `/api/tmdb/existing?ids=${encodeURIComponent(externalIds.join(","))}`,
+  );
+  if (!res.ok) throw new Error(`TMDB existing check failed (HTTP ${res.status})`);
+  const data = (await res.json()) as { existing: string[] };
+  return new Set(data.existing);
+}

@@ -82,3 +82,80 @@ describe("GET /api/tmdb/tv/:id/seasons", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("GET /api/tmdb/collection/:id", () => {
+  it("returns the franchise's parts, with the （系列） marker off the name", async () => {
+    const collectionResp = {
+      id: 1241,
+      name: "哈利·波特（系列）",
+      parts: [
+        {
+          id: 671,
+          title: "哈利·波特与魔法石",
+          release_date: "2001-11-16",
+          poster_path: "/p1.jpg",
+          vote_average: 7.9,
+        },
+        // No poster / date / score: the route must still emit the row, nulled.
+        { id: 672, title: "哈利·波特与密室" },
+      ],
+    };
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/collection\/1241/ })
+      .reply(200, JSON.stringify(collectionResp), {
+        headers: { "content-type": "application/json" },
+      });
+
+    const res = await app.request("/api/tmdb/collection/1241", {}, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      name: string | null;
+      parts: { id: number; title: string | null; poster_path: string | null }[];
+    };
+    expect(body.name).toBe("哈利·波特");
+    expect(body.parts.map((p) => p.id)).toEqual([671, 672]);
+    expect(body.parts[1]!.poster_path).toBeNull();
+  });
+
+  it("404s when TMDB has no such collection", async () => {
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/collection\/999999/ })
+      .reply(404, JSON.stringify({ status_code: 34 }), {
+        headers: { "content-type": "application/json" },
+      });
+
+    const res = await app.request("/api/tmdb/collection/999999", {}, env);
+    expect(res.status).toBe(404);
+  });
+
+  it("400s on a non-numeric id", async () => {
+    const res = await app.request("/api/tmdb/collection/abc", {}, env);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/tmdb/existing", () => {
+  it("reports which TMDB ids the library already tracks", async () => {
+    await env.DB.prepare(
+      `INSERT INTO media (type, title_english, status, external_source, external_id)
+       VALUES ('movie', 'Tracked', 'planned', 'tmdb', 'movie:671')`,
+    ).run();
+
+    const res = await app.request(
+      "/api/tmdb/existing?ids=movie:671,movie:672",
+      {},
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { existing: string[] };
+    expect(body.existing).toEqual(["movie:671"]);
+  });
+
+  it("returns nothing for an empty id list, without touching TMDB", async () => {
+    const res = await app.request("/api/tmdb/existing?ids=", {}, env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ existing: [] });
+  });
+});
