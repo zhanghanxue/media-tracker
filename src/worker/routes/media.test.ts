@@ -1189,6 +1189,126 @@ describe("POST /api/media/:id/refresh-cover", () => {
   });
 });
 
+// --- Manual poster picking (GET /posters + POST /cover) --------------------
+
+// A movie detail carrying real poster art, unlike the captured fixture (whose
+// images.posters is empty). Two languages + textless, deliberately out of vote
+// order so the route's ranking is observable.
+const MOVIE_WITH_POSTERS = {
+  id: 496243,
+  title: "Parasite",
+  original_language: "ko",
+  images: {
+    posters: [
+      { file_path: "/mid.jpg", iso_639_1: "en", vote_average: 5 },
+      { file_path: "/best.jpg", iso_639_1: "ko", vote_average: 9 },
+      { file_path: "/plain.jpg", iso_639_1: null, vote_average: 1 },
+      { file_path: "https://evil.example/x.jpg", iso_639_1: "en", vote_average: 10 },
+    ],
+  },
+};
+
+describe("GET /api/media/:id/posters", () => {
+  it("lists TMDB's posters, best-voted first, dropping malformed paths", async () => {
+    fetchMock
+      .get(TMDB_API_ORIGIN)
+      .intercept({ method: "GET", path: /^\/3\/movie\/496243/ })
+      .reply(200, JSON.stringify(MOVIE_WITH_POSTERS), {
+        headers: { "content-type": "application/json" },
+      });
+    const inserted = await insertMedia(env.DB, TMDB_MOVIE_ROW);
+
+    const res = await app.request(`/api/media/${inserted.id}/posters`, {}, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      posters: { path: string; language: string | null }[];
+    };
+    expect(body.posters.map((p) => p.path)).toEqual([
+      "/best.jpg",
+      "/mid.jpg",
+      "/plain.jpg",
+    ]);
+    expect(body.posters[2]!.language).toBeNull(); // textless art is kept
+  });
+
+  it("returns 422 for a non-TMDB item", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW); // anilist
+    const res = await app.request(`/api/media/${inserted.id}/posters`, {}, env);
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 404 for a missing id", async () => {
+    const res = await app.request("/api/media/999999/posters", {}, env);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/media/:id/cover", () => {
+  async function setCover(id: number | string, body: unknown): Promise<Response> {
+    return app.request(
+      `/api/media/${id}/cover`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("pins the chosen poster, re-hosts to R2, and cache-busts the URL", async () => {
+    fetchMock
+      .get(TMDB_IMG_ORIGIN)
+      .intercept({ method: "GET", path: "/t/p/w500/chosen.jpg" })
+      .reply(200, "fake-image-bytes", {
+        headers: { "content-type": "image/jpeg" },
+      });
+    const inserted = await insertMedia(env.DB, TMDB_MOVIE_ROW);
+
+    const res = await setCover(inserted.id, { poster_path: "/chosen.jpg" });
+    expect(res.status).toBe(200);
+    const cover = ((await res.json()) as { cover_url: string }).cover_url;
+    expect(cover).toContain(
+      "https://covers.zhanghanxue.com/covers/tmdb/movie_496243.jpg",
+    );
+    expect(cover).toMatch(/[?&]v=\d+$/);
+    expect(await env.COVERS.head("covers/tmdb/movie_496243.jpg")).not.toBeNull();
+  });
+
+  it("rejects a poster_path that could point at another host", async () => {
+    // No interceptor registered — a fetch would throw on disableNetConnect,
+    // which is the point: validation must happen before any request.
+    const inserted = await insertMedia(env.DB, TMDB_MOVIE_ROW);
+    for (const poster_path of [
+      "https://evil.example/a.jpg",
+      "//evil.example/a.jpg",
+      "/../../etc/passwd",
+      "/a/b.jpg",
+      "",
+    ]) {
+      const res = await setCover(inserted.id, { poster_path });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("rejects a missing or non-string poster_path", async () => {
+    const inserted = await insertMedia(env.DB, TMDB_MOVIE_ROW);
+    expect((await setCover(inserted.id, {})).status).toBe(400);
+    expect((await setCover(inserted.id, { poster_path: 7 })).status).toBe(400);
+  });
+
+  it("returns 422 for a non-TMDB item", async () => {
+    const inserted = await insertMedia(env.DB, BASE_ROW); // anilist
+    const res = await setCover(inserted.id, { poster_path: "/chosen.jpg" });
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 400 for a non-numeric id", async () => {
+    const res = await setCover("abc", { poster_path: "/chosen.jpg" });
+    expect(res.status).toBe(400);
+  });
+});
+
 // --- Video parts (media_video_parts) ---------------------------------------
 
 describe("video parts (/api/media/:id/parts)", () => {

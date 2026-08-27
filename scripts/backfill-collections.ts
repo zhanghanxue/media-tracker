@@ -287,19 +287,30 @@ async function main() {
   // suffix, and the naming pass above skips any group that already has a
   // name_zh. Normalizing is a pure string op over what is already stored — no
   // lookup, nothing to re-resolve — so it is its own cheap sweep.
-  const normalizations: { id: string; from: string; to: string }[] = [];
+  const normalizations: {
+    id: string;
+    field: "name" | "name_zh";
+    from: string;
+    to: string;
+  }[] = [];
   for (const c of allCollections) {
-    if (!FRANCHISE_ID.test(c.id) || !c.name_zh) continue;
-    const stripped = stripCollectionSuffix(c.name_zh);
-    if (stripped && stripped !== c.name_zh) {
-      normalizations.push({ id: c.id, from: c.name_zh, to: stripped });
+    if (!FRANCHISE_ID.test(c.id)) continue;
+    // Both languages: the zh names carry （系列）, the English ones carry a
+    // trailing "Series"/"Seasons" that reads as noise on a collection card.
+    for (const field of ["name", "name_zh"] as const) {
+      const current = c[field];
+      if (!current) continue;
+      const stripped = stripCollectionSuffix(current);
+      if (stripped && stripped !== current) {
+        normalizations.push({ id: c.id, field, from: current, to: stripped });
+      }
     }
   }
 
   if (normalizations.length) {
     console.error(`\nnames to normalize (${normalizations.length}):`);
     for (const n of normalizations) {
-      console.error(`  ${n.id}: "${n.from}" → "${n.to}"`);
+      console.error(`  ${n.id} (${n.field}): "${n.from}" → "${n.to}"`);
     }
   }
 
@@ -421,7 +432,7 @@ collections to name (${renames.length}):`);
   for (const n of normalizations) {
     try {
       await request("PATCH", `/api/collections/${encodeURIComponent(n.id)}`, {
-        name_zh: n.to,
+        [n.field]: n.to,
       });
       renamed += 1;
     } catch (e) {

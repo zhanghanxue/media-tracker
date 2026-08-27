@@ -11,6 +11,7 @@ import { BangumiTitlePicker, type PickedBangumiSubject } from "./BangumiTitlePic
 import { AniListTitlePicker, type PickedAniListTitles } from "./AniListTitlePicker";
 import { IgdbLinkPicker, type PickedIgdbGame } from "./IgdbLinkPicker";
 import { TmdbLinkPicker, type PickedTmdbItem } from "./TmdbLinkPicker";
+import { PosterPicker } from "./PosterPicker";
 import { VideoPartsEditor } from "./VideoPartsEditor";
 import { CollectionEditor } from "./CollectionEditor";
 import { CollectionPicker } from "./CollectionPicker";
@@ -78,6 +79,8 @@ export function MediaDetailEditor({
   const update = useUpdateMedia();
   const del = useDeleteMedia();
   const refreshCover = useRefreshCover();
+  // The poster grid is opt-in per open — it costs a TMDB round trip.
+  const [pickingPoster, setPickingPoster] = useState(false);
   const lang = uiLangFromI18n(i18n.language);
   const headerTitle = displayTitle(media, lang);
 
@@ -400,24 +403,44 @@ export function MediaDetailEditor({
               ));
             })()}
           </div>
-          {/* TMDB only: re-pull the origin-language poster (the selection that
-              runs on new adds) and overwrite the cached cover for this row. */}
+          {/* TMDB only. Two cover actions, deliberately distinct:
+              • Refresh re-runs the AUTOMATIC origin-language pick (the one new
+                adds get) against TMDB's current art;
+              • Choose opens every poster TMDB has, for when that pick is wrong.
+              Neither exists at add time — a chooser on every add would be
+              friction on the most-repeated action. */}
           {media.external_source === "tmdb" && (
-            <button
-              type="button"
-              onClick={() => refreshCover.mutate(media.id)}
-              disabled={refreshCover.isPending}
-              className="mt-1 text-xs text-blue-400 hover:underline disabled:opacity-50 light:text-blue-600"
-            >
-              {refreshCover.isPending
-                ? t("editor.refreshingCover")
-                : t("editor.refreshCover")}
-            </button>
+            <div className="mt-1 flex gap-3">
+              <button
+                type="button"
+                onClick={() => refreshCover.mutate(media.id)}
+                disabled={refreshCover.isPending}
+                className="text-xs text-blue-400 hover:underline disabled:opacity-50 light:text-blue-600"
+              >
+                {refreshCover.isPending
+                  ? t("editor.refreshingCover")
+                  : t("editor.refreshCover")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickingPoster((v) => !v)}
+                className="text-xs text-blue-400 hover:underline light:text-blue-600"
+              >
+                {t("editor.choosePoster")}
+              </button>
+            </div>
           )}
           {refreshCover.isError && (
             <p className="mt-1 text-xs text-red-400 light:text-red-600">
               {t("editor.refreshCoverFailed")}
             </p>
+          )}
+          {pickingPoster && media.external_source === "tmdb" && (
+            <PosterPicker
+              mediaId={media.id}
+              currentCoverUrl={media.cover_url}
+              onClose={() => setPickingPoster(false)}
+            />
           )}
         </div>
 

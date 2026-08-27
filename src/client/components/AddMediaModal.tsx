@@ -260,7 +260,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
 
         {/* Controls */}
         <div className="shrink-0 space-y-3 border-b border-zinc-800 p-4 light:border-zinc-200">
-          {/* Source: AniList (EN/JP) · Bangumi (中文) · TMDB (影视) */}
+          {/* Source: AniList (EN/JP) · Bangumi (Chinese) · TMDB (movies/TV) · IGDB (games) */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -292,7 +292,7 @@ export function AddMediaModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {/* Sub-type toggle: Movie/TV for TMDB; Anime/Book/影视 for Bangumi
+          {/* Sub-type toggle: Movie/TV for TMDB; Anime/Book/live-action for Bangumi
               (it also catches live-action); Anime/Manga for AniList. */}
           {source === "tmdb" ? (
             <div className="flex gap-2">

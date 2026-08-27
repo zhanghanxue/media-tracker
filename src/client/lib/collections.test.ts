@@ -321,4 +321,33 @@ describe("deriveName", () => {
   it("is empty for no titles", () => {
     expect(deriveName([])).toBe("");
   });
+  it("drops the grouping word a season list leaves on the prefix", () => {
+    expect(
+      deriveName(["Stranger Things Season 1", "Stranger Things Season 2"]),
+    ).toBe("Stranger Things");
+    expect(deriveName(["Doctor Who Series 1", "Doctor Who Series 2"])).toBe(
+      "Doctor Who",
+    );
+    expect(deriveName(["庆余年 第一季", "庆余年 第二季"])).toBe("庆余年");
+  });
+  it("keeps a lone title that merely starts with a grouping word", () => {
+    expect(deriveName(["Season of the Witch"])).toBe("Season of the Witch");
+  });
+  it("backs off a word the common prefix only half-consumed", () => {
+    // TMDB names Stranger Things' seasons "Season 1" and "Stranger Things 2",
+    // so the composed titles share "Stranger Things S" — a dangling letter.
+    expect(
+      deriveName([
+        "Stranger Things Season 1",
+        "Stranger Things Stranger Things 2",
+      ]),
+    ).toBe("Stranger Things");
+  });
+  it("keeps a prefix that ends on a whole word", () => {
+    // "Iron Man" is followed by a space in the longer titles, not a letter.
+    expect(deriveName(["Iron Man", "Iron Man 2"])).toBe("Iron Man");
+  });
+  it("leaves a spaceless Chinese prefix to the marker strip", () => {
+    expect(deriveName(["全职高手第一季", "全职高手第二季"])).toBe("全职高手");
+  });
 });

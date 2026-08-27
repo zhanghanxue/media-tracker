@@ -25,6 +25,7 @@ import {
   subtreeRollup,
   subtreeStatusPriority,
 } from "../lib/collections";
+import { scanSource } from "../lib/collectionGaps";
 import { STATUS_SORT_PRIORITY } from "../../worker/api/list-query";
 import { COLLECTION_ROOT, type CollectionRollup, type MediaFilters } from "../lib/api";
 import { effectiveLevelFilters, isExplicitFiltering } from "../lib/homeFilter";
@@ -32,6 +33,7 @@ import type { Collection, MediaRow } from "../lib/types";
 import { MediaCard } from "./MediaCard";
 import { CollectionCard } from "./CollectionCard";
 import { CollectionEditor } from "./CollectionEditor";
+import { CollectionGapsModal } from "./CollectionGapsModal";
 import { BulkActionBar } from "./BulkActionBar";
 
 export function MediaList({
@@ -73,6 +75,8 @@ export function MediaList({
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const [editing, setEditing] = useState<Collection | null>(null);
+  // The "what else belongs here" panel, opened from the drill-down toolbar.
+  const [showingGaps, setShowingGaps] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
@@ -398,6 +402,18 @@ export function MediaList({
           >
             {selectMode ? t("bulk.exit") : t("bulk.select")}
           </button>
+          {/* Only for a collection some source can expand — a TMDB franchise or
+              season group by its id, a game or anime group by what its members
+              are linked to. A group of unlinked items has nothing to diff. */}
+          {current && scanSource(current.id, levelPageItems) !== null && !selectMode && (
+            <button
+              type="button"
+              onClick={() => setShowingGaps(true)}
+              className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 light:border-zinc-300 light:text-zinc-700 light:hover:bg-zinc-100"
+            >
+              ✨ {t("gaps.button")}
+            </button>
+          )}
           {current && (
             <button
               type="button"
@@ -528,6 +544,18 @@ export function MediaList({
             setEditing(null);
             navigateTo(null);
           }}
+        />
+      )}
+
+      {showingGaps && current && (
+        <CollectionGapsModal
+          collectionId={current.id}
+          collectionName={nameOf(current)}
+          // This level's loaded items — the members the scan diffs against. A
+          // long collection may have more pages, so anything below the fold is
+          // caught by the server probe inside the scan rather than here.
+          members={levelPageItems}
+          onClose={() => setShowingGaps(false)}
         />
       )}
     </>

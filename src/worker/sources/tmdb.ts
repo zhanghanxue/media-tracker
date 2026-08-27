@@ -74,6 +74,24 @@ export interface TmdbImages {
   posters?: TmdbImage[];
 }
 
+// One film inside a franchise, as /collection/{id} lists it. A cut-down movie
+// row — enough to show the entry and hand its id to the add flow, no more.
+export interface TmdbCollectionPart {
+  id: number;
+  title?: string;
+  original_title?: string;
+  release_date?: string | null;
+  poster_path?: string | null;
+  vote_average?: number | null;
+}
+
+// /collection/{id}. `parts` is the whole franchise, in TMDB's own order.
+export interface TmdbCollection {
+  id: number;
+  name?: string;
+  parts?: TmdbCollectionPart[];
+}
+
 // The unified detail shape (movie + tv fields both optional; `kind` tells the
 // mapper which to read). Only the fields the mapper consumes are typed.
 export interface TmdbDetail {
@@ -229,10 +247,31 @@ export async function getTmdbDetail(
 }
 
 /**
- * A movie collection's own record. Used only for its LOCALIZED name: the name on
- * `belongs_to_collection` comes back in the detail request's language, so the zh
- * name needs its own call (`?language=zh-CN` → "民国三部曲（系列）"). Returns null
- * when TMDB has no such collection.
+ * A movie collection's own record: its localized name plus `parts` — EVERY film
+ * TMDB files under the franchise, whether or not it is in the library. The
+ * franchise-gap scan diffs that list against what is already tracked.
+ *
+ * Returns null when TMDB has no such collection.
+ */
+export async function getTmdbCollection(
+  id: number,
+  options: TmdbClientOptions,
+): Promise<TmdbCollection | null> {
+  const params = new URLSearchParams();
+  if (options.language) params.set("language", options.language);
+  const qs = params.toString();
+  return tmdbRequest<TmdbCollection>(
+    `/collection/${id}${qs ? `?${qs}` : ""}`,
+    options,
+    { notFoundIsNull: true },
+  );
+}
+
+/**
+ * A movie collection's LOCALIZED name: the name on `belongs_to_collection` comes
+ * back in the detail request's language, so the zh name needs its own call
+ * (`?language=zh-CN` → "民国三部曲（系列）"). Returns null when TMDB has no such
+ * collection.
  *
  * The trailing （系列） marker is stripped here, at the one point every caller
  * (the add route and the backfill) goes through, so a stored name is already in
@@ -242,15 +281,8 @@ export async function getTmdbCollectionName(
   id: number,
   options: TmdbClientOptions,
 ): Promise<string | null> {
-  const params = new URLSearchParams();
-  if (options.language) params.set("language", options.language);
-  const qs = params.toString();
-  const payload = await tmdbRequest<{ id: number; name?: string }>(
-    `/collection/${id}${qs ? `?${qs}` : ""}`,
-    options,
-    { notFoundIsNull: true },
-  );
-  return stripCollectionSuffix(payload?.name ?? null);
+  const collection = await getTmdbCollection(id, options);
+  return stripCollectionSuffix(collection?.name ?? null);
 }
 
 export async function getTmdbSeason(

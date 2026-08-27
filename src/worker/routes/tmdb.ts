@@ -7,7 +7,14 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "../env";
 import type { AuthVariables } from "../middleware/auth";
-import { getTmdbDetail, searchTmdb, type TmdbKind } from "../sources/tmdb";
+import {
+  getTmdbCollection,
+  getTmdbDetail,
+  searchTmdb,
+  type TmdbKind,
+} from "../sources/tmdb";
+import { findExistingExternalIds } from "../db/media-repository";
+import { stripCollectionSuffix } from "../sources/collection-name";
 
 export const tmdbRoutes = new Hono<{
   Bindings: AppEnv;
@@ -74,4 +81,54 @@ tmdbRoutes.get("/tv/:id/seasons", async (c) => {
       poster_path: s.poster_path ?? null,
     }));
   return c.json({ seasons });
+});
+
+// GET /api/tmdb/collection/:id → { name, parts: [...] }. Every film TMDB files
+// under a franchise, localized to zh-CN like the seasons route. The collection
+// drill-down diffs this against what's tracked to show "what else is in here".
+tmdbRoutes.get("/collection/:id", async (c) => {
+  const apiKey = c.env.TMDB_API_KEY;
+  if (!apiKey) {
+    return c.json({ error: "TMDB integration is not configured" }, 503);
+  }
+  const idParam = c.req.param("id");
+  if (!/^[1-9][0-9]*$/.test(idParam)) {
+    return c.json({ error: "id must be a positive integer" }, 400);
+  }
+
+  let collection;
+  try {
+    collection = await getTmdbCollection(Number(idParam), {
+      apiKey,
+      language: "zh-CN",
+    });
+  } catch {
+    return c.json({ error: "TMDB request failed" }, 502);
+  }
+  if (collection === null) {
+    return c.json({ error: "collection not found on TMDB" }, 404);
+  }
+
+  const parts = (collection.parts ?? []).map((p) => ({
+    id: p.id,
+    title: p.title ?? p.original_title ?? null,
+    release_date: p.release_date ?? null,
+    poster_path: p.poster_path ?? null,
+    vote_average: p.vote_average ?? null,
+  }));
+  return c.json({ name: stripCollectionSuffix(collection.name ?? null), parts });
+});
+
+// GET /api/tmdb/existing?ids=movie:550,tv:1399:s2 → { existing: [...] }
+// "Which of these am I already tracking?" — a pure D1 lookup, mirroring
+// /api/anilist/existing. Lets the gap scan drop entries that are in the library
+// but filed under a different collection, instead of offering a doomed Add.
+tmdbRoutes.get("/existing", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const existing = await findExistingExternalIds(c.env.DB, "tmdb", ids);
+  return c.json({ existing: [...existing] });
 });
