@@ -2,7 +2,7 @@
 
 Personal media tracker for one user (single-user web app, accessed from PC and phone). Tracks manga, light novels, animation (anime / donghua / Western cartoon), drama (C-drama / K-drama / J-drama / etc.), movies, and games (with mobile/console/PC/handheld/arcade platform discriminator).
 
-**Repo:** [github.com/zhanghanxue/media-tracker](https://github.com/zhanghanxue/media-tracker) (private)
+**Repo:** [github.com/zhanghanxue/media-tracker](https://github.com/zhanghanxue/media-tracker) (public)
 
 ---
 
@@ -88,6 +88,7 @@ The six modules in PRD.md § "Implementation Decisions → Deep modules" are the
 
 ## What NOT to do
 
+- **Don't commit secrets or personal data — this repository is public.** No API keys, tokens, `.dev.vars`, personal e-mail addresses, or private material (study notes, personal lists). Check every commit before it leaves the machine.
 - **Don't introduce a new framework / build tool / state library** beyond DESIGN.md § 15 ("Frontend stack — Reuse existing")
 - **Don't add features beyond the user stories in PRD.md** — if a user asks for something missing, flag it as out-of-scope or as a v2 candidate
 - **Don't ship multiple metadata API integrations in one phase** — the A.2 sequential-ship architecture is the explicit decision. AniList ships first, alone. TMDB, IGDB, Bangumi come in their own later phases.

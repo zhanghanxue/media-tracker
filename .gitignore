@@ -33,3 +33,6 @@ backups/
 
 # Personal one-off worklist, not a project deliverable.
 COLLECTION-NAMES-TODO.md
+
+# Per-machine agent permission settings (a local allow-list, not a deliverable).
+.claude/settings.local.json
